@@ -1,6 +1,12 @@
 fastapi
 uvicorn[standard]
 python-dotenv
+
 langchain
 langchain-openai
+langchain-community
 langgraph
+
+chromadb
+langchain-chroma
+langchain-text-splitters
