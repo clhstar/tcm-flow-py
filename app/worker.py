@@ -192,6 +192,14 @@ async def run_agent(
     input_data: dict[str, Any],
     context: dict[str, Any],
 ):
+    """
+    异步执行Agent的核心函数
+    1. 更新运行状态为running
+    2. 调用make_lead_agent创建Agent实例
+    3. 遍历Agent产生的消息流，实时推送事件
+    4. 检测是否需要澄清（ask_clarification工具执行后中断）
+    5. 执行完成后保存对话历史并更新状态
+    """
     run_id = record.run_id
     thread_id = record.thread_id
 

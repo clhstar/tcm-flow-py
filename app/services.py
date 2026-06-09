@@ -9,6 +9,8 @@ from app.worker import run_agent
 
 
 class AppState:
+    """应用全局状态管理器"""
+
     def __init__(self):
         self.thread_store = ThreadStore()
         self.run_manager = RunManager()
@@ -19,6 +21,10 @@ state = AppState()
 
 
 async def start_run(body: RunCreateRequest, thread_id: str) -> RunRecord:
+    """
+    启动Agent运行任务
+    验证线程存在，创建运行记录，建立事件流桥接，后台异步执行Agent
+    """
     thread = await state.thread_store.get(thread_id)
     if thread is None:
         raise HTTPException(status_code=404, detail="Thread not found")

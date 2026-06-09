@@ -14,6 +14,11 @@ _checkpointer = InMemorySaver()
 
 
 def make_lead_agent(context: dict | None = None):
+    """
+    创建主导Agent实例
+    从context或环境变量读取模型配置，绑定工具和系统提示词
+    使用内存checkpointer支持多轮对话状态
+    """
     context = context or {}
 
     model_name = context.get("model_name") or os.getenv("OPENAI_MODEL", "gpt-4o-mini")
