@@ -1,0 +1,96 @@
+# Python
+
+**pycache**/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+
+# Virtual environment
+
+.venv/
+venv/
+env/
+ENV/
+
+# Environment variables
+
+# .env
+# .env.*
+# !.env.example
+
+# IDE / Editor
+
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+
+.DS_Store
+Thumbs.db
+
+# Logs
+
+*.log
+logs/
+
+# Uvicorn / FastAPI runtime
+
+*.pid
+
+# Test / coverage
+
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# Build / package
+
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Jupyter
+
+.ipynb_checkpoints/
+
+# Local generated files
+
+body.json
+tmp/
+temp/
+
+# Mini-DeerFlow generated data
+
+data/
+outputs/
+uploads/
+workspace/
+
+# SQLite / local database
+
+*.db
+*.sqlite
+*.sqlite3
+
+# Cache
+
+.cache/
+.mypy_cache/
+.ruff_cache/
+
+# Node / frontend if added later
+
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+dist/
+.next/
+.nuxt/
