@@ -6,6 +6,8 @@ from app.middlewares.clarification_middleware import (
     extract_latest_clarification_question,
 )
 from app.middlewares.guardrail_middleware import apply_guardrails
+from app.middlewares.trace_middleware import extract_agent_trace_from_messages
+
 from app.runtime.stream import StreamBridge
 from app.store.models import RunRecord
 from app.store.run_manager import RunManager
@@ -288,6 +290,8 @@ async def run_agent(
         rewritten = guardrail_result["rewritten"]
         allowed_terms = guardrail_result["allowed_terms"]
 
+        agent_trace = extract_agent_trace_from_messages(final_messages)
+
         conversation = append_visible_messages(
             thread_values=thread_values,
             user_text=user_text,
@@ -303,6 +307,7 @@ async def run_agent(
                 "last_validation": validation,
                 "last_allowed_terms": allowed_terms,
                 "last_rewritten": rewritten,
+                "last_agent_trace": agent_trace,
             },
         )
 
@@ -317,6 +322,7 @@ async def run_agent(
                 "validation_before_rewrite": validation_before_rewrite,
                 "rewritten": rewritten,
                 "allowed_terms": allowed_terms,
+                "agent_trace": agent_trace,
             },
         )
 
@@ -324,9 +330,7 @@ async def run_agent(
         await thread_store.update_status(thread_id, "idle")
 
     except Exception as exc:
-        error = "".join(
-            traceback.format_exception_only(type(exc), exc)
-        ).strip()
+        error = "".join(traceback.format_exception_only(type(exc), exc)).strip()
 
         await run_manager.set_status(
             run_id,
