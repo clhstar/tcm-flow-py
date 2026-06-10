@@ -1,12 +1,3 @@
-from app.tools.clarification import ask_clarification
-from app.tools.present_files import present_files
-from app.tools.tcm_retrieval import retrieve_tcm_knowledge
+from app.tools.tools import get_available_tools
 
-
-def get_available_tools():
-    """返回所有可用的Agent工具列表"""
-    return [
-        ask_clarification,
-        present_files,
-        retrieve_tcm_knowledge,
-    ]
+__all__ = ["get_available_tools"]

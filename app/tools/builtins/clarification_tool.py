@@ -1,7 +1,7 @@
 from langchain.tools import tool
 
 
-@tool("ask_clarification", return_direct = True)
+@tool("ask_clarification", return_direct=True)
 def ask_clarification(question: str) -> str:
     """
     当用户信息不足、症状描述不清楚、需要补充病史或需要确认风险时调用。
