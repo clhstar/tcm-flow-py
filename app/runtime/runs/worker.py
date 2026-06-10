@@ -6,7 +6,10 @@ from app.middlewares.clarification_middleware import (
     extract_latest_clarification_question,
 )
 from app.middlewares.guardrail_middleware import apply_guardrails
-from app.middlewares.trace_middleware import extract_agent_trace_from_messages
+from app.middlewares.trace_middleware import (
+    extract_agent_trace_from_messages,
+    extract_trace_events_from_messages,
+)
 
 from app.runtime.stream import StreamBridge
 from app.store.models import RunRecord
@@ -221,6 +224,7 @@ async def run_agent(
         }
 
         final_messages: list[dict[str, Any]] = []
+        emitted_trace_keys: set[str] = set()
 
         async for chunk in agent.astream(
             {"messages": messages},
@@ -237,6 +241,18 @@ async def run_agent(
                     "messages": final_messages,
                 },
             )
+
+            trace_events = extract_trace_events_from_messages(
+                messages=final_messages,
+                emitted_keys=emitted_trace_keys,
+            )
+
+            for trace_event in trace_events:
+                await bridge.publish(
+                    run_id,
+                    "agent_step",
+                    trace_event,
+                )
 
             # V0.9：澄清中断逻辑交给 middleware
             clarification_question = extract_latest_clarification_question(
@@ -278,10 +294,33 @@ async def run_agent(
 
         final_text = extract_final_ai_text(final_messages)
 
+        await bridge.publish(
+            run_id,
+            "agent_step",
+            {
+                "type": "guardrail",
+                "status": "started",
+                "agent": "guardrail_middleware",
+                "summary": "正在进行术语一致性校验与答案安全检查。",
+            },
+        )
         # V0.9：V0.8 术语校验与答案重写逻辑抽成 middleware
         guardrail_result = await apply_guardrails(
             final_text=final_text,
             messages=final_messages,
+        )
+        
+        await bridge.publish(
+            run_id,
+            "agent_step",
+            {
+                "type": "guardrail",
+                "status": "completed",
+                "agent": "guardrail_middleware",
+                "summary": "术语一致性校验完成。",
+                "validation": guardrail_result.get("validation"),
+                "rewritten": guardrail_result.get("rewritten"),
+            },
         )
 
         final_text = guardrail_result["final_text"]
