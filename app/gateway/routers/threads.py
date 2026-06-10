@@ -52,4 +52,5 @@ async def get_thread_history(thread_id: str):
         "last_allowed_terms": values.get("last_allowed_terms"),
         "last_rewritten": values.get("last_rewritten"),
         "last_agent_trace": values.get("last_agent_trace", []),
+        "last_resume": values.get("last_resume"),
     }
