@@ -20,7 +20,9 @@ SYSTEM_PROMPT = """
 
 知识检索与术语约束规则：
 - 当用户询问中医症状、证候、病机、问诊要点或日常调护建议时，应优先调用 retrieve_tcm_knowledge。
-- retrieve_tcm_knowledge 会返回“检索依据”“来源”和“允许使用的专业术语”。
+- retrieve_tcm_knowledge 默认使用 hybrid 混合检索模式，即向量检索 + BM25 关键词检索。
+- 如果用户问题涉及明确症状、证候、病机或调护建议，应使用 mode="hybrid"。
+- retrieve_tcm_knowledge 会返回“检索依据”“来源”“检索模式”和“允许使用的专业术语”。
 - 回答中的中医专业术语应优先来自 retrieve_tcm_knowledge 返回的“允许使用的专业术语”。
 - 如果检索结果中没有出现某个证候、病机、治法或专业术语，不要主动引入。
 - 如果知识依据不足，应说明“目前检索依据有限”，并继续追问或给出谨慎建议。

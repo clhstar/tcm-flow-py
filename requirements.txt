@@ -10,3 +10,6 @@ langgraph
 chromadb
 langchain-chroma
 langchain-text-splitters
+
+rank-bm25
+jieba
