@@ -5,6 +5,9 @@ from app.agents.lead_agent import make_lead_agent
 from app.store import RunManager, ThreadStore, RunRecord
 from app.stream import StreamBridge
 
+from app.guardrails.answer_validator import validate_answer
+from app.guardrails.answer_rewriter import rewrite_answer
+
 
 def extract_text_from_content(content: Any) -> str:
     """
@@ -15,9 +18,7 @@ def extract_text_from_content(content: Any) -> str:
     """
     if isinstance(content, list):
         return "".join(
-            block.get("text", "")
-            for block in content
-            if isinstance(block, dict)
+            block.get("text", "") for block in content if isinstance(block, dict)
         )
 
     return str(content or "")
@@ -154,6 +155,65 @@ def extract_latest_clarification_question(messages: list[dict]) -> str:
 
     return ""
 
+
+def extract_allowed_terms_from_messages(messages: list[dict]) -> list[str]:
+    """
+    从最近一次 retrieve_tcm_knowledge 的 tool message 中解析 allowed_terms。
+
+    当前 retrieve_tcm_knowledge 返回的是文本格式：
+    允许使用的专业术语：
+    - 胃胀
+    - 嗳气
+    ...
+    回答约束：
+    ...
+    """
+    for msg in reversed(messages):
+        if msg.get("type") == "tool" and msg.get("name") == "retrieve_tcm_knowledge":
+            content = msg.get("content", "")
+            if not isinstance(content, str):
+                continue
+
+            lines = content.splitlines()
+            collecting = False
+            terms = []
+
+            for line in lines:
+                text = line.strip()
+
+                if text.startswith("允许使用的专业术语"):
+                    collecting = True
+                    continue
+
+                if collecting and text.startswith("回答约束"):
+                    break
+
+                if collecting and text.startswith("-"):
+                    term = text.replace("-", "", 1).strip()
+                    if term:
+                        terms.append(term)
+
+            # 找最近一次有 allowed_terms 的检索结果
+            if terms:
+                return list(dict.fromkeys(terms))
+
+    return []
+
+
+def extract_latest_retrieval_evidence(messages: list[dict]) -> str:
+    """
+    提取最近一次 retrieve_tcm_knowledge 的完整工具返回内容。
+    用于答案重写时提供证据。
+    """
+    for msg in reversed(messages):
+        if msg.get("type") == "tool" and msg.get("name") == "retrieve_tcm_knowledge":
+            content = msg.get("content", "")
+            if isinstance(content, str):
+                return content
+
+    return ""
+
+
 def append_visible_messages(
     thread_values: dict[str, Any],
     user_text: str,
@@ -250,8 +310,10 @@ async def run_agent(
                 },
             )
 
-            clarification_question = extract_latest_clarification_question(final_messages)
-            
+            clarification_question = extract_latest_clarification_question(
+                final_messages
+            )
+
             if clarification_question:
                 conversation = append_visible_messages(
                     thread_values=thread_values,
@@ -284,8 +346,37 @@ async def run_agent(
                 await run_manager.set_status(run_id, "interrupted")
                 await thread_store.update_status(thread_id, "waiting")
                 return
-
         final_text = extract_final_ai_text(final_messages)
+
+        allowed_terms = extract_allowed_terms_from_messages(final_messages)
+        evidence_text = extract_latest_retrieval_evidence(final_messages)
+
+        validation_before = validate_answer(
+            answer=final_text,
+            allowed_terms=allowed_terms,
+        )
+
+        rewritten = False
+        validation_after = validation_before
+
+        if final_text and allowed_terms and not validation_before.get("passed"):
+            unsupported_terms = validation_before.get("unsupported_terms", [])
+
+            rewritten_text = await rewrite_answer(
+                answer=final_text,
+                allowed_terms=allowed_terms,
+                unsupported_terms=unsupported_terms,
+                evidence_text=evidence_text,
+            )
+
+            if rewritten_text:
+                rewritten = True
+                final_text = rewritten_text
+
+                validation_after = validate_answer(
+                    answer=final_text,
+                    allowed_terms=allowed_terms,
+                )
 
         conversation = append_visible_messages(
             thread_values=thread_values,
@@ -299,6 +390,9 @@ async def run_agent(
                 "messages": final_messages,
                 "conversation": conversation,
                 "pending_clarification": None,
+                "last_validation": validation_after,
+                "last_allowed_terms": allowed_terms,
+                "last_rewritten": rewritten,
             },
         )
 
@@ -309,6 +403,9 @@ async def run_agent(
                 "content": final_text,
                 "messages": final_messages,
                 "conversation": conversation,
+                "validation": validation_after,
+                "validation_before_rewrite": validation_before,
+                "rewritten": rewritten,
             },
         )
 
