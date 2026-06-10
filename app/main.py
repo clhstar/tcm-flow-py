@@ -3,6 +3,7 @@ from fastapi.responses import StreamingResponse
 
 from app.schemas import RunCreateRequest
 from app.services import state, start_run
+from app.rag.retrieval_log import read_recent_logs
 
 app = FastAPI(title="Mini DeerFlow")
 
@@ -80,4 +81,10 @@ async def get_thread_history(thread_id: str):
         "conversation": thread.values.get("conversation", []),
         "pending_clarification": thread.values.get("pending_clarification"),
         "messages": thread.values.get("messages", []),
+    }
+
+@app.get("/api/rag/logs")
+async def get_rag_logs(limit: int = 20):
+    return {
+        "items": read_recent_logs(limit=limit)
     }

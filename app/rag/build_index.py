@@ -1,5 +1,7 @@
+import shutil
+
 from app.rag.documents import load_markdown_documents, split_documents
-from app.rag.vector_store import get_vector_store
+from app.rag.vector_store import get_vector_store, INDEX_DIR
 
 
 def build_index():
@@ -11,13 +13,10 @@ def build_index():
 
     chunks = split_documents(documents)
 
-    vector_store = get_vector_store()
+    if INDEX_DIR.exists():
+        shutil.rmtree(INDEX_DIR)
 
-    # 避免重复插入，先重置 collection
-    try:
-        vector_store.reset_collection()
-    except Exception as exc:
-        print(f"Reset collection failed, continue anyway: {exc}")
+    vector_store = get_vector_store()
 
     ids = [
         f"{doc.metadata.get('filename', 'doc')}-{doc.metadata.get('chunk_id', i)}"
@@ -27,7 +26,18 @@ def build_index():
     vector_store.add_documents(chunks, ids=ids)
 
     print(f"Indexed {len(chunks)} chunks.")
-    print("Index path: data/index/chroma")
+    print("Index path:", INDEX_DIR)
+
+    print("\nChunk preview:")
+    for doc in chunks[:5]:
+        print(
+            {
+                "topic": doc.metadata.get("topic"),
+                "section": doc.metadata.get("section"),
+                "chunk_id": doc.metadata.get("chunk_id"),
+                "content": doc.page_content[:80],
+            }
+        )
 
 
 if __name__ == "__main__":
