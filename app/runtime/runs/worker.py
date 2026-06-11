@@ -15,14 +15,7 @@ from app.store.run_manager import RunManager
 from app.store.thread_store import ThreadStore
 
 from app.middlewares.clarification_controller import (
-    build_clarification_from_final,
-    build_clarification_payload,
     extract_latest_clarification_question,
-)
-from app.runtime.resume import (
-    build_resume_input_data,
-    build_resume_record,
-    has_pending_clarification,
 )
 
 
@@ -115,6 +108,14 @@ def message_to_dict(message: Any) -> dict[str, Any]:
         "type": msg_type,
         "content": content,
     }
+
+    message_id = getattr(message, "id", None)
+    if message_id:
+        data["id"] = message_id
+
+    tool_call_id = getattr(message, "tool_call_id", None)
+    if tool_call_id:
+        data["tool_call_id"] = tool_call_id
 
     tool_calls = getattr(message, "tool_calls", None)
     if tool_calls:
@@ -222,40 +223,11 @@ async def run_agent(
 
         user_text = extract_user_text(input_data)
 
-        is_resume = bool(context.get("is_resume")) and has_pending_clarification(
-            thread_values
-        )
-
-        agent_input_data = input_data
-        resume_record = None
-
-        if is_resume:
-            resume_record = build_resume_record(
-                thread_values=thread_values,
-                user_text=user_text,
-            )
-
-            agent_input_data = build_resume_input_data(
-                thread_values=thread_values,
-                input_data=input_data,
-            )
-
-            await bridge.publish(
-                run_id,
-                "agent_step",
-                {
-                    "type": "resume",
-                    "status": "started",
-                    "agent": "runtime",
-                    "summary": "检测到 pending_clarification，本轮输入将作为澄清补充继续执行。",
-                    "pending_clarification": thread_values.get("pending_clarification"),
-                },
-            )
-        # V0.9 核心：通过 agent_factory 创建 agent，而不是在 worker 里写死 make_lead_agent
+        # 通过 agent_factory 创建 agent
         agent = agent_factory(context)
 
         # 每次请求只传本轮用户消息，历史上下文交给 LangGraph checkpointer 管理
-        messages = normalize_messages(agent_input_data)
+        messages = normalize_messages(input_data)
 
         config = {
             "configurable": {
@@ -303,16 +275,10 @@ async def run_agent(
             )
 
             if clarification_question:
-                clarification_payload = build_clarification_payload(
-                    question=clarification_question,
-                    run_id=run_id,
-                    source="ask_clarification",
-                )
-
                 conversation = append_visible_messages(
                     thread_values=thread_values,
                     user_text=user_text,
-                    assistant_text=clarification_payload["question"],
+                    assistant_text=clarification_question,
                 )
 
                 await thread_store.update_values(
@@ -320,20 +286,6 @@ async def run_agent(
                     {
                         "messages": final_messages,
                         "conversation": conversation,
-                        "pending_clarification": clarification_payload,
-                        "last_resume": resume_record,
-                    },
-                )
-
-                await bridge.publish(
-                    run_id,
-                    "agent_step",
-                    {
-                        "type": "clarification",
-                        "status": "started",
-                        "agent": "lead_agent",
-                        "summary": "信息不足，进入澄清中断状态。",
-                        "clarification": clarification_payload,
                     },
                 )
 
@@ -341,7 +293,7 @@ async def run_agent(
                     run_id,
                     "clarification",
                     {
-                        **clarification_payload,
+                        "question": clarification_question,
                         "thread_id": thread_id,
                         "run_id": run_id,
                     },
@@ -352,54 +304,6 @@ async def run_agent(
                 return
 
         final_text = extract_final_ai_text(final_messages)
-
-        fallback_clarification = build_clarification_from_final(
-            final_text=final_text,
-            run_id=run_id,
-        )
-
-        if fallback_clarification:
-            conversation = append_visible_messages(
-                thread_values=thread_values,
-                user_text=user_text,
-                assistant_text=fallback_clarification["question"],
-            )
-
-            await thread_store.update_values(
-                thread_id,
-                {
-                    "messages": final_messages,
-                    "conversation": conversation,
-                    "pending_clarification": fallback_clarification,
-                    "last_resume": resume_record,
-                },
-            )
-
-            await bridge.publish(
-                run_id,
-                "agent_step",
-                {
-                    "type": "clarification",
-                    "status": "started",
-                    "agent": "clarification_controller",
-                    "summary": "检测到 final answer 中包含正式追问，已转换为 clarification 中断。",
-                    "clarification": fallback_clarification,
-                },
-            )
-
-            await bridge.publish(
-                run_id,
-                "clarification",
-                {
-                    **fallback_clarification,
-                    "thread_id": thread_id,
-                    "run_id": run_id,
-                },
-            )
-
-            await run_manager.set_status(run_id, "waiting_clarification")
-            await thread_store.update_status(thread_id, "waiting")
-            return
 
         await bridge.publish(
             run_id,
@@ -451,12 +355,10 @@ async def run_agent(
             {
                 "messages": final_messages,
                 "conversation": conversation,
-                "pending_clarification": None,
                 "last_validation": validation,
                 "last_allowed_terms": allowed_terms,
                 "last_rewritten": rewritten,
                 "last_agent_trace": agent_trace,
-                "last_resume": resume_record,
             },
         )
 

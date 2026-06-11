@@ -8,6 +8,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 
 from app.agents.lead_agent.prompt import SYSTEM_PROMPT
 from app.tools.tools import get_available_tools
+from app.middlewares.clarification_middleware import ClarificationMiddleware
 
 load_dotenv()
 
@@ -44,6 +45,7 @@ def make_lead_agent(context: dict[str, Any] | None = None):
         tools=tools,
         system_prompt=SYSTEM_PROMPT,
         checkpointer=_checkpointer,
+        middleware=[ClarificationMiddleware()],
     )
 
     return agent

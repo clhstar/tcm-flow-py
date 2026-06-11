@@ -2,11 +2,11 @@ from langchain.tools import tool
 
 
 @tool("ask_clarification", return_direct=True)
-def ask_clarification(question: str) -> str:
+def ask_clarification(questions: list[str]) -> str:
     """
-    当用户信息不足、症状描述不清楚、需要补充病史或需要确认风险时调用。
+    信息不足时向用户提出澄清问题。
 
-    输入 question 应该是一个明确的问题，用于向用户补充询问。
-    调用该工具后，本轮对话应该暂停，等待用户回答。
+    questions 必须包含 1 到 3 个清晰、独立的问题。
+    不要重复询问用户已经回答过的信息。
     """
-    return question
+    return questions
