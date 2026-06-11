@@ -2,6 +2,8 @@ import traceback
 from collections.abc import Callable
 from typing import Any
 
+from langchain_core.messages import AIMessage
+
 
 from app.middlewares.guardrail_middleware import apply_guardrails
 from app.middlewares.trace_middleware import (
@@ -178,6 +180,53 @@ def append_visible_messages(
     return conversation
 
 
+async def replace_final_ai_message_in_checkpoint(
+    agent: Any,
+    config: dict[str, Any],
+    final_messages: list[dict[str, Any]],
+    final_text: str,
+) -> list[dict[str, Any]]:
+    """
+    使用相同 message id 覆盖最终 AIMessage，避免未通过 Guardrail 的原文
+    留在 LangGraph checkpointer 中并污染下一轮对话。
+    """
+    target = next(
+        (
+            message
+            for message in reversed(final_messages)
+            if message.get("type") == "ai"
+            and message.get("content")
+            and not message.get("tool_calls")
+        ),
+        None,
+    )
+
+    if not target or target.get("content") == final_text:
+        return final_messages
+
+    message_id = target.get("id")
+    if not message_id:
+        raise RuntimeError("无法写回 Guardrail 答案：最终 AIMessage 缺少 id")
+
+    await agent.aupdate_state(
+        config,
+        {
+            "messages": [
+                AIMessage(
+                    id=message_id,
+                    content=final_text,
+                )
+            ]
+        },
+    )
+
+    snapshot = await agent.aget_state(config)
+    return [
+        message_to_dict(message)
+        for message in snapshot.values.get("messages", [])
+    ]
+
+
 async def run_agent(
     bridge: StreamBridge,
     run_manager: RunManager,
@@ -238,6 +287,7 @@ async def run_agent(
 
         final_messages: list[dict[str, Any]] = []
         emitted_trace_keys: set[str] = set()
+        clarification_to_emit = ""
 
         async for chunk in agent.astream(
             {"messages": messages},
@@ -275,35 +325,39 @@ async def run_agent(
             )
 
             if clarification_question:
-                conversation = append_visible_messages(
-                    thread_values=thread_values,
-                    user_text=user_text,
-                    assistant_text=clarification_question,
-                )
+                clarification_to_emit = clarification_question
 
-                await thread_store.update_values(
-                    thread_id,
-                    {
-                        "messages": final_messages,
-                        "conversation": conversation,
-                    },
-                )
+        if clarification_to_emit:
+            conversation = append_visible_messages(
+                thread_values=thread_values,
+                user_text=user_text,
+                assistant_text=clarification_to_emit,
+            )
 
-                await bridge.publish(
-                    run_id,
-                    "clarification",
-                    {
-                        "question": clarification_question,
-                        "thread_id": thread_id,
-                        "run_id": run_id,
-                    },
-                )
+            await thread_store.update_values(
+                thread_id,
+                {
+                    "messages": final_messages,
+                    "conversation": conversation,
+                },
+            )
 
-                await run_manager.set_status(run_id, "waiting_clarification")
-                await thread_store.update_status(thread_id, "waiting")
-                return
+            await bridge.publish(
+                run_id,
+                "clarification",
+                {
+                    "question": clarification_to_emit,
+                    "thread_id": thread_id,
+                    "run_id": run_id,
+                },
+            )
+
+            await run_manager.set_status(run_id, "waiting_clarification")
+            await thread_store.update_status(thread_id, "waiting")
+            return
 
         final_text = extract_final_ai_text(final_messages)
+        original_final_text = final_text
 
         await bridge.publish(
             run_id,
@@ -339,6 +393,14 @@ async def run_agent(
         validation_before_rewrite = guardrail_result["validation_before_rewrite"]
         rewritten = guardrail_result["rewritten"]
         allowed_terms = guardrail_result["allowed_terms"]
+
+        if final_text != original_final_text:
+            final_messages = await replace_final_ai_message_in_checkpoint(
+                agent=agent,
+                config=config,
+                final_messages=final_messages,
+                final_text=final_text,
+            )
 
         agent_trace = extract_agent_trace_from_messages(
             final_messages[message_start_index:]

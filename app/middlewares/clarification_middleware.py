@@ -2,11 +2,17 @@ import json
 from collections.abc import Callable
 
 from langchain.agents import AgentState
-from langchain.agents.middleware import AgentMiddleware
+from langchain.agents.middleware import AgentMiddleware, hook_config
 from langchain_core.messages import ToolMessage
 from langgraph.graph import END
 from langgraph.prebuilt.tool_node import ToolCallRequest
 from langgraph.types import Command
+
+from app.middlewares.clarification_controller import (
+    extract_latest_clarification_question,
+    format_clarification_questions,
+    normalize_question_items,
+)
 
 
 class ClarificationState(AgentState):
@@ -27,25 +33,22 @@ class ClarificationMiddleware(AgentMiddleware[ClarificationState]):
         if not isinstance(value, list):
             raise ValueError("澄清问题必须是数组")
 
-        questions = [
-            str(question).strip() for question in value if str(question).strip()
+        non_empty_values = [
+            question for question in value if str(question).strip()
         ]
+
+        if len(non_empty_values) > 3:
+            raise ValueError("澄清问题不能多于3个")
+
+        questions = normalize_question_items(value, max_questions=3)
 
         if not questions:
             raise ValueError("澄清问题不能为空")
 
-        if len(questions) > 3:
-            raise ValueError("澄清问题不能多于3个")
-
         return questions
 
     def format_questions(self, questions: list[str]) -> str:
-        lines = ["为了更准确地帮您分析，请先补充以下关键信息："]
-
-        for index, question in enumerate(questions, start=1):
-            lines.append(f"{index}. {question}")
-
-        return "\n".join(lines)
+        return format_clarification_questions(questions)
 
     def handle(self, request: ToolCallRequest) -> Command:
         tool_call = request.tool_call
@@ -66,6 +69,30 @@ class ClarificationMiddleware(AgentMiddleware[ClarificationState]):
             update={"messages": [message]},
             goto=END,
         )
+
+    @hook_config(can_jump_to=["end"])
+    def before_model(self, state: ClarificationState, runtime):
+        messages = state.get("messages", [])
+
+        if not messages:
+            return None
+
+        latest = messages[-1]
+        if not isinstance(latest, ToolMessage) or latest.name != "task":
+            return None
+
+        question = extract_latest_clarification_question(
+            [
+                {
+                    "type": "tool",
+                    "name": latest.name,
+                    "content": latest.content,
+                }
+            ]
+        )
+
+        if question:
+            return {"jump_to": "end"}
 
     def wrap_tool_call(
         self,

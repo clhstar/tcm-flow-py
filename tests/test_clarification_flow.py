@@ -2,6 +2,7 @@ import unittest
 from collections.abc import Callable, Sequence
 from types import SimpleNamespace
 from typing import Any
+from unittest.mock import AsyncMock, patch
 
 from langchain.agents import create_agent
 from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
@@ -10,6 +11,8 @@ from langchain_core.tools import BaseTool
 from langgraph.checkpoint.memory import InMemorySaver
 
 from app.middlewares.clarification_middleware import ClarificationMiddleware
+from app.middlewares.clarification_controller import normalize_question_items
+from app.agents.lead_agent.prompt import SYSTEM_PROMPT
 from app.runtime.runs.worker import message_to_dict, run_agent
 from app.runtime.stream import StreamBridge
 from app.store.run_manager import RunManager
@@ -32,36 +35,61 @@ class ClarificationMiddlewareTests(unittest.TestCase):
     def setUp(self):
         self.middleware = ClarificationMiddleware()
 
-    def make_request(self, question: str):
+    def make_request(self, questions: Any):
         return SimpleNamespace(
             tool_call={
                 "id": "call-1",
                 "name": "ask_clarification",
-                "args": {"question": question},
+                "args": {"questions": questions},
             }
         )
 
-    def test_rejects_empty_question(self):
-        with self.assertRaisesRegex(ValueError, "question cannot be empty"):
-            self.middleware.handle(self.make_request("   "))
+    def test_rejects_empty_questions(self):
+        with self.assertRaisesRegex(ValueError, "澄清问题不能为空"):
+            self.middleware.handle(self.make_request([]))
 
-    def test_limits_clarification_to_three_questions(self):
+    def test_rejects_more_than_three_questions(self):
+        with self.assertRaisesRegex(ValueError, "澄清问题不能多于3个"):
+            self.middleware.handle(
+                self.make_request(
+                    [
+                        "这种情况持续多久了？",
+                        "是否伴有腿麻？",
+                        "是否有大小便异常？",
+                        "近期是否受过外伤？",
+                    ]
+                )
+            )
+
+    def test_formats_question_bodies_with_display_numbering(self):
         command = self.middleware.handle(
             self.make_request(
-                "这种情况持续多久了？"
-                "大便情况怎么样？"
-                "是否伴有反酸或烧心？"
-                "是否有明显腹痛？"
+                [
+                    "这种情况持续多久了？",
+                    "是否伴有腿麻？",
+                    "是否有大小便异常？",
+                ]
             )
         )
 
         message = command.update["messages"][0]
 
         self.assertIn("1. 这种情况持续多久了？", message.content)
-        self.assertIn("2. 大便情况如何？", message.content)
-        self.assertIn("3. 是否伴有反酸或烧心？", message.content)
-        self.assertNotIn("4.", message.content)
-        self.assertNotIn("是否有明显腹痛？", message.content)
+        self.assertIn("2. 是否伴有腿麻？", message.content)
+        self.assertIn("3. 是否有大小便异常？", message.content)
+
+    def test_lead_agent_prompt_forbids_question_numbering(self):
+        self.assertIn(
+            "questions 数组中的每个元素只写问题正文",
+            SYSTEM_PROMPT,
+        )
+        self.assertIn("不要添加序号", SYSTEM_PROMPT)
+
+    def test_program_does_not_strip_numbering_from_question_body(self):
+        self.assertEqual(
+            normalize_question_items(["1. 这种情况持续多久了？"]),
+            ["1. 这种情况持续多久了？"],
+        )
 
     def test_message_serialization_preserves_tool_linkage(self):
         message = ToolMessage(
@@ -94,7 +122,7 @@ class ClarificationRunTests(unittest.IsolatedAsyncioTestCase):
                         {
                             "id": "call-1",
                             "name": "ask_clarification",
-                            "args": {"question": "这种情况持续多久了？"},
+                            "args": {"questions": ["这种情况持续多久了？"]},
                         }
                     ],
                 ),
@@ -164,6 +192,66 @@ class ClarificationRunTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(messages[2]["id"], "clarification:call-1")
         self.assertEqual(messages[2]["tool_call_id"], "call-1")
+
+    async def test_guardrail_rewrite_replaces_checkpoint_history(self):
+        model = ToolCallingFakeModel(
+            responses=[AIMessage(content="原始且不应保留的病机答案")]
+        )
+        agent = create_agent(
+            model=model,
+            tools=[],
+            checkpointer=InMemorySaver(),
+        )
+        bridge = StreamBridge()
+        run_manager = RunManager()
+        thread_store = ThreadStore()
+        thread = await thread_store.create()
+        run = await run_manager.create(thread.thread_id, "lead_agent")
+        bridge.create(run.run_id)
+
+        guardrail_result = {
+            "final_text": "经过 Guardrail 的安全答案",
+            "validation": {"passed": True},
+            "validation_before_rewrite": {"passed": False},
+            "rewritten": True,
+            "allowed_terms": [],
+        }
+
+        with patch(
+            "app.runtime.runs.worker.apply_guardrails",
+            new=AsyncMock(return_value=guardrail_result),
+        ):
+            await run_agent(
+                bridge=bridge,
+                run_manager=run_manager,
+                thread_store=thread_store,
+                record=run,
+                agent_factory=lambda context: agent,
+                input_data={
+                    "messages": [{"type": "human", "content": "请帮我分析"}]
+                },
+                context={},
+            )
+
+        snapshot = await agent.aget_state(
+            {"configurable": {"thread_id": thread.thread_id}}
+        )
+        checkpoint_messages = snapshot.values["messages"]
+        stored_thread = await thread_store.get(thread.thread_id)
+        stored_messages = stored_thread.values["messages"]
+
+        self.assertEqual(
+            checkpoint_messages[-1].content,
+            "经过 Guardrail 的安全答案",
+        )
+        self.assertEqual(
+            stored_messages[-1]["content"],
+            "经过 Guardrail 的安全答案",
+        )
+        self.assertNotIn(
+            "原始且不应保留的病机答案",
+            [message.content for message in checkpoint_messages],
+        )
 
 
 if __name__ == "__main__":

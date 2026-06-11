@@ -33,6 +33,9 @@ class SubAgentExecutor:
             "expected_output": result.expected_output,
             "content": result.content,
             "metadata": result.metadata,
+            "status": result.status,
+            "needs_clarification": result.status == "needs_clarification",
+            "clarification_questions": result.clarification_questions or [],
         }
 
         return json.dumps(

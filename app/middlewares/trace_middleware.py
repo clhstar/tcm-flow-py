@@ -24,8 +24,12 @@ def build_tool_call_summary(tool_name: str, args: dict[str, Any]) -> str:
         return f"正在委派动态子任务：{description[:120]}"
 
     if tool_name == "ask_clarification":
-        question = args.get("question", "")
-        return f"正在生成澄清追问：{question}"
+        questions = args.get("questions", [])
+        if isinstance(questions, list):
+            summary = "；".join(str(question) for question in questions)
+        else:
+            summary = str(questions)
+        return f"正在生成澄清追问：{summary}"
 
     if tool_name == "present_files":
         return "正在展示生成文件。"
@@ -173,6 +177,14 @@ def extract_trace_events_from_messages(
                             "tool": "task",
                             "task_description": payload.get("task_description", ""),
                             "expected_output": payload.get("expected_output", ""),
+                            "needs_clarification": payload.get(
+                                "needs_clarification",
+                                False,
+                            ),
+                            "clarification_questions": payload.get(
+                                "clarification_questions",
+                                [],
+                            ),
                             "summary": str(payload.get("content", ""))[:300],
                         }
                     )
@@ -263,6 +275,14 @@ def extract_agent_trace_from_messages(
                     "tool": "task",
                     "task_description": payload.get("task_description", ""),
                     "expected_output": payload.get("expected_output", ""),
+                    "needs_clarification": payload.get(
+                        "needs_clarification",
+                        False,
+                    ),
+                    "clarification_questions": payload.get(
+                        "clarification_questions",
+                        [],
+                    ),
                     "summary": str(payload.get("content", ""))[:300],
                 }
             )
