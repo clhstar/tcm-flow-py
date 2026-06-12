@@ -12,7 +12,7 @@ from experiments.rag_v1_5.schema import (
 
 
 STRUCTURE_PATTERN = re.compile(
-    r"(?m)^<(?P<kind>目录|篇名)>(?P<value>[^\r\n]*)[ \t]*$"
+    r"(?m)^<(?P<kind>目录|篇名)>(?P<value>[^\r\n]*)[ \t]*\r?$"
 )
 CLAUSE_PATTERN = re.compile(
     r"(?m)^(?:属性：)?[ \t]*(?P<number>\d{1,4})[．.]"
