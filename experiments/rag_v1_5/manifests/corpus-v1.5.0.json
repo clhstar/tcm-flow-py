@@ -1,0 +1,36 @@
+{
+  "corpus_version": "v1.5.0",
+  "files": [
+    {
+      "book_id": "shang_han_lun",
+      "book_title": "伤寒论",
+      "output_bytes": 104416,
+      "output_encoding": "utf-8",
+      "output_file": "457-伤寒论.txt",
+      "output_sha256": "C55FA83EC97F822F9A576A50AB120837905EE7BF296C952F99AA298C5052F6AA",
+      "source_bytes": 70931,
+      "source_encoding": "cp936",
+      "source_file": "457-伤寒论.txt",
+      "source_sha256": "EF2FDFA298F1367B9E7501E7C868C6BCDFE8A3ACD7C4991C9262857C606BF462"
+    },
+    {
+      "book_id": "jin_gui_yao_lue",
+      "book_title": "金匮要略方论",
+      "output_bytes": 122181,
+      "output_encoding": "utf-8",
+      "output_file": "499-金匮要略方论.txt",
+      "output_sha256": "149A545DE6631341FD426FFDF1B3BD541847E9E6A5B2784A6565A5F17F5BA733",
+      "source_bytes": 83502,
+      "source_encoding": "cp936",
+      "source_file": "499-金匮要略方论.txt",
+      "source_sha256": "617250F7522DA17132A97D7FE6AFD9B128F442E3980163DFAE836C1C98663F7C"
+    }
+  ],
+  "generated_at": "2026-06-12T08:42:18.826948Z",
+  "source": {
+    "commit": "db0155dc7c42b9c6b3736896661f317c7110038f",
+    "commit_verification": "declared_not_locally_verified",
+    "license_status": "not_declared_in_local_snapshot",
+    "url": "https://github.com/xiaopangxia/TCM-Ancient-Books"
+  }
+}
