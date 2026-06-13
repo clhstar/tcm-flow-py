@@ -303,5 +303,133 @@ class StructuredChunkingTests(unittest.TestCase):
             )
 
 
+class ParentChildChunkingTests(unittest.TestCase):
+    def setUp(self):
+        self.units = load_evidence(FIXTURES_DIR / "evidence_sample.jsonl")
+        self.config = load_chunk_config(CONFIG_PATH)
+
+    def test_c4_retrieves_child_and_recovers_complete_clause(self):
+        chunks = build_chunks(self.units, "c4", self.config)
+        chunk = next(
+            chunk
+            for chunk in chunks
+            if chunk.source_evidence_ids
+            == ["jgy-chapter-25-040-formula-01-ingredients"]
+        )
+
+        self.assertEqual(
+            chunk.retrieval_parent_id,
+            "jgy-chapter-25-040",
+        )
+        self.assertIn("苦参（三两）", chunk.text)
+        self.assertIn("饮食中毒，烦满", chunk.context_text)
+        self.assertIn("犀角汤亦佳", chunk.context_text)
+
+    def test_c4_maps_clause_to_itself_and_children_to_clause(self):
+        chunks = build_chunks(self.units, "c4", self.config)
+        by_evidence_id = {
+            chunk.source_evidence_ids[0]: chunk for chunk in chunks
+        }
+
+        self.assertEqual(
+            by_evidence_id["jgy-chapter-25-040"].retrieval_parent_id,
+            "jgy-chapter-25-040",
+        )
+        child_ids = [
+            "jgy-chapter-25-040-formula-01",
+            "jgy-chapter-25-040-formula-01-ingredients",
+            "jgy-chapter-25-040-formula-01-preparation",
+            "jgy-chapter-25-040-formula-02",
+            "jgy-chapter-25-040-note-01",
+        ]
+        self.assertEqual(
+            {
+                by_evidence_id[child_id].retrieval_parent_id
+                for child_id in child_ids
+            },
+            {"jgy-chapter-25-040"},
+        )
+
+    def test_c4_splits_only_long_child_and_keeps_full_parent_context(self):
+        parent = next(
+            unit
+            for unit in self.units
+            if unit.evidence_id == "jgy-chapter-25-040"
+        )
+        child = next(
+            unit
+            for unit in self.units
+            if unit.evidence_id
+            == "jgy-chapter-25-040-formula-01-ingredients"
+        ).model_copy(
+            update={
+                "normalized_text": "苦参" * 300,
+                "original_text": "苦参" * 300,
+            }
+        )
+
+        chunks = build_chunks([parent, child], "c4", self.config)
+        child_chunks = [
+            chunk
+            for chunk in chunks
+            if chunk.source_evidence_ids == [child.evidence_id]
+        ]
+
+        self.assertGreater(len(child_chunks), 1)
+        self.assertTrue(
+            all(chunk.char_count <= 300 for chunk in child_chunks)
+        )
+        self.assertTrue(
+            all(
+                chunk.context_text == parent.normalized_text
+                for chunk in child_chunks
+            )
+        )
+
+    def test_c4_rejects_child_without_clause_id(self):
+        child = next(
+            unit
+            for unit in self.units
+            if unit.content_type == "ingredients"
+        )
+        invalid_child = child.model_construct(
+            **{**child.model_dump(), "clause_id": None}
+        )
+
+        with self.assertRaisesRegex(ValueError, "clause_id"):
+            build_chunks([invalid_child], "c4", self.config)
+
+    def test_c4_rejects_missing_clause_parent(self):
+        child = next(
+            unit
+            for unit in self.units
+            if unit.content_type == "ingredients"
+        ).model_copy(update={"clause_id": "missing-clause"})
+
+        with self.assertRaisesRegex(ValueError, "missing-clause"):
+            build_chunks([child], "c4", self.config)
+
+    def test_c4_rejects_non_clause_parent(self):
+        child = next(
+            unit
+            for unit in self.units
+            if unit.content_type == "ingredients"
+        )
+        invalid_parent = next(
+            unit
+            for unit in self.units
+            if unit.content_type == "formula"
+        ).model_copy(update={"evidence_id": child.clause_id})
+
+        with self.assertRaisesRegex(ValueError, "not a clause"):
+            build_chunks([invalid_parent, child], "c4", self.config)
+
+    def test_c4_rejects_duplicate_evidence_ids(self):
+        unit = self.units[0]
+
+        with self.assertRaisesRegex(ValueError, "Duplicate Evidence ID"):
+            build_chunks([unit, unit.model_copy()], "c4", self.config)
+
+
 if __name__ == "__main__":
     unittest.main()

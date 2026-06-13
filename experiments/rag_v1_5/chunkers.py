@@ -55,6 +55,8 @@ def build_chunks(
         return _build_clause_chunks(units, config)
     if strategy == "c3":
         return _build_structured_chunks(units, config)
+    if strategy == "c4":
+        return _build_parent_child_chunks(units, config)
     raise ValueError(f"Unsupported chunk strategy: {strategy}")
 
 
@@ -275,3 +277,76 @@ def _split_evidence_text(
         (f"{prefix}{body}", start_index)
         for body, start_index in body_parts
     ]
+
+
+def _build_parent_child_chunks(
+    units: list[EvidenceUnit],
+    config: ChunkConfig,
+) -> list[ChunkUnit]:
+    units_by_id = _index_evidence(units)
+    max_length = config["strategies"]["c4"]["max_length"]
+    separators = _with_character_fallback(
+        config["shared"]["separators"]
+    )
+    chunks: list[ChunkUnit] = []
+    for unit in units:
+        parent = _resolve_clause_parent(unit, units_by_id)
+        parts = _split_evidence_text(
+            unit,
+            max_length=max_length,
+            separators=separators,
+        )
+        for part_number, (text, start_index) in enumerate(parts, start=1):
+            chunks.append(
+                ChunkUnit(
+                    chunk_id=(
+                        f"c4-{unit.evidence_id}-{part_number:03d}"
+                    ),
+                    strategy="c4",
+                    book_id=unit.book_id,
+                    chapter_id=unit.chapter_id,
+                    clause_id=parent.evidence_id,
+                    retrieval_parent_id=parent.evidence_id,
+                    source_evidence_ids=[unit.evidence_id],
+                    text=text,
+                    context_text=parent.normalized_text,
+                    char_count=len(text),
+                    start_index=start_index,
+                    source_hash=unit.source_hash,
+                    corpus_version=unit.corpus_version,
+                )
+            )
+    return chunks
+
+
+def _index_evidence(
+    units: list[EvidenceUnit],
+) -> dict[str, EvidenceUnit]:
+    units_by_id: dict[str, EvidenceUnit] = {}
+    for unit in units:
+        if unit.evidence_id in units_by_id:
+            raise ValueError(f"Duplicate Evidence ID: {unit.evidence_id}")
+        units_by_id[unit.evidence_id] = unit
+    return units_by_id
+
+
+def _resolve_clause_parent(
+    unit: EvidenceUnit,
+    units_by_id: dict[str, EvidenceUnit],
+) -> EvidenceUnit:
+    if unit.content_type == "clause":
+        return unit
+    if not unit.clause_id:
+        raise ValueError(
+            f"Child EvidenceUnit is missing clause_id: {unit.evidence_id}"
+        )
+    parent = units_by_id.get(unit.clause_id)
+    if parent is None:
+        raise ValueError(
+            f"Clause parent does not exist: {unit.clause_id}"
+        )
+    if parent.content_type != "clause":
+        raise ValueError(
+            f"Evidence parent is not a clause: {unit.clause_id}"
+        )
+    return parent
