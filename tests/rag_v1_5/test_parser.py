@@ -159,6 +159,107 @@ class AncientBookParserTests(unittest.TestCase):
         self.assertIn("桂枝（去皮，三两）", ingredients.normalized_text)
         self.assertIn("上三味", preparation.normalized_text)
 
+    def test_parses_inline_treatment_formula_before_generic_alternative_marker(self):
+        text = """<篇名>金匮要略方论
+<目录>卷下
+<篇名>果实菜谷禁忌并治第二十五
+属性：40．饮食中毒，烦满，治之方∶
+苦参（三两） 苦酒（一升半）
+上二味，煮三沸，三上三下，之服，吐食出即瘥。
+或以水煮亦得。
+\\x又方∶\\x
+犀角汤亦佳。
+"""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            input_path = Path(temp_dir) / "499-sample.txt"
+            input_path.write_text(text, encoding="utf-8")
+
+            result = parse_corpus_file(
+                input_path=input_path,
+                book_id="jin_gui_yao_lue",
+                book_title="金匮要略方论",
+                source_hash="A" * 64,
+            )
+
+        formulas = [
+            unit for unit in result.evidence_units
+            if unit.content_type == "formula"
+        ]
+        ingredients = [
+            unit for unit in result.evidence_units
+            if unit.content_type == "ingredients"
+        ]
+        preparations = [
+            unit for unit in result.evidence_units
+            if unit.content_type == "preparation"
+        ]
+
+        self.assertEqual(
+            [unit.evidence_id for unit in formulas],
+            [
+                "jgy-chapter-01-040-formula-01",
+                "jgy-chapter-01-040-formula-02",
+            ],
+        )
+        self.assertEqual(
+            formulas[0].normalized_text.splitlines()[0],
+            "饮食中毒，烦满，治之方",
+        )
+        self.assertEqual(
+            formulas[1].normalized_text.splitlines()[0],
+            "犀角汤",
+        )
+        self.assertEqual(len(ingredients), 1)
+        self.assertEqual(
+            ingredients[0].normalized_text,
+            "苦参（三两） 苦酒（一升半）",
+        )
+        self.assertEqual(len(preparations), 1)
+        self.assertTrue(preparations[0].normalized_text.startswith("上二味"))
+        self.assertFalse(
+            any("犀角汤亦佳" in unit.normalized_text for unit in ingredients)
+        )
+
+    def test_treats_attached_formula_label_as_a_section_boundary(self):
+        text = """<篇名>金匮要略方论
+<目录>卷上
+<篇名>痉湿病脉证第二
+属性：1．测试条文。
+\\x甲汤方\\x
+甲药（一两）
+上一味，水煎服。
+\\x附方\\x
+\\x乙汤\\x
+乙药（二两）
+上一味，水煎服。
+"""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            input_path = Path(temp_dir) / "499-sample.txt"
+            input_path.write_text(text, encoding="utf-8")
+
+            result = parse_corpus_file(
+                input_path=input_path,
+                book_id="jin_gui_yao_lue",
+                book_title="金匮要略方论",
+                source_hash="A" * 64,
+            )
+
+        formulas = [
+            unit for unit in result.evidence_units
+            if unit.content_type == "formula"
+        ]
+        self.assertEqual(
+            [unit.normalized_text.splitlines()[0] for unit in formulas],
+            ["甲汤方", "乙汤"],
+        )
+        self.assertEqual(
+            [unit.evidence_id for unit in formulas],
+            [
+                "jgy-chapter-01-001-formula-01",
+                "jgy-chapter-01-001-formula-02",
+            ],
+        )
+
     def test_parses_prepared_manifest_into_combined_outputs(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

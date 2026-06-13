@@ -1,5 +1,6 @@
 import json
 import re
+from dataclasses import dataclass
 from pathlib import Path
 
 from experiments.rag_v1_5.corpus import CORPUS_VERSION
@@ -24,6 +25,10 @@ IMPLICIT_FORMULA_MARKER_PATTERN = re.compile(
 FORMULA_NAME_PATTERN = re.compile(
     r"[\u4e00-\u9fff]{2,16}(?:汤|丸|散|饮|煎|膏|丹|酒)$"
 )
+FORMULA_REFERENCE_PATTERN = re.compile(
+    r"^[ \t\r\n]*(?:《[^》]+》)?"
+    r"(?P<name>[\u4e00-\u9fff]{2,16}(?:汤|丸|散|饮|煎|膏|丹|酒))"
+)
 PREPARATION_PATTERN = re.compile(
     r"(?m)^[ \t]*(?:上|右)(?=[一二三四五六七八九十百〇零两\d \t，、味药])"
 )
@@ -47,6 +52,18 @@ BOOK_PREFIXES = {
     "shang_han_lun": "shl",
     "jin_gui_yao_lue": "jgy",
 }
+FORMULA_SECTION_LABELS = {"附方"}
+GENERIC_FORMULA_LABELS = {"又方", "治方"}
+
+
+@dataclass(frozen=True)
+class _FormulaMarker:
+    start: int
+    end: int
+    formula_name: str | None
+    original_start: int
+    creates_formula: bool = True
+    ingredients_without_preparation: bool = False
 
 
 def normalize_text(text: str) -> str:
@@ -126,6 +143,94 @@ def _make_unit(
     )
 
 
+def _clean_formula_label(text: str) -> str:
+    return text.strip().rstrip("∶：。．")
+
+
+def _formula_reference_name(formula_body: str) -> str | None:
+    match = FORMULA_REFERENCE_PATTERN.search(formula_body)
+    return match.group("name") if match else None
+
+
+def _sentence_fragment_start(text: str, end: int) -> int:
+    prefix = text[:end]
+    return max(
+        (prefix.rfind(separator) for separator in "。；;！？!?"),
+        default=-1,
+    ) + 1
+
+
+def _is_inside_marker(
+    position: int,
+    explicit_markers: list[re.Match[str]],
+) -> bool:
+    return any(
+        marker.start() <= position < marker.end()
+        for marker in explicit_markers
+    )
+
+
+def _collect_formula_markers(clause_text: str) -> list[_FormulaMarker]:
+    explicit_matches = list(FORMULA_PATTERN.finditer(clause_text))
+    markers: list[_FormulaMarker] = []
+
+    for match in explicit_matches:
+        raw_label = match.group("name").strip()
+        label = _clean_formula_label(raw_label)
+        if label in FORMULA_SECTION_LABELS:
+            markers.append(
+                _FormulaMarker(
+                    start=match.start(),
+                    end=match.end(),
+                    formula_name=None,
+                    original_start=match.start(),
+                    creates_formula=False,
+                )
+            )
+            continue
+
+        is_generic = label in GENERIC_FORMULA_LABELS
+        markers.append(
+            _FormulaMarker(
+                start=match.start(),
+                end=match.end(),
+                formula_name=None if is_generic else raw_label,
+                original_start=match.start(),
+                ingredients_without_preparation=not is_generic,
+            )
+        )
+
+    for match in IMPLICIT_FORMULA_MARKER_PATTERN.finditer(clause_text):
+        if _is_inside_marker(match.start(), explicit_matches):
+            continue
+
+        formula_name = _implicit_formula_name(clause_text[:match.start()])
+        original_start = match.start()
+        if not formula_name:
+            text_before_marker = clause_text[:match.start()].rstrip()
+            if not re.search(r"(?:治|解)之$", text_before_marker):
+                continue
+
+            original_start = _sentence_fragment_start(
+                clause_text,
+                match.start(),
+            )
+            formula_name = _clean_formula_label(
+                normalize_text(clause_text[original_start:match.end()])
+            )
+
+        markers.append(
+            _FormulaMarker(
+                start=match.start(),
+                end=match.end(),
+                formula_name=formula_name,
+                original_start=original_start,
+            )
+        )
+
+    return sorted(markers, key=lambda marker: (marker.start, marker.end))
+
+
 def _formula_units(
     *,
     clause_text: str,
@@ -139,18 +244,24 @@ def _formula_units(
     source_file: str,
     source_hash: str,
 ) -> list[EvidenceUnit]:
-    markers = list(FORMULA_PATTERN.finditer(clause_text))
+    markers = _collect_formula_markers(clause_text)
     units: list[EvidenceUnit] = []
+    accepted_formula_count = 0
 
-    for formula_index, marker in enumerate(markers, start=1):
+    for marker_index, marker in enumerate(markers):
         segment_end = (
-            markers[formula_index].start()
-            if formula_index < len(markers)
+            markers[marker_index + 1].start
+            if marker_index + 1 < len(markers)
             else len(clause_text)
         )
-        formula_name = marker.group("name").strip()
-        formula_body = clause_text[marker.end():segment_end].strip()
-        formula_id = f"{clause_id}-formula-{formula_index:02d}"
+        if not marker.creates_formula:
+            continue
+
+        formula_body = clause_text[marker.end:segment_end].strip()
+        formula_name = marker.formula_name or _formula_reference_name(formula_body)
+        formula_name = formula_name or "又方"
+        accepted_formula_count += 1
+        formula_id = f"{clause_id}-formula-{accepted_formula_count:02d}"
         normalized_body = normalize_text(formula_body)
         normalized_formula = formula_name
         if normalized_body:
@@ -168,7 +279,9 @@ def _formula_units(
                 clause_number=clause_number,
                 content_type="formula",
                 parent_id=clause_id,
-                original_text=clause_text[marker.start():segment_end].strip(),
+                original_text=clause_text[
+                    marker.original_start:segment_end
+                ].strip(),
                 normalized_text=normalized_formula,
                 notes=[],
                 source_file=source_file,
@@ -180,7 +293,11 @@ def _formula_units(
         ingredients_text = (
             formula_body[:preparation_match.start()].strip()
             if preparation_match
-            else formula_body.strip()
+            else (
+                formula_body.strip()
+                if marker.ingredients_without_preparation
+                else ""
+            )
         )
         preparation_text = (
             formula_body[preparation_match.start():].strip()
@@ -246,114 +363,6 @@ def _implicit_formula_name(text_before_marker: str) -> str | None:
     formula_name = match.group(0)
     formula_name = re.sub(r"^(?:则|宜|与|服|用|可)+", "", formula_name)
     return formula_name or None
-
-
-def _implicit_formula_units(
-    *,
-    clause_text: str,
-    clause_id: str,
-    book_id: str,
-    book_title: str,
-    volume: str,
-    chapter_id: str,
-    chapter_title: str,
-    clause_number: int,
-    source_file: str,
-    source_hash: str,
-) -> list[EvidenceUnit]:
-    if FORMULA_PATTERN.search(clause_text):
-        return []
-
-    markers = list(IMPLICIT_FORMULA_MARKER_PATTERN.finditer(clause_text))
-    units: list[EvidenceUnit] = []
-    accepted_formula_count = 0
-
-    for marker_index, marker in enumerate(markers):
-        formula_name = _implicit_formula_name(clause_text[:marker.start()])
-        if not formula_name:
-            continue
-
-        segment_end = (
-            markers[marker_index + 1].start()
-            if marker_index + 1 < len(markers)
-            else len(clause_text)
-        )
-        formula_body = clause_text[marker.end():segment_end].strip()
-        accepted_formula_count += 1
-        formula_id = f"{clause_id}-formula-{accepted_formula_count:02d}"
-        normalized_body = normalize_text(formula_body)
-        normalized_formula = formula_name
-        if normalized_body:
-            normalized_formula = f"{formula_name}\n{normalized_body}"
-
-        units.append(
-            _make_unit(
-                evidence_id=formula_id,
-                book_id=book_id,
-                book_title=book_title,
-                volume=volume,
-                chapter_id=chapter_id,
-                chapter_title=chapter_title,
-                clause_id=clause_id,
-                clause_number=clause_number,
-                content_type="formula",
-                parent_id=clause_id,
-                original_text=clause_text[marker.start():segment_end].strip(),
-                normalized_text=normalized_formula,
-                notes=[],
-                source_file=source_file,
-                source_hash=source_hash,
-            )
-        )
-
-        preparation_match = PREPARATION_PATTERN.search(formula_body)
-        if not preparation_match:
-            continue
-
-        ingredients_text = formula_body[:preparation_match.start()].strip()
-        preparation_text = formula_body[preparation_match.start():].strip()
-        if ingredients_text:
-            units.append(
-                _make_unit(
-                    evidence_id=f"{formula_id}-ingredients",
-                    book_id=book_id,
-                    book_title=book_title,
-                    volume=volume,
-                    chapter_id=chapter_id,
-                    chapter_title=chapter_title,
-                    clause_id=clause_id,
-                    clause_number=clause_number,
-                    content_type="ingredients",
-                    parent_id=formula_id,
-                    original_text=ingredients_text,
-                    normalized_text=normalize_text(ingredients_text),
-                    notes=[],
-                    source_file=source_file,
-                    source_hash=source_hash,
-                )
-            )
-        if preparation_text:
-            units.append(
-                _make_unit(
-                    evidence_id=f"{formula_id}-preparation",
-                    book_id=book_id,
-                    book_title=book_title,
-                    volume=volume,
-                    chapter_id=chapter_id,
-                    chapter_title=chapter_title,
-                    clause_id=clause_id,
-                    clause_number=clause_number,
-                    content_type="preparation",
-                    parent_id=formula_id,
-                    original_text=preparation_text,
-                    normalized_text=normalize_text(preparation_text),
-                    notes=[],
-                    source_file=source_file,
-                    source_hash=source_hash,
-                )
-            )
-
-    return units
 
 
 def _write_jsonl(path: Path, rows: list[dict]) -> None:
@@ -491,20 +500,6 @@ def parse_corpus_file(
 
             evidence_units.extend(
                 _formula_units(
-                    clause_text=clause_text,
-                    clause_id=clause_id,
-                    book_id=book_id,
-                    book_title=book_title,
-                    volume=current_volume,
-                    chapter_id=chapter_id,
-                    chapter_title=chapter_title,
-                    clause_number=clause_number,
-                    source_file=input_path.name,
-                    source_hash=source_hash,
-                )
-            )
-            evidence_units.extend(
-                _implicit_formula_units(
                     clause_text=clause_text,
                     clause_id=clause_id,
                     book_id=book_id,
