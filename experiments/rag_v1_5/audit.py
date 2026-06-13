@@ -41,6 +41,22 @@ CSV_FIELDS = (
     "reviewed_at",
     "comment",
 )
+IMMUTABLE_REVIEW_FIELDS = (
+    "audit_id",
+    "book_id",
+    "sample_type",
+    "chapter_id",
+    "clause_id",
+    "evidence_ids",
+    "original_text",
+    "structured_summary",
+)
+ERROR_DECISIONS = (
+    "boundary_error",
+    "type_error",
+    "parent_error",
+    "text_error",
+)
 
 
 def _sha256_file(path: Path) -> str:
@@ -453,3 +469,244 @@ def build_audit_artifacts(
         encoding="utf-8",
     )
     return manifest
+
+
+def _source_review_row(record: AuditRecord) -> dict[str, str]:
+    row = record.model_dump(mode="json")
+    row["evidence_ids"] = "|".join(record.evidence_ids)
+    return {
+        field: "" if row[field] is None else str(row[field])
+        for field in CSV_FIELDS
+    }
+
+
+def _read_review_csv(path: Path) -> list[dict[str, str]]:
+    with path.open("r", encoding="utf-8-sig", newline="") as file_handle:
+        reader = csv.DictReader(file_handle)
+        if tuple(reader.fieldnames or ()) != CSV_FIELDS:
+            raise ValueError("审核 CSV 列与固定模板不一致")
+        return list(reader)
+
+
+def _validate_review_row(
+    *,
+    source_record: AuditRecord,
+    reviewed_row: dict[str, str],
+) -> AuditRecord:
+    source_row = _source_review_row(source_record)
+    for field in IMMUTABLE_REVIEW_FIELDS:
+        if reviewed_row[field] != source_row[field]:
+            raise ValueError(
+                f"{source_record.audit_id} 不允许修改列: {field}"
+            )
+
+    status = reviewed_row["status"].strip()
+    decision = reviewed_row["decision"].strip() or None
+    reviewer = reviewed_row["reviewer"].strip() or None
+    reviewed_at = reviewed_row["reviewed_at"].strip() or None
+    comment = reviewed_row["comment"].strip()
+
+    if status == "pending":
+        raise ValueError(f"{source_record.audit_id} 尚未完成审核")
+    if status not in {"pass", "fail"}:
+        raise ValueError(f"{source_record.audit_id} status 非法: {status}")
+    if not reviewer or not reviewed_at:
+        raise ValueError(
+            f"{source_record.audit_id} reviewer/reviewed_at 不能为空"
+        )
+    if status == "pass" and decision != "correct":
+        raise ValueError(
+            f"{source_record.audit_id} pass 必须对应 decision=correct"
+        )
+    if status == "fail" and (
+        decision not in ERROR_DECISIONS or not comment
+    ):
+        raise ValueError(
+            f"{source_record.audit_id} fail 必须填写错误类型和 comment"
+        )
+
+    return source_record.model_copy(
+        update={
+            "status": status,
+            "decision": decision,
+            "reviewer": reviewer,
+            "reviewed_at": reviewed_at,
+            "comment": comment,
+        }
+    )
+
+
+def _write_review_issues(
+    path: Path,
+    records: list[AuditRecord],
+) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = "".join(
+        json.dumps(
+            record.model_dump(mode="json"),
+            ensure_ascii=False,
+            sort_keys=True,
+        )
+        + "\n"
+        for record in records
+        if record.status == "fail"
+    )
+    path.write_text(payload, encoding="utf-8")
+
+
+def _error_counts(records: list[AuditRecord]) -> dict[str, int]:
+    return {
+        decision: sum(
+            record.status == "fail" and record.decision == decision
+            for record in records
+        )
+        for decision in ERROR_DECISIONS
+    }
+
+
+def import_audit_review(
+    *,
+    source_jsonl: Path,
+    reviewed_csv: Path,
+    issues_path: Path,
+    summary_path: Path,
+) -> dict:
+    source_records = _load_jsonl(source_jsonl, AuditRecord)
+    if len(source_records) != 140:
+        raise ValueError(
+            f"审核源样本必须为 140 行，actual={len(source_records)}"
+        )
+    source_by_id = {record.audit_id: record for record in source_records}
+    if len(source_by_id) != 140:
+        raise ValueError("审核源样本存在重复 audit_id")
+
+    reviewed_rows = _read_review_csv(reviewed_csv)
+    if len(reviewed_rows) != 140:
+        raise ValueError(
+            f"审核 CSV 必须为 140 行，actual={len(reviewed_rows)}"
+        )
+    reviewed_ids = [row["audit_id"] for row in reviewed_rows]
+    if len(set(reviewed_ids)) != 140:
+        raise ValueError("审核 CSV 存在重复 audit_id")
+    unknown_ids = set(reviewed_ids) - set(source_by_id)
+    missing_ids = set(source_by_id) - set(reviewed_ids)
+    if unknown_ids or missing_ids:
+        raise ValueError(
+            f"审核 CSV audit_id 不匹配: "
+            f"unknown={sorted(unknown_ids)}, missing={sorted(missing_ids)}"
+        )
+
+    reviewed_records = [
+        _validate_review_row(
+            source_record=source_by_id[row["audit_id"]],
+            reviewed_row=row,
+        )
+        for row in reviewed_rows
+    ]
+    fail_records = [
+        record for record in reviewed_records if record.status == "fail"
+    ]
+    current_error_counts = _error_counts(reviewed_records)
+    initial_error_counts = current_error_counts
+    if summary_path.is_file():
+        previous_summary = json.loads(
+            summary_path.read_text(encoding="utf-8")
+        )
+        initial_error_counts = previous_summary.get(
+            "initial_error_counts",
+            current_error_counts,
+        )
+
+    summary = {
+        "status": "ready" if not fail_records else "blocked",
+        "reviewed_count": len(reviewed_records),
+        "pending_count": 0,
+        "pass_count": len(reviewed_records) - len(fail_records),
+        "fail_count": len(fail_records),
+        "initial_error_counts": initial_error_counts,
+        "unresolved_error_counts": current_error_counts,
+        "unresolved_boundary_errors": current_error_counts[
+            "boundary_error"
+        ],
+        "unresolved_type_errors": current_error_counts["type_error"],
+        "unresolved_parent_errors": current_error_counts["parent_error"],
+        "unresolved_text_errors": current_error_counts["text_error"],
+        "reviewers": sorted(
+            {record.reviewer for record in reviewed_records if record.reviewer}
+        ),
+        "reviewed_dates": sorted(
+            {
+                record.reviewed_at
+                for record in reviewed_records
+                if record.reviewed_at
+            }
+        ),
+        "counts": _sample_counts(reviewed_records),
+    }
+    _write_review_issues(issues_path, reviewed_records)
+    summary_path.parent.mkdir(parents=True, exist_ok=True)
+    summary_path.write_text(
+        json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True)
+        + "\n",
+        encoding="utf-8",
+    )
+    return summary
+
+
+def freeze_quality_gate(
+    *,
+    summary: dict,
+    source_jsonl: Path,
+    reviewed_csv: Path,
+    evidence_path: Path,
+    chunks_dir: Path,
+    chunk_manifest_path: Path,
+    quality_gate_path: Path,
+) -> dict:
+    if summary.get("status") not in {"ready", "blocked"}:
+        raise ValueError("Quality Gate 只允许 ready 或 blocked")
+    if summary.get("reviewed_count") != 140:
+        raise ValueError("Quality Gate 要求 reviewed_count=140")
+
+    chunk_manifest = json.loads(
+        chunk_manifest_path.read_text(encoding="utf-8")
+    )
+    chunks = {}
+    for strategy in ("c0", "c1", "c2", "c3", "c4"):
+        strategy_manifest = chunk_manifest.get("strategies", {}).get(strategy)
+        if strategy_manifest is None:
+            raise ValueError(f"Chunk Manifest 缺少策略: {strategy}")
+        chunk_path = chunks_dir / strategy_manifest["output_file"]
+        if not chunk_path.is_file():
+            raise FileNotFoundError(f"缺少 Chunk 文件: {chunk_path}")
+        actual_sha256 = _sha256_file(chunk_path)
+        expected_sha256 = strategy_manifest["output_sha256"]
+        if actual_sha256 != expected_sha256:
+            raise ValueError(
+                f"{strategy} SHA256 不匹配: "
+                f"expected={expected_sha256}, actual={actual_sha256}"
+            )
+        chunks[strategy] = actual_sha256
+
+    gate = {
+        "version": "v1.5.0",
+        "status": summary["status"],
+        "reviewed_count": summary["reviewed_count"],
+        "pending_count": summary["pending_count"],
+        "audit_sample_sha256": _sha256_file(source_jsonl),
+        "audit_review_sha256": _sha256_file(reviewed_csv),
+        "evidence_sha256": _sha256_file(evidence_path),
+        "chunk_manifest_sha256": _sha256_file(chunk_manifest_path),
+        "chunks": chunks,
+        "counts": summary["counts"],
+        "initial_error_counts": summary["initial_error_counts"],
+        "unresolved_error_counts": summary["unresolved_error_counts"],
+        "reviewers": summary["reviewers"],
+        "reviewed_dates": summary["reviewed_dates"],
+    }
+    quality_gate_path.parent.mkdir(parents=True, exist_ok=True)
+    quality_gate_path.write_text(
+        json.dumps(gate, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return gate

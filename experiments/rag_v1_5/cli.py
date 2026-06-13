@@ -8,7 +8,11 @@ from typing import Callable, Sequence
 
 import yaml
 
-from experiments.rag_v1_5.audit import build_audit_artifacts
+from experiments.rag_v1_5.audit import (
+    build_audit_artifacts,
+    freeze_quality_gate,
+    import_audit_review,
+)
 from experiments.rag_v1_5.corpus import (
     DEFAULT_CORPUS_SPECS,
     CorpusFileSpec,
@@ -53,6 +57,14 @@ DEFAULT_ANOMALIES_PATH = Path("data/rag_v1_5/processed/anomalies.jsonl")
 DEFAULT_AUDIT_OUTPUT_DIR = Path("data/rag_v1_5/audit")
 DEFAULT_AUDIT_MANIFEST_PATH = Path(
     "experiments/rag_v1_5/manifests/audit-sample-v1.5.0.json"
+)
+DEFAULT_AUDIT_SOURCE_PATH = Path("data/rag_v1_5/audit/audit-140.jsonl")
+DEFAULT_AUDIT_REVIEW_PATH = Path("data/rag_v1_5/audit/audit-140.csv")
+DEFAULT_AUDIT_ISSUES_PATH = Path(
+    "data/rag_v1_5/audit/audit-issues.jsonl"
+)
+DEFAULT_AUDIT_SUMMARY_PATH = Path(
+    "data/rag_v1_5/audit/audit-summary.json"
 )
 DIRECT_DEPENDENCIES = (
     "pydantic",
@@ -388,6 +400,51 @@ def build_parser() -> argparse.ArgumentParser:
         default=20260612,
     )
 
+    review_parser = subparsers.add_parser(
+        "review-audit",
+        help="导入人工审核并冻结语料 Quality Gate",
+    )
+    review_parser.add_argument(
+        "--source",
+        type=Path,
+        default=DEFAULT_AUDIT_SOURCE_PATH,
+    )
+    review_parser.add_argument(
+        "--reviewed-csv",
+        type=Path,
+        default=DEFAULT_AUDIT_REVIEW_PATH,
+    )
+    review_parser.add_argument(
+        "--issues",
+        type=Path,
+        default=DEFAULT_AUDIT_ISSUES_PATH,
+    )
+    review_parser.add_argument(
+        "--summary",
+        type=Path,
+        default=DEFAULT_AUDIT_SUMMARY_PATH,
+    )
+    review_parser.add_argument(
+        "--quality-gate",
+        type=Path,
+        default=DEFAULT_QUALITY_GATE_PATH,
+    )
+    review_parser.add_argument(
+        "--evidence",
+        type=Path,
+        default=DEFAULT_EVIDENCE_PATH,
+    )
+    review_parser.add_argument(
+        "--chunks-dir",
+        type=Path,
+        default=DEFAULT_CHUNK_OUTPUT_DIR,
+    )
+    review_parser.add_argument(
+        "--chunk-manifest",
+        type=Path,
+        default=DEFAULT_CHUNK_MANIFEST_PATH,
+    )
+
     return parser
 
 
@@ -446,13 +503,29 @@ def main(
             output_dir=args.output_dir,
             manifest_path=args.manifest,
         )
-    else:
+    elif args.command == "sample-audit":
         manifest = build_audit_artifacts(
             evidence_path=args.evidence,
             anomalies_path=args.anomalies,
             output_dir=args.output_dir,
             manifest_path=args.manifest,
             seed=args.seed,
+        )
+    else:
+        summary = import_audit_review(
+            source_jsonl=args.source,
+            reviewed_csv=args.reviewed_csv,
+            issues_path=args.issues,
+            summary_path=args.summary,
+        )
+        manifest = freeze_quality_gate(
+            summary=summary,
+            source_jsonl=args.source,
+            reviewed_csv=args.reviewed_csv,
+            evidence_path=args.evidence,
+            chunks_dir=args.chunks_dir,
+            chunk_manifest_path=args.chunk_manifest,
+            quality_gate_path=args.quality_gate,
         )
     print(json.dumps(manifest, ensure_ascii=False, indent=2))
     return 0

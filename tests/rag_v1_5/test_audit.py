@@ -316,5 +316,256 @@ class AuditSamplingTests(unittest.TestCase):
             )
 
 
+class AuditReviewTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temporary_directory = tempfile.TemporaryDirectory()
+        self.root = Path(self.temporary_directory.name)
+        self.evidence_path = self.root / "evidence.jsonl"
+        self.anomalies_path = self.root / "anomalies.jsonl"
+        self.output_dir = self.root / "audit"
+        self.sample_manifest_path = self.root / "audit-sample.json"
+        self.evidence_path.write_text(
+            "".join(
+                json.dumps(
+                    unit.model_dump(mode="json"),
+                    ensure_ascii=False,
+                    sort_keys=True,
+                )
+                + "\n"
+                for unit in make_evidence()
+            ),
+            encoding="utf-8",
+        )
+        self.anomalies_path.write_text(
+            "".join(
+                json.dumps(
+                    anomaly.model_dump(mode="json"),
+                    ensure_ascii=False,
+                    sort_keys=True,
+                )
+                + "\n"
+                for anomaly in make_anomalies()
+            ),
+            encoding="utf-8",
+        )
+        self.audit = importlib.import_module("experiments.rag_v1_5.audit")
+        self.audit.build_audit_artifacts(
+            evidence_path=self.evidence_path,
+            anomalies_path=self.anomalies_path,
+            output_dir=self.output_dir,
+            manifest_path=self.sample_manifest_path,
+        )
+        self.source_jsonl = self.output_dir / "audit-140.jsonl"
+        self.reviewed_csv = self.output_dir / "audit-140.csv"
+        self.issues_path = self.output_dir / "audit-issues.jsonl"
+        self.summary_path = self.output_dir / "audit-summary.json"
+
+    def tearDown(self) -> None:
+        self.temporary_directory.cleanup()
+
+    def read_rows(self) -> list[dict]:
+        with self.reviewed_csv.open(
+            "r",
+            encoding="utf-8-sig",
+            newline="",
+        ) as file_handle:
+            return list(csv.DictReader(file_handle))
+
+    def write_rows(self, rows: list[dict]) -> None:
+        with self.reviewed_csv.open(
+            "w",
+            encoding="utf-8-sig",
+            newline="",
+        ) as file_handle:
+            writer = csv.DictWriter(
+                file_handle,
+                fieldnames=list(rows[0]),
+                lineterminator="\n",
+            )
+            writer.writeheader()
+            writer.writerows(rows)
+
+    def approve_all(self) -> list[dict]:
+        rows = self.read_rows()
+        for row in rows:
+            row.update(
+                {
+                    "status": "pass",
+                    "decision": "correct",
+                    "reviewer": "reviewer-a",
+                    "reviewed_at": "2026-06-13",
+                }
+            )
+        self.write_rows(rows)
+        return rows
+
+    def import_review(self) -> dict:
+        importer = getattr(self.audit, "import_audit_review", None)
+        self.assertTrue(
+            callable(importer),
+            "import_audit_review is not implemented",
+        )
+        return importer(
+            source_jsonl=self.source_jsonl,
+            reviewed_csv=self.reviewed_csv,
+            issues_path=self.issues_path,
+            summary_path=self.summary_path,
+        )
+
+    def test_imports_complete_review_and_marks_ready(self) -> None:
+        self.approve_all()
+
+        summary = self.import_review()
+
+        self.assertEqual(summary["status"], "ready")
+        self.assertEqual(summary["reviewed_count"], 140)
+        self.assertEqual(summary["pending_count"], 0)
+        self.assertEqual(summary["pass_count"], 140)
+        self.assertEqual(summary["fail_count"], 0)
+        self.assertEqual(summary["reviewers"], ["reviewer-a"])
+        self.assertEqual(self.issues_path.read_text(encoding="utf-8"), "")
+
+    def test_valid_failure_marks_blocked_and_writes_issue(self) -> None:
+        rows = self.approve_all()
+        rows[0].update(
+            {
+                "status": "fail",
+                "decision": "boundary_error",
+                "comment": "Clause begins one line too early.",
+            }
+        )
+        self.write_rows(rows)
+
+        summary = self.import_review()
+
+        self.assertEqual(summary["status"], "blocked")
+        self.assertEqual(summary["fail_count"], 1)
+        self.assertEqual(
+            summary["unresolved_error_counts"]["boundary_error"],
+            1,
+        )
+        issues = [
+            json.loads(line)
+            for line in self.issues_path.read_text(
+                encoding="utf-8"
+            ).splitlines()
+        ]
+        self.assertEqual(len(issues), 1)
+        self.assertEqual(issues[0]["decision"], "boundary_error")
+
+    def test_rejects_incomplete_or_semantically_invalid_review(self) -> None:
+        invalid_mutations = {
+            "row_count": lambda rows: rows[:-1],
+            "duplicate_id": lambda rows: [
+                dict(rows[0], audit_id=rows[1]["audit_id"]),
+                *rows[1:],
+            ],
+            "unknown_id": lambda rows: [
+                dict(rows[0], audit_id="unknown-audit-id"),
+                *rows[1:],
+            ],
+            "pending": lambda rows: [
+                dict(rows[0], status="pending"),
+                *rows[1:],
+            ],
+            "pass_wrong_decision": lambda rows: [
+                dict(rows[0], decision="type_error"),
+                *rows[1:],
+            ],
+            "fail_without_error": lambda rows: [
+                dict(rows[0], status="fail", decision="correct", comment="bad"),
+                *rows[1:],
+            ],
+            "fail_without_comment": lambda rows: [
+                dict(
+                    rows[0],
+                    status="fail",
+                    decision="type_error",
+                    comment="",
+                ),
+                *rows[1:],
+            ],
+            "missing_reviewer": lambda rows: [
+                dict(rows[0], reviewer=""),
+                *rows[1:],
+            ],
+            "missing_reviewed_at": lambda rows: [
+                dict(rows[0], reviewed_at=""),
+                *rows[1:],
+            ],
+        }
+        for name, mutate in invalid_mutations.items():
+            with self.subTest(case=name):
+                rows = self.approve_all()
+                self.write_rows(mutate(rows))
+                with self.assertRaises(ValueError):
+                    self.import_review()
+
+    def test_rejects_changes_to_immutable_columns(self) -> None:
+        immutable_mutations = {
+            "book_id": "changed-book",
+            "chapter_id": "changed-chapter",
+            "clause_id": "changed-clause",
+            "evidence_ids": "changed-evidence",
+            "original_text": "changed original",
+            "structured_summary": "changed summary",
+            "sample_type": "formula",
+        }
+        for field, value in immutable_mutations.items():
+            with self.subTest(field=field):
+                rows = self.approve_all()
+                rows[0][field] = value
+                self.write_rows(rows)
+                with self.assertRaises(ValueError):
+                    self.import_review()
+
+    def test_freezes_quality_gate_with_input_hashes(self) -> None:
+        summary = None
+        self.approve_all()
+        summary = self.import_review()
+        chunks_dir = self.root / "chunks"
+        chunks_dir.mkdir()
+        strategies = {}
+        for strategy in ("c0", "c1", "c2", "c3", "c4"):
+            chunk_path = chunks_dir / f"{strategy}.jsonl"
+            chunk_path.write_text(
+                json.dumps({"strategy": strategy}) + "\n",
+                encoding="utf-8",
+            )
+            strategies[strategy] = {
+                "output_file": chunk_path.name,
+                "output_sha256": self.audit._sha256_file(chunk_path),
+            }
+        chunk_manifest_path = self.root / "chunks-manifest.json"
+        chunk_manifest_path.write_text(
+            json.dumps({"strategies": strategies}),
+            encoding="utf-8",
+        )
+        quality_gate_path = self.root / "quality-gate.json"
+
+        freezer = getattr(self.audit, "freeze_quality_gate", None)
+        self.assertTrue(
+            callable(freezer),
+            "freeze_quality_gate is not implemented",
+        )
+        gate = freezer(
+            summary=summary,
+            source_jsonl=self.source_jsonl,
+            reviewed_csv=self.reviewed_csv,
+            evidence_path=self.evidence_path,
+            chunks_dir=chunks_dir,
+            chunk_manifest_path=chunk_manifest_path,
+            quality_gate_path=quality_gate_path,
+        )
+
+        self.assertEqual(gate["status"], "ready")
+        self.assertEqual(gate["reviewed_count"], 140)
+        self.assertEqual(set(gate["chunks"]), {"c0", "c1", "c2", "c3", "c4"})
+        self.assertEqual(
+            json.loads(quality_gate_path.read_text(encoding="utf-8")),
+            gate,
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
