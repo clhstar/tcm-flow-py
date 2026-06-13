@@ -10,8 +10,10 @@
 从仓库根目录执行：
 
 ```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements-experiment.txt
 .\.venv\Scripts\python.exe -m experiments.rag_v1_5.cli prepare-corpus
 .\.venv\Scripts\python.exe -m experiments.rag_v1_5.cli parse-corpus
+.\.venv\Scripts\python.exe -m experiments.rag_v1_5.cli build-chunks
 ```
 
 默认输入：
@@ -36,6 +38,34 @@ anomalies.jsonl：机器不敢擅自处理的问题。
 statistics.json：本次处理结果的统计报告。
 
 `data/` 已被 Git 忽略，不会提交古籍全文或完整结构化语料。
+
+## C0-C4 Chunk 实验
+
+五种策略读取同一份 `data/rag_v1_5/processed/evidence.jsonl`：
+
+| 策略 | 输入范围 | 规则 |
+| --- | --- | --- |
+| C0 | 篇章 | 通用字符切分，`500/80` |
+| C1 | 篇章 | 通用字符切分，`250/40` |
+| C2 | 条文 | 一条 clause 一个 Chunk，超过 1000 字才按 `500/80` 切分 |
+| C3 | EvidenceUnit | 结构感知切分，最大 500 字，每段保留书名、篇名和类型 |
+| C4 | EvidenceUnit | Child 最大 300 字，检索后恢复完整 clause Parent |
+
+默认输出：
+
+```text
+data/rag_v1_5/chunks/c0.jsonl
+data/rag_v1_5/chunks/c1.jsonl
+data/rag_v1_5/chunks/c2.jsonl
+data/rag_v1_5/chunks/c3.jsonl
+data/rag_v1_5/chunks/c4.jsonl
+data/rag_v1_5/chunks/statistics.json
+experiments/rag_v1_5/manifests/chunks-v1.5.0.json
+```
+
+`build-chunks` 在写入后校验 Chunk ID、来源 Evidence、书/篇/条文边界、
+C4 clause Parent 和字符数。五个 JSONL 使用稳定排序和固定序列化格式，
+相同 Evidence 与配置重复运行应得到完全相同的 SHA256。
 
 ## 解析规则
 

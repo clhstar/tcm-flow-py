@@ -7,6 +7,8 @@ from experiments.rag_v1_5.chunkers import (
     build_chunks,
     load_chunk_config,
     load_evidence,
+    summarize_chunk_statistics,
+    validate_chunks,
 )
 from experiments.rag_v1_5.schema import ChunkUnit
 
@@ -429,6 +431,111 @@ class ParentChildChunkingTests(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, "Duplicate Evidence ID"):
             build_chunks([unit, unit.model_copy()], "c4", self.config)
+
+
+class ChunkValidationTests(unittest.TestCase):
+    def setUp(self):
+        self.units = load_evidence(FIXTURES_DIR / "evidence_sample.jsonl")
+        self.config = load_chunk_config(CONFIG_PATH)
+        self.valid_chunks = build_chunks(self.units, "c4", self.config)
+
+    def test_validate_chunks_accepts_valid_parent_child_graph(self):
+        validate_chunks(self.valid_chunks, self.units)
+
+    def test_validate_chunks_rejects_duplicate_chunk_ids(self):
+        with self.assertRaisesRegex(ValueError, "Duplicate Chunk ID"):
+            validate_chunks(
+                [self.valid_chunks[0], self.valid_chunks[0].model_copy()],
+                self.units,
+            )
+
+    def test_validate_chunks_rejects_unknown_source_evidence(self):
+        invalid = self.valid_chunks[0].model_copy(
+            update={"source_evidence_ids": ["missing-evidence"]}
+        )
+
+        with self.assertRaisesRegex(ValueError, "missing-evidence"):
+            validate_chunks([invalid], self.units)
+
+    def test_validate_chunks_rejects_cross_book_or_chapter_chunks(self):
+        source = self.valid_chunks[0]
+        for field, value in (
+            ("book_id", "other-book"),
+            ("chapter_id", "other-chapter"),
+        ):
+            with self.subTest(field=field):
+                invalid = source.model_copy(update={field: value})
+                with self.assertRaisesRegex(ValueError, field):
+                    validate_chunks([invalid], self.units)
+
+    def test_validate_chunks_rejects_c2_to_c4_cross_clause_sources(self):
+        c2_chunk = next(
+            chunk
+            for chunk in build_chunks(self.units, "c2", self.config)
+            if chunk.chunk_id == "c2-shl-chapter-01-001-001"
+        )
+        invalid = c2_chunk.model_copy(
+            update={
+                "source_evidence_ids": [
+                    "shl-chapter-01-001",
+                    "shl-chapter-01-002",
+                ]
+            }
+        )
+
+        with self.assertRaisesRegex(ValueError, "crosses clause"):
+            validate_chunks([invalid], self.units)
+
+    def test_validate_chunks_rejects_c4_missing_clause_parent(self):
+        invalid = self.valid_chunks[0].model_copy(
+            update={"retrieval_parent_id": "missing-clause"}
+        )
+
+        with self.assertRaisesRegex(ValueError, "missing-clause"):
+            validate_chunks([invalid], self.units)
+
+    def test_validate_chunks_rejects_incorrect_char_count(self):
+        invalid = self.valid_chunks[0].model_copy(
+            update={"char_count": self.valid_chunks[0].char_count + 1}
+        )
+
+        with self.assertRaisesRegex(ValueError, "char_count"):
+            validate_chunks([invalid], self.units)
+
+
+class ChunkStatisticsTests(unittest.TestCase):
+    def test_summarizes_hand_calculated_lengths(self):
+        lengths = [50, 100, 200, 400]
+        chunks = [
+            ChunkUnit(
+                **{
+                    **VALID_CHUNK,
+                    "chunk_id": f"c4-test-{index:03d}",
+                    "strategy": "c4",
+                    "text": "甲" * length,
+                    "context_text": "乙" * (10 if index < 2 else 20),
+                    "char_count": length,
+                    "retrieval_parent_id": (
+                        "parent-1" if index < 2 else "parent-2"
+                    ),
+                }
+            )
+            for index, length in enumerate(lengths)
+        ]
+
+        statistics = summarize_chunk_statistics(chunks)
+
+        self.assertEqual(statistics["count"], 4)
+        self.assertEqual(statistics["min"], 50)
+        self.assertEqual(statistics["max"], 400)
+        self.assertEqual(statistics["mean"], 187.5)
+        self.assertEqual(statistics["median"], 150.0)
+        self.assertEqual(statistics["p95"], 400)
+        self.assertEqual(statistics["short_ratio"], 0.25)
+        self.assertEqual(statistics["long_ratio"], 0.0)
+        self.assertEqual(statistics["unique_parent_count"], 2)
+        self.assertEqual(statistics["parent_context_mean"], 15.0)
+        self.assertEqual(statistics["parent_context_p95"], 20)
 
 
 if __name__ == "__main__":

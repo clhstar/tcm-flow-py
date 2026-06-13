@@ -8,6 +8,7 @@ from experiments.rag_v1_5.corpus import (
     CorpusFileSpec,
     prepare_corpus,
 )
+from experiments.rag_v1_5.chunkers import build_chunk_artifacts
 from experiments.rag_v1_5.pipeline import parse_prepared_corpus
 
 
@@ -16,6 +17,14 @@ DEFAULT_RAW_DIR = Path("data/rag_v1_5/raw")
 DEFAULT_PROCESSED_DIR = Path("data/rag_v1_5/processed")
 DEFAULT_MANIFEST_PATH = Path(
     "experiments/rag_v1_5/manifests/corpus-v1.5.0.json"
+)
+DEFAULT_EVIDENCE_PATH = Path("data/rag_v1_5/processed/evidence.jsonl")
+DEFAULT_CHUNK_CONFIG_PATH = Path(
+    "experiments/rag_v1_5/configs/chunks.yaml"
+)
+DEFAULT_CHUNK_OUTPUT_DIR = Path("data/rag_v1_5/chunks")
+DEFAULT_CHUNK_MANIFEST_PATH = Path(
+    "experiments/rag_v1_5/manifests/chunks-v1.5.0.json"
 )
 
 
@@ -65,6 +74,36 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_PROCESSED_DIR,
     )
 
+    chunk_parser = subparsers.add_parser(
+        "build-chunks",
+        help="构建 C0-C4 Chunk、统计和 Manifest",
+    )
+    chunk_parser.add_argument(
+        "--evidence",
+        type=Path,
+        default=DEFAULT_EVIDENCE_PATH,
+    )
+    chunk_parser.add_argument(
+        "--config",
+        type=Path,
+        default=DEFAULT_CHUNK_CONFIG_PATH,
+    )
+    chunk_parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=DEFAULT_CHUNK_OUTPUT_DIR,
+    )
+    chunk_parser.add_argument(
+        "--manifest",
+        type=Path,
+        default=DEFAULT_CHUNK_MANIFEST_PATH,
+    )
+    chunk_parser.add_argument(
+        "--corpus-manifest",
+        type=Path,
+        default=DEFAULT_MANIFEST_PATH,
+    )
+
     return parser
 
 
@@ -91,12 +130,23 @@ def main(
         )
         return 0
 
-    statistics = parse_prepared_corpus(
-        raw_dir=args.raw_dir,
+    if args.command == "parse-corpus":
+        statistics = parse_prepared_corpus(
+            raw_dir=args.raw_dir,
+            manifest_path=args.manifest,
+            processed_dir=args.processed_dir,
+        )
+        print(json.dumps(statistics, ensure_ascii=False, indent=2))
+        return 0
+
+    manifest = build_chunk_artifacts(
+        evidence_path=args.evidence,
+        config_path=args.config,
+        output_dir=args.output_dir,
         manifest_path=args.manifest,
-        processed_dir=args.processed_dir,
+        corpus_manifest_path=args.corpus_manifest,
     )
-    print(json.dumps(statistics, ensure_ascii=False, indent=2))
+    print(json.dumps(manifest, ensure_ascii=False, indent=2))
     return 0
 
 

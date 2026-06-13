@@ -1,16 +1,22 @@
 """Deterministic chunking strategies for the V1.5 retrieval experiments."""
 
+import json
+import math
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
+from statistics import mean, median
 from typing import Any, Iterable
 
 import yaml
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
+from experiments.rag_v1_5.corpus import sha256_bytes
 from experiments.rag_v1_5.schema import ChunkUnit, EvidenceUnit
 
 
 ChunkConfig = dict[str, Any]
+CHUNK_STRATEGIES = ("c0", "c1", "c2", "c3", "c4")
 
 
 @dataclass(frozen=True)
@@ -350,3 +356,212 @@ def _resolve_clause_parent(
             f"Evidence parent is not a clause: {unit.clause_id}"
         )
     return parent
+
+
+def validate_chunks(
+    chunks: list[ChunkUnit],
+    evidence_units: list[EvidenceUnit],
+) -> None:
+    evidence_by_id = _index_evidence(evidence_units)
+    chunk_ids: set[str] = set()
+    for chunk in chunks:
+        if chunk.chunk_id in chunk_ids:
+            raise ValueError(f"Duplicate Chunk ID: {chunk.chunk_id}")
+        chunk_ids.add(chunk.chunk_id)
+
+        if chunk.char_count != len(chunk.text):
+            raise ValueError(
+                f"Chunk char_count mismatch: {chunk.chunk_id}"
+            )
+
+        source_units: list[EvidenceUnit] = []
+        for evidence_id in chunk.source_evidence_ids:
+            source_unit = evidence_by_id.get(evidence_id)
+            if source_unit is None:
+                raise ValueError(
+                    f"Chunk source Evidence ID does not exist: {evidence_id}"
+                )
+            source_units.append(source_unit)
+
+        if any(unit.book_id != chunk.book_id for unit in source_units):
+            raise ValueError(
+                f"Chunk book_id mismatch: {chunk.chunk_id}"
+            )
+        if any(
+            unit.chapter_id != chunk.chapter_id for unit in source_units
+        ):
+            raise ValueError(
+                f"Chunk chapter_id mismatch: {chunk.chunk_id}"
+            )
+
+        if chunk.strategy in {"c2", "c3", "c4"}:
+            source_clause_ids = {
+                unit.clause_id for unit in source_units
+            }
+            if (
+                len(source_clause_ids) != 1
+                or chunk.clause_id not in source_clause_ids
+            ):
+                raise ValueError(
+                    f"Chunk crosses clause: {chunk.chunk_id}"
+                )
+
+        if chunk.strategy == "c4":
+            parent = evidence_by_id.get(chunk.retrieval_parent_id or "")
+            if parent is None:
+                raise ValueError(
+                    "C4 clause parent does not exist: "
+                    f"{chunk.retrieval_parent_id}"
+                )
+            if parent.content_type != "clause":
+                raise ValueError(
+                    "C4 retrieval parent is not a clause: "
+                    f"{chunk.retrieval_parent_id}"
+                )
+            if chunk.clause_id != parent.evidence_id:
+                raise ValueError(
+                    f"C4 clause parent mismatch: {chunk.chunk_id}"
+                )
+
+
+def summarize_chunk_statistics(
+    chunks: list[ChunkUnit],
+) -> dict[str, int | float]:
+    if not chunks:
+        return {
+            "count": 0,
+            "mean": 0.0,
+            "median": 0.0,
+            "p95": 0,
+            "min": 0,
+            "max": 0,
+            "short_ratio": 0.0,
+            "long_ratio": 0.0,
+            "unique_parent_count": 0,
+            "parent_context_mean": 0.0,
+            "parent_context_p95": 0,
+        }
+
+    lengths = sorted(chunk.char_count for chunk in chunks)
+    parent_contexts: dict[str, int] = {}
+    for chunk in chunks:
+        if chunk.strategy == "c4" and chunk.retrieval_parent_id:
+            parent_contexts.setdefault(
+                chunk.retrieval_parent_id,
+                len(chunk.context_text),
+            )
+    parent_lengths = sorted(parent_contexts.values())
+    return {
+        "count": len(chunks),
+        "mean": mean(lengths),
+        "median": median(lengths),
+        "p95": _nearest_rank_percentile(lengths, 0.95),
+        "min": min(lengths),
+        "max": max(lengths),
+        "short_ratio": sum(length < 100 for length in lengths)
+        / len(lengths),
+        "long_ratio": sum(length > 500 for length in lengths)
+        / len(lengths),
+        "unique_parent_count": len(parent_contexts),
+        "parent_context_mean": (
+            mean(parent_lengths) if parent_lengths else 0.0
+        ),
+        "parent_context_p95": (
+            _nearest_rank_percentile(parent_lengths, 0.95)
+            if parent_lengths
+            else 0
+        ),
+    }
+
+
+def build_chunk_artifacts(
+    *,
+    evidence_path: Path,
+    config_path: Path,
+    output_dir: Path,
+    manifest_path: Path,
+    corpus_manifest_path: Path,
+    generated_at: datetime | None = None,
+) -> dict[str, Any]:
+    evidence_units = load_evidence(evidence_path)
+    config = load_chunk_config(config_path)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    strategy_manifest: dict[str, Any] = {}
+    strategy_statistics: dict[str, Any] = {}
+    for strategy in CHUNK_STRATEGIES:
+        chunks = build_chunks(evidence_units, strategy, config)
+        validate_chunks(chunks, evidence_units)
+        output_path = output_dir / f"{strategy}.jsonl"
+        _write_chunk_jsonl(output_path, chunks)
+        strategy_statistics[strategy] = summarize_chunk_statistics(chunks)
+        strategy_manifest[strategy] = {
+            "count": len(chunks),
+            "output_file": output_path.name,
+            "output_sha256": sha256_bytes(output_path.read_bytes()),
+            "parameters": config["strategies"][strategy],
+        }
+
+    statistics = {
+        "version": config["version"],
+        "strategies": strategy_statistics,
+    }
+    (output_dir / "statistics.json").write_text(
+        json.dumps(
+            statistics,
+            ensure_ascii=False,
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    manifest = {
+        "version": config["version"],
+        "generated_at": (
+            generated_at or datetime.now(timezone.utc)
+        ).isoformat().replace("+00:00", "Z"),
+        "corpus_manifest_sha256": sha256_bytes(
+            corpus_manifest_path.read_bytes()
+        ),
+        "evidence_sha256": sha256_bytes(evidence_path.read_bytes()),
+        "config_sha256": sha256_bytes(config_path.read_bytes()),
+        "strategies": strategy_manifest,
+    }
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    manifest_path.write_text(
+        json.dumps(
+            manifest,
+            ensure_ascii=False,
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return manifest
+
+
+def _nearest_rank_percentile(
+    values: list[int],
+    percentile: float,
+) -> int:
+    index = max(0, math.ceil(percentile * len(values)) - 1)
+    return values[index]
+
+
+def _write_chunk_jsonl(
+    path: Path,
+    chunks: list[ChunkUnit],
+) -> None:
+    payload = "".join(
+        json.dumps(
+            chunk.model_dump(mode="json"),
+            ensure_ascii=False,
+            sort_keys=True,
+        )
+        + "\n"
+        for chunk in chunks
+    )
+    path.write_bytes(payload.encode("utf-8"))

@@ -211,3 +211,87 @@ jgy-chapter-25-040
 2. 建立抽检表，记录正确、边界错误、类型错误和父子关系错误；
 3. 冻结解析规则后实现 C0-C4 Chunk 策略；
 4. 在生成正式 400 条评测数据前，先完成语料结构质量验收。
+
+---
+
+## 2026-06-13：完成 C0-C4 Chunk 构建与确定性验证
+
+### 目标
+
+基于同一份 Evidence Tree 构建五种可比较的切分策略，验证稳定 Chunk ID、
+来源 Evidence 映射、条文边界和 C4 Parent 恢复，并冻结输入、配置和输出哈希。
+
+### 参数
+
+| 策略 | 参数 | 说明 |
+| --- | --- | --- |
+| C0 | `500/80` | 按篇章拼接 clause 后做通用字符切分 |
+| C1 | `250/40` | 更细粒度的篇章字符切分基线 |
+| C2 | `max_length=1000`，溢出 `500/80` | 普通 clause 不拆分、不与相邻条文合并 |
+| C3 | `max_length=500` | 每个 EvidenceUnit 独立，重复标题上下文 |
+| C4 | `max_length=300` | Child 独立检索，恢复完整 clause Parent |
+
+字符分隔符按 `段落 -> 换行 -> 句号 -> 分号 -> 逗号 -> 空格` 使用；
+运行时追加字符级兜底，防止无标点长文本超过配置上限。
+
+### 执行命令
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements-experiment.txt
+.\.venv\Scripts\python.exe -m experiments.rag_v1_5.cli build-chunks
+Get-FileHash data\rag_v1_5\chunks\c*.jsonl -Algorithm SHA256
+.\.venv\Scripts\python.exe -m experiments.rag_v1_5.cli build-chunks
+Get-FileHash data\rag_v1_5\chunks\c*.jsonl -Algorithm SHA256
+```
+
+### 全库结果
+
+| 策略 | Chunk 数 | mean | median | P95 | max | `<100` 比例 | `>500` 比例 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| C0 | 198 | 397.88 | 426.0 | 498 | 499 | 0.51% | 0.00% |
+| C1 | 414 | 186.63 | 203.0 | 247 | 250 | 8.45% | 0.00% |
+| C2 | 918 | 80.35 | 56.5 | 218 | 820 | 71.02% | 0.22% |
+| C3 | 2237 | 99.26 | 82.0 | 211 | 488 | 64.15% | 0.00% |
+| C4 | 2281 | 98.03 | 82.0 | 211 | 300 | 63.74% | 0.00% |
+
+C4 共恢复到 `918` 个唯一 clause Parent。按唯一 Parent 计算，
+完整上下文平均长度为 `80.35` 字，P95 为 `218` 字。
+
+### 输入与输出哈希
+
+```text
+corpus manifest
+B9FB823BF736AD48F8F45722F971E398BBB755480EC5A125568E0147B342C82D
+
+evidence.jsonl
+D0A703699E2947C0FA9132436C1DBDB8C3EF1F1C0DDE831CF81485FC80083B7B
+
+chunks.yaml
+EAC1CF154BAC4E887468EE84A38CBCD78A3639300D9B25F54F05035997384548
+
+c0.jsonl
+2E6AD8225E5ECE5EA305EFEF3D1DFC8532E672178823637BECE2728BF8B3F5B4
+
+c1.jsonl
+92F73997A233BF910213AED5A9355EF91F6B719F3F5EFD94A489940636199411
+
+c2.jsonl
+4737A00E3AF7F50B680CDF10579FEB98B083A83D8B482A5D19B2629E7E837DC5
+
+c3.jsonl
+EA87719FE9B39F34B1322522282DD6560B20F8721FC1E3CBC66D75CD650CB239
+
+c4.jsonl
+C2E49F8FF37F6F93AC7CBADD298B63023C4DD2CA3C0C3C617BD7275B35564A75
+```
+
+连续两次构建中，五个 JSONL 的 SHA256 逐一一致。
+
+### 验证结论与限制
+
+- C0-C4 均在两部真实古籍上生成并通过 Chunk Graph 校验。
+- Chunk ID 无重复，来源 Evidence 可追溯，C2-C4 不跨 clause。
+- C4 每个 Child 唯一恢复到 clause Parent，Parent 上下文保持完整。
+- 技术实现满足后续索引烟雾测试的输入条件。
+- 140 组正式人工抽检仍未完成，因此暂不冻结正式索引，也不开始
+  40 条 evidence-first 试标集的最终制作。
