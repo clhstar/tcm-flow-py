@@ -1,7 +1,12 @@
 import argparse
+import hashlib
+import importlib.metadata
 import json
+import platform
 from pathlib import Path
-from typing import Sequence
+from typing import Callable, Sequence
+
+import yaml
 
 from experiments.rag_v1_5.corpus import (
     DEFAULT_CORPUS_SPECS,
@@ -9,6 +14,12 @@ from experiments.rag_v1_5.corpus import (
     prepare_corpus,
 )
 from experiments.rag_v1_5.chunkers import build_chunk_artifacts
+from experiments.rag_v1_5.model_store import (
+    prepare_models,
+    snapshot_files,
+    snapshot_tree_sha256,
+    validate_revision,
+)
 from experiments.rag_v1_5.pipeline import parse_prepared_corpus
 
 
@@ -26,6 +37,188 @@ DEFAULT_CHUNK_OUTPUT_DIR = Path("data/rag_v1_5/chunks")
 DEFAULT_CHUNK_MANIFEST_PATH = Path(
     "experiments/rag_v1_5/manifests/chunks-v1.5.0.json"
 )
+DEFAULT_RETRIEVAL_CONFIG_PATH = Path(
+    "experiments/rag_v1_5/configs/retrieval-pilot.yaml"
+)
+DEFAULT_QUALITY_GATE_PATH = Path(
+    "experiments/rag_v1_5/manifests/quality-gate-v1.5.0.json"
+)
+DEFAULT_MODEL_OUTPUT_DIR = Path("data/rag_v1_5/models")
+DEFAULT_MODEL_MANIFEST_PATH = Path(
+    "experiments/rag_v1_5/manifests/models-v1.5.0.json"
+)
+DEFAULT_INDEXES_DIR = Path("data/rag_v1_5/indexes")
+DIRECT_DEPENDENCIES = (
+    "pydantic",
+    "PyYAML",
+    "numpy",
+    "jieba",
+    "rank-bm25",
+    "FlagEmbedding",
+)
+
+
+def _sha256_file(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest().upper()
+
+
+def _read_system_info() -> dict:
+    try:
+        import torch
+    except ImportError:
+        return {
+            "python_version": platform.python_version(),
+            "torch_version": None,
+            "cuda_available": False,
+            "gpu_name": None,
+            "gpu_memory_mib": 0,
+        }
+
+    cuda_available = torch.cuda.is_available()
+    gpu_memory_mib = 0
+    gpu_name = None
+    if cuda_available:
+        properties = torch.cuda.get_device_properties(0)
+        gpu_name = properties.name
+        mebibyte = 1024 * 1024
+        gpu_memory_mib = (properties.total_memory + mebibyte - 1) // mebibyte
+    return {
+        "python_version": platform.python_version(),
+        "torch_version": torch.__version__,
+        "cuda_available": cuda_available,
+        "gpu_name": gpu_name,
+        "gpu_memory_mib": gpu_memory_mib,
+    }
+
+
+def _read_package_version(package: str) -> str | None:
+    try:
+        return importlib.metadata.version(package)
+    except importlib.metadata.PackageNotFoundError:
+        return None
+
+
+def _chunk_manifest_status(
+    *,
+    chunks_dir: Path,
+    chunk_manifest_path: Path,
+) -> tuple[int, str]:
+    existing = [
+        strategy
+        for strategy in ("c0", "c1", "c2", "c3", "c4")
+        if (chunks_dir / f"{strategy}.jsonl").is_file()
+    ]
+    if not chunk_manifest_path.is_file():
+        return len(existing), "missing"
+
+    manifest = json.loads(chunk_manifest_path.read_text(encoding="utf-8"))
+    for strategy in existing:
+        strategy_manifest = manifest.get("strategies", {}).get(strategy)
+        if strategy_manifest is None:
+            return len(existing), "mismatch"
+        path = chunks_dir / strategy_manifest["output_file"]
+        if (
+            not path.is_file()
+            or _sha256_file(path) != strategy_manifest["output_sha256"]
+        ):
+            return len(existing), "mismatch"
+    return len(existing), "valid" if len(existing) == 5 else "incomplete"
+
+
+def _model_snapshot_status(
+    *,
+    model_manifest_path: Path,
+    repository_root: Path,
+) -> dict:
+    if not model_manifest_path.is_file():
+        return {"embedding": "missing", "reranker": "missing"}
+    manifest = json.loads(model_manifest_path.read_text(encoding="utf-8"))
+    status = {}
+    for role in ("embedding", "reranker"):
+        model_record = manifest.get(role, {})
+        local_path = model_record.get("local_path")
+        if not local_path:
+            status[role] = "missing"
+            continue
+        snapshot_path = repository_root / local_path
+        if not snapshot_path.is_dir():
+            status[role] = "missing"
+            continue
+        try:
+            actual_hash = snapshot_tree_sha256(snapshot_files(snapshot_path))
+        except ValueError:
+            status[role] = "missing"
+            continue
+        status[role] = (
+            "valid"
+            if actual_hash == model_record.get("snapshot_tree_sha256")
+            else "mismatch"
+        )
+    return status
+
+
+def _directory_is_writable(path: Path) -> bool:
+    path.mkdir(parents=True, exist_ok=True)
+    marker = path / ".write-test"
+    try:
+        marker.write_text("ok", encoding="ascii")
+        return True
+    except OSError:
+        return False
+    finally:
+        marker.unlink(missing_ok=True)
+
+
+def build_retrieval_doctor_report(
+    *,
+    config_path: Path = DEFAULT_RETRIEVAL_CONFIG_PATH,
+    chunks_dir: Path = DEFAULT_CHUNK_OUTPUT_DIR,
+    chunk_manifest_path: Path = DEFAULT_CHUNK_MANIFEST_PATH,
+    quality_gate_path: Path = DEFAULT_QUALITY_GATE_PATH,
+    model_manifest_path: Path = DEFAULT_MODEL_MANIFEST_PATH,
+    indexes_dir: Path = DEFAULT_INDEXES_DIR,
+    system_reader: Callable[[], dict] = _read_system_info,
+    package_version_reader: Callable[[str], str | None] = (
+        _read_package_version
+    ),
+) -> dict:
+    report = dict(system_reader())
+    report["direct_dependencies"] = {
+        package: package_version_reader(package)
+        for package in DIRECT_DEPENDENCIES
+    }
+
+    chunk_count, chunk_manifest_status = _chunk_manifest_status(
+        chunks_dir=chunks_dir,
+        chunk_manifest_path=chunk_manifest_path,
+    )
+    report["chunk_strategy_count"] = chunk_count
+    report["chunk_manifest_status"] = chunk_manifest_status
+
+    if quality_gate_path.is_file():
+        quality_gate = json.loads(
+            quality_gate_path.read_text(encoding="utf-8")
+        )
+        report["quality_gate_status"] = quality_gate.get("status", "invalid")
+    else:
+        report["quality_gate_status"] = "missing"
+
+    revisions = {}
+    if config_path.is_file():
+        config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+        for role in ("embedding", "reranker"):
+            revision = config.get(role, {}).get("revision")
+            try:
+                revisions[role] = validate_revision(revision)
+            except (TypeError, ValueError):
+                revisions[role] = None
+    report["model_revisions"] = revisions
+    report["model_snapshots"] = _model_snapshot_status(
+        model_manifest_path=model_manifest_path,
+        repository_root=Path.cwd().resolve(),
+    )
+    report["indexes_writable"] = _directory_is_writable(indexes_dir)
+    return report
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -104,6 +297,61 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_MANIFEST_PATH,
     )
 
+    doctor_parser = subparsers.add_parser(
+        "retrieval-doctor",
+        help="检查检索实验环境、输入哈希、模型和 Quality Gate",
+    )
+    doctor_parser.add_argument(
+        "--config",
+        type=Path,
+        default=DEFAULT_RETRIEVAL_CONFIG_PATH,
+    )
+    doctor_parser.add_argument(
+        "--chunks-dir",
+        type=Path,
+        default=DEFAULT_CHUNK_OUTPUT_DIR,
+    )
+    doctor_parser.add_argument(
+        "--chunk-manifest",
+        type=Path,
+        default=DEFAULT_CHUNK_MANIFEST_PATH,
+    )
+    doctor_parser.add_argument(
+        "--quality-gate",
+        type=Path,
+        default=DEFAULT_QUALITY_GATE_PATH,
+    )
+    doctor_parser.add_argument(
+        "--model-manifest",
+        type=Path,
+        default=DEFAULT_MODEL_MANIFEST_PATH,
+    )
+    doctor_parser.add_argument(
+        "--indexes-dir",
+        type=Path,
+        default=DEFAULT_INDEXES_DIR,
+    )
+
+    model_parser = subparsers.add_parser(
+        "prepare-models",
+        help="下载固定 revision 的本地检索模型快照",
+    )
+    model_parser.add_argument(
+        "--config",
+        type=Path,
+        default=DEFAULT_RETRIEVAL_CONFIG_PATH,
+    )
+    model_parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=DEFAULT_MODEL_OUTPUT_DIR,
+    )
+    model_parser.add_argument(
+        "--manifest",
+        type=Path,
+        default=DEFAULT_MODEL_MANIFEST_PATH,
+    )
+
     return parser
 
 
@@ -139,13 +387,29 @@ def main(
         print(json.dumps(statistics, ensure_ascii=False, indent=2))
         return 0
 
-    manifest = build_chunk_artifacts(
-        evidence_path=args.evidence,
-        config_path=args.config,
-        output_dir=args.output_dir,
-        manifest_path=args.manifest,
-        corpus_manifest_path=args.corpus_manifest,
-    )
+    if args.command == "build-chunks":
+        manifest = build_chunk_artifacts(
+            evidence_path=args.evidence,
+            config_path=args.config,
+            output_dir=args.output_dir,
+            manifest_path=args.manifest,
+            corpus_manifest_path=args.corpus_manifest,
+        )
+    elif args.command == "retrieval-doctor":
+        manifest = build_retrieval_doctor_report(
+            config_path=args.config,
+            chunks_dir=args.chunks_dir,
+            chunk_manifest_path=args.chunk_manifest,
+            quality_gate_path=args.quality_gate,
+            model_manifest_path=args.model_manifest,
+            indexes_dir=args.indexes_dir,
+        )
+    else:
+        manifest = prepare_models(
+            config_path=args.config,
+            output_dir=args.output_dir,
+            manifest_path=args.manifest,
+        )
     print(json.dumps(manifest, ensure_ascii=False, indent=2))
     return 0
 
