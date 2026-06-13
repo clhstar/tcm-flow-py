@@ -8,6 +8,7 @@ from typing import Callable, Sequence
 
 import yaml
 
+from experiments.rag_v1_5.audit import build_audit_artifacts
 from experiments.rag_v1_5.corpus import (
     DEFAULT_CORPUS_SPECS,
     CorpusFileSpec,
@@ -48,6 +49,11 @@ DEFAULT_MODEL_MANIFEST_PATH = Path(
     "experiments/rag_v1_5/manifests/models-v1.5.0.json"
 )
 DEFAULT_INDEXES_DIR = Path("data/rag_v1_5/indexes")
+DEFAULT_ANOMALIES_PATH = Path("data/rag_v1_5/processed/anomalies.jsonl")
+DEFAULT_AUDIT_OUTPUT_DIR = Path("data/rag_v1_5/audit")
+DEFAULT_AUDIT_MANIFEST_PATH = Path(
+    "experiments/rag_v1_5/manifests/audit-sample-v1.5.0.json"
+)
 DIRECT_DEPENDENCIES = (
     "pydantic",
     "PyYAML",
@@ -352,6 +358,36 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_MODEL_MANIFEST_PATH,
     )
 
+    audit_parser = subparsers.add_parser(
+        "sample-audit",
+        help="按两书与三类配额生成 140 组人工抽检样本",
+    )
+    audit_parser.add_argument(
+        "--evidence",
+        type=Path,
+        default=DEFAULT_EVIDENCE_PATH,
+    )
+    audit_parser.add_argument(
+        "--anomalies",
+        type=Path,
+        default=DEFAULT_ANOMALIES_PATH,
+    )
+    audit_parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=DEFAULT_AUDIT_OUTPUT_DIR,
+    )
+    audit_parser.add_argument(
+        "--manifest",
+        type=Path,
+        default=DEFAULT_AUDIT_MANIFEST_PATH,
+    )
+    audit_parser.add_argument(
+        "--seed",
+        type=int,
+        default=20260612,
+    )
+
     return parser
 
 
@@ -404,11 +440,19 @@ def main(
             model_manifest_path=args.model_manifest,
             indexes_dir=args.indexes_dir,
         )
-    else:
+    elif args.command == "prepare-models":
         manifest = prepare_models(
             config_path=args.config,
             output_dir=args.output_dir,
             manifest_path=args.manifest,
+        )
+    else:
+        manifest = build_audit_artifacts(
+            evidence_path=args.evidence,
+            anomalies_path=args.anomalies,
+            output_dir=args.output_dir,
+            manifest_path=args.manifest,
+            seed=args.seed,
         )
     print(json.dumps(manifest, ensure_ascii=False, indent=2))
     return 0
