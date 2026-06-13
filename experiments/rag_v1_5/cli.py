@@ -19,6 +19,7 @@ from experiments.rag_v1_5.corpus import (
     prepare_corpus,
 )
 from experiments.rag_v1_5.chunkers import build_chunk_artifacts
+from experiments.rag_v1_5.indexing import build_indexes
 from experiments.rag_v1_5.model_store import (
     prepare_models,
     snapshot_files,
@@ -65,6 +66,9 @@ DEFAULT_AUDIT_ISSUES_PATH = Path(
 )
 DEFAULT_AUDIT_SUMMARY_PATH = Path(
     "data/rag_v1_5/audit/audit-summary.json"
+)
+DEFAULT_INDEX_MANIFEST_PATH = Path(
+    "experiments/rag_v1_5/manifests/indexes-v1.5.0.json"
 )
 DIRECT_DEPENDENCIES = (
     "pydantic",
@@ -445,6 +449,46 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_CHUNK_MANIFEST_PATH,
     )
 
+    index_parser = subparsers.add_parser(
+        "build-indexes",
+        help="构建 C0-C4 的 BM25 token 与 Dense 向量索引",
+    )
+    index_parser.add_argument(
+        "--config",
+        type=Path,
+        default=DEFAULT_RETRIEVAL_CONFIG_PATH,
+    )
+    index_parser.add_argument(
+        "--chunks-dir",
+        type=Path,
+        default=DEFAULT_CHUNK_OUTPUT_DIR,
+    )
+    index_parser.add_argument(
+        "--chunk-manifest",
+        type=Path,
+        default=DEFAULT_CHUNK_MANIFEST_PATH,
+    )
+    index_parser.add_argument(
+        "--quality-gate",
+        type=Path,
+        default=DEFAULT_QUALITY_GATE_PATH,
+    )
+    index_parser.add_argument(
+        "--model-manifest",
+        type=Path,
+        default=DEFAULT_MODEL_MANIFEST_PATH,
+    )
+    index_parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=DEFAULT_INDEXES_DIR,
+    )
+    index_parser.add_argument(
+        "--manifest",
+        type=Path,
+        default=DEFAULT_INDEX_MANIFEST_PATH,
+    )
+
     return parser
 
 
@@ -511,7 +555,7 @@ def main(
             manifest_path=args.manifest,
             seed=args.seed,
         )
-    else:
+    elif args.command == "review-audit":
         summary = import_audit_review(
             source_jsonl=args.source,
             reviewed_csv=args.reviewed_csv,
@@ -526,6 +570,16 @@ def main(
             chunks_dir=args.chunks_dir,
             chunk_manifest_path=args.chunk_manifest,
             quality_gate_path=args.quality_gate,
+        )
+    else:
+        manifest = build_indexes(
+            config_path=args.config,
+            chunks_dir=args.chunks_dir,
+            chunk_manifest_path=args.chunk_manifest,
+            quality_gate_path=args.quality_gate,
+            model_manifest_path=args.model_manifest,
+            output_dir=args.output_dir,
+            manifest_path=args.manifest,
         )
     print(json.dumps(manifest, ensure_ascii=False, indent=2))
     return 0
