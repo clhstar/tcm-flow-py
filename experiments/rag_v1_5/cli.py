@@ -27,6 +27,7 @@ from experiments.rag_v1_5.model_store import (
     validate_revision,
 )
 from experiments.rag_v1_5.pipeline import parse_prepared_corpus
+from experiments.rag_v1_5.retrieval import retrieve
 
 
 DEFAULT_SOURCE_DIR = Path(r"G:\work\TCM-Ancient-Books-master")
@@ -489,6 +490,37 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_INDEX_MANIFEST_PATH,
     )
 
+    search_parser = subparsers.add_parser(
+        "search",
+        help="运行 BM25、Dense、Hybrid 或 Hybrid+Reranker 检索",
+    )
+    search_parser.add_argument(
+        "--strategy",
+        choices=("c0", "c1", "c2", "c3", "c4"),
+        required=True,
+    )
+    search_parser.add_argument(
+        "--mode",
+        choices=("bm25", "dense", "hybrid", "hybrid_rerank"),
+        required=True,
+    )
+    search_parser.add_argument("--query", required=True)
+    search_parser.add_argument(
+        "--config",
+        type=Path,
+        default=DEFAULT_RETRIEVAL_CONFIG_PATH,
+    )
+    search_parser.add_argument(
+        "--indexes-dir",
+        type=Path,
+        default=DEFAULT_INDEXES_DIR,
+    )
+    search_parser.add_argument(
+        "--model-manifest",
+        type=Path,
+        default=DEFAULT_MODEL_MANIFEST_PATH,
+    )
+
     return parser
 
 
@@ -571,7 +603,7 @@ def main(
             chunk_manifest_path=args.chunk_manifest,
             quality_gate_path=args.quality_gate,
         )
-    else:
+    elif args.command == "build-indexes":
         manifest = build_indexes(
             config_path=args.config,
             chunks_dir=args.chunks_dir,
@@ -581,6 +613,17 @@ def main(
             output_dir=args.output_dir,
             manifest_path=args.manifest,
         )
+    else:
+        config = yaml.safe_load(args.config.read_text(encoding="utf-8"))
+        hits = retrieve(
+            args.query,
+            strategy=args.strategy,
+            mode=args.mode,
+            indexes_dir=args.indexes_dir,
+            config=config,
+            model_manifest_path=args.model_manifest,
+        )
+        manifest = [hit.model_dump(mode="json") for hit in hits]
     print(json.dumps(manifest, ensure_ascii=False, indent=2))
     return 0
 
