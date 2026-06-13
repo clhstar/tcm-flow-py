@@ -150,5 +150,92 @@ class CharacterChunkingTests(unittest.TestCase):
                     )
 
 
+class ClauseChunkingTests(unittest.TestCase):
+    def setUp(self):
+        self.units = load_evidence(FIXTURES_DIR / "evidence_sample.jsonl")
+        self.config = load_chunk_config(CONFIG_PATH)
+
+    def test_c2_creates_one_chunk_per_regular_clause(self):
+        clauses = [
+            unit for unit in self.units if unit.content_type == "clause"
+        ]
+        chunks = build_chunks(self.units, "c2", self.config)
+
+        self.assertEqual(len(chunks), len(clauses))
+        self.assertEqual(
+            [chunk.chunk_id for chunk in chunks],
+            [
+                f"c2-{clause.evidence_id}-001"
+                for clause in clauses
+            ],
+        )
+        for clause, chunk in zip(clauses, chunks):
+            self.assertEqual(chunk.clause_id, clause.evidence_id)
+            self.assertEqual(chunk.retrieval_parent_id, clause.evidence_id)
+            self.assertEqual(
+                chunk.source_evidence_ids,
+                [clause.evidence_id],
+            )
+            self.assertEqual(chunk.text, clause.normalized_text)
+            self.assertEqual(chunk.context_text, clause.normalized_text)
+
+    def test_c2_never_merges_adjacent_short_clauses(self):
+        adjacent_clauses = [
+            unit
+            for unit in self.units
+            if unit.chapter_id == "shl-chapter-01"
+            and unit.content_type == "clause"
+        ]
+        self.assertLess(
+            sum(len(unit.normalized_text) for unit in adjacent_clauses),
+            500,
+        )
+
+        chunks = build_chunks(adjacent_clauses, "c2", self.config)
+
+        self.assertEqual(len(chunks), 2)
+        self.assertEqual(
+            [chunk.source_evidence_ids for chunk in chunks],
+            [[unit.evidence_id] for unit in adjacent_clauses],
+        )
+
+    def test_c2_splits_an_overlong_clause_only_within_itself(self):
+        clause = next(
+            unit
+            for unit in self.units
+            if unit.evidence_id == "shl-chapter-01-001"
+        )
+        long_clause = clause.model_copy(
+            update={
+                "normalized_text": "甲" * 1200,
+                "original_text": "甲" * 1200,
+            }
+        )
+
+        chunks = build_chunks([long_clause], "c2", self.config)
+
+        self.assertGreater(len(chunks), 1)
+        self.assertEqual(
+            [chunk.chunk_id for chunk in chunks],
+            [
+                f"c2-{long_clause.evidence_id}-{part:03d}"
+                for part in range(1, len(chunks) + 1)
+            ],
+        )
+        self.assertTrue(all(chunk.char_count <= 500 for chunk in chunks))
+        self.assertTrue(
+            all(
+                chunk.source_evidence_ids == [long_clause.evidence_id]
+                for chunk in chunks
+            )
+        )
+        self.assertTrue(
+            all(
+                chunk.retrieval_parent_id == long_clause.evidence_id
+                for chunk in chunks
+            )
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
