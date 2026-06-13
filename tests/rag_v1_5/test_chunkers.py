@@ -237,5 +237,71 @@ class ClauseChunkingTests(unittest.TestCase):
         )
 
 
+class StructuredChunkingTests(unittest.TestCase):
+    def setUp(self):
+        self.units = load_evidence(FIXTURES_DIR / "evidence_sample.jsonl")
+        self.config = load_chunk_config(CONFIG_PATH)
+
+    def test_c3_keeps_every_evidence_unit_independent(self):
+        chunks = build_chunks(self.units, "c3", self.config)
+
+        self.assertEqual(len(chunks), len(self.units))
+        self.assertEqual(
+            [chunk.source_evidence_ids for chunk in chunks],
+            [[unit.evidence_id] for unit in self.units],
+        )
+        self.assertEqual(
+            [chunk.retrieval_parent_id for chunk in chunks],
+            [unit.parent_id for unit in self.units],
+        )
+        self.assertEqual(
+            [chunk.chunk_id for chunk in chunks],
+            [
+                f"c3-{unit.evidence_id}-001"
+                for unit in self.units
+            ],
+        )
+
+    def test_c3_adds_title_type_and_body_context_to_every_chunk(self):
+        chunks = build_chunks(self.units, "c3", self.config)
+        units_by_id = {unit.evidence_id: unit for unit in self.units}
+
+        for chunk in chunks:
+            unit = units_by_id[chunk.source_evidence_ids[0]]
+            self.assertIn(f"书名：{unit.book_title}", chunk.text)
+            self.assertIn(f"篇名：{unit.chapter_title}", chunk.text)
+            self.assertIn(f"类型：{unit.content_type}", chunk.text)
+            self.assertIn(f"正文：{unit.normalized_text}", chunk.text)
+            self.assertEqual(chunk.context_text, chunk.text)
+            self.assertEqual(chunk.char_count, len(chunk.text))
+
+    def test_c3_repeats_context_when_one_evidence_unit_is_split(self):
+        unit = self.units[0]
+        long_unit = unit.model_copy(
+            update={
+                "normalized_text": "甲" * 900,
+                "original_text": "甲" * 900,
+            }
+        )
+
+        chunks = build_chunks([long_unit], "c3", self.config)
+
+        self.assertGreater(len(chunks), 1)
+        self.assertTrue(all(chunk.char_count <= 500 for chunk in chunks))
+        for part, chunk in enumerate(chunks, start=1):
+            self.assertEqual(
+                chunk.chunk_id,
+                f"c3-{long_unit.evidence_id}-{part:03d}",
+            )
+            self.assertIn(f"书名：{long_unit.book_title}", chunk.text)
+            self.assertIn(f"篇名：{long_unit.chapter_title}", chunk.text)
+            self.assertIn(f"类型：{long_unit.content_type}", chunk.text)
+            self.assertIn("正文：", chunk.text)
+            self.assertEqual(
+                chunk.source_evidence_ids,
+                [long_unit.evidence_id],
+            )
+
+
 if __name__ == "__main__":
     unittest.main()

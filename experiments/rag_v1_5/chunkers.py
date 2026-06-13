@@ -53,6 +53,8 @@ def build_chunks(
         return _build_character_chunks(units, strategy, config)
     if strategy == "c2":
         return _build_clause_chunks(units, config)
+    if strategy == "c3":
+        return _build_structured_chunks(units, config)
     raise ValueError(f"Unsupported chunk strategy: {strategy}")
 
 
@@ -205,3 +207,71 @@ def _with_character_fallback(separators: list[str]) -> list[str]:
     if "" in separators:
         return separators
     return [*separators, ""]
+
+
+def _build_structured_chunks(
+    units: list[EvidenceUnit],
+    config: ChunkConfig,
+) -> list[ChunkUnit]:
+    max_length = config["strategies"]["c3"]["max_length"]
+    separators = _with_character_fallback(
+        config["shared"]["separators"]
+    )
+    chunks: list[ChunkUnit] = []
+    for unit in units:
+        parts = _split_evidence_text(
+            unit,
+            max_length=max_length,
+            separators=separators,
+        )
+        for part_number, (text, start_index) in enumerate(parts, start=1):
+            chunks.append(
+                ChunkUnit(
+                    chunk_id=(
+                        f"c3-{unit.evidence_id}-{part_number:03d}"
+                    ),
+                    strategy="c3",
+                    book_id=unit.book_id,
+                    chapter_id=unit.chapter_id,
+                    clause_id=unit.clause_id,
+                    retrieval_parent_id=unit.parent_id,
+                    source_evidence_ids=[unit.evidence_id],
+                    text=text,
+                    context_text=text,
+                    char_count=len(text),
+                    start_index=start_index,
+                    source_hash=unit.source_hash,
+                    corpus_version=unit.corpus_version,
+                )
+            )
+    return chunks
+
+
+def _split_evidence_text(
+    unit: EvidenceUnit,
+    *,
+    max_length: int,
+    separators: list[str],
+) -> list[tuple[str, int]]:
+    prefix = (
+        f"书名：{unit.book_title}\n"
+        f"篇名：{unit.chapter_title}\n"
+        f"类型：{unit.content_type}\n"
+        "正文："
+    )
+    body_length = max_length - len(prefix)
+    if body_length < 1:
+        raise ValueError(
+            f"Evidence context exceeds chunk limit: {unit.evidence_id}"
+        )
+    body_parts = _split_text(
+        unit.normalized_text,
+        max_length=body_length,
+        chunk_size=body_length,
+        chunk_overlap=0,
+        separators=separators,
+    )
+    return [
+        (f"{prefix}{body}", start_index)
+        for body, start_index in body_parts
+    ]
