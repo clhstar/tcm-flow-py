@@ -45,7 +45,10 @@ from experiments.rag_v1_5.reranker import (
     resolve_model_snapshot,
 )
 from experiments.rag_v1_5.retrieval import retrieve
-from experiments.rag_v1_5.runner import run_pilot_matrix
+from experiments.rag_v1_5.runner import (
+    freeze_pilot_runs,
+    run_pilot_matrix,
+)
 
 
 DEFAULT_SOURCE_DIR = Path(r"G:\work\TCM-Ancient-Books-master")
@@ -119,6 +122,9 @@ DEFAULT_PILOT_DATASET_PATH = Path(
 )
 DEFAULT_PILOT_MANIFEST_PATH = Path(
     "experiments/rag_v1_5/manifests/pilot-40-v1.5.0.json"
+)
+DEFAULT_PILOT_RUNS_MANIFEST_PATH = Path(
+    "experiments/rag_v1_5/manifests/pilot-runs-v1.5.0.json"
 )
 DEFAULT_SMOKE_MANIFEST_PATH = Path(
     "experiments/rag_v1_5/manifests/smoke-10-v1.5.0.json"
@@ -879,6 +885,26 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
     )
 
+    freeze_pilot_runs_parser = subparsers.add_parser(
+        "freeze-pilot-runs",
+        help="校验并冻结完整 Pilot-40 检索矩阵摘要",
+    )
+    freeze_pilot_runs_parser.add_argument(
+        "--run-dir",
+        type=Path,
+        required=True,
+    )
+    freeze_pilot_runs_parser.add_argument(
+        "--pilot-manifest",
+        type=Path,
+        default=DEFAULT_PILOT_MANIFEST_PATH,
+    )
+    freeze_pilot_runs_parser.add_argument(
+        "--output",
+        type=Path,
+        default=DEFAULT_PILOT_RUNS_MANIFEST_PATH,
+    )
+
     smoke_parser = subparsers.add_parser(
         "run-smoke",
         help="运行 10 条检索烟雾测试并生成 Top 5 人工复核表",
@@ -1094,6 +1120,12 @@ def main(
             indexes_dir=args.indexes_dir,
             output_dir=args.output_dir,
             resume_dir=args.resume,
+        )
+    elif args.command == "freeze-pilot-runs":
+        manifest = freeze_pilot_runs(
+            run_dir=args.run_dir,
+            pilot_manifest_path=args.pilot_manifest,
+            output_path=args.output,
         )
     elif args.command == "run-smoke":
         dataset_summary = validate_dataset(

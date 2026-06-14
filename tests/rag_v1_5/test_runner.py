@@ -1,3 +1,4 @@
+import hashlib
 import json
 import re
 import tempfile
@@ -11,6 +12,10 @@ from tests.rag_v1_5.test_dataset import make_pilot_artifacts
 
 
 FIXED_NOW = datetime(2026, 6, 14, 15, 30, 0, tzinfo=timezone.utc)
+
+
+def sha256_file(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest().upper()
 
 
 def approved_questions() -> list[PilotQuestion]:
@@ -220,6 +225,50 @@ class RunnerTests(unittest.TestCase):
             runtime_factory=runtime_factory or FakeRuntimeFactory(),
             now=now,
         )
+
+    def completed_matrix(
+        self,
+        root: Path,
+    ) -> tuple[Path, Path]:
+        pilot_manifest_path = root / "pilot-manifest.json"
+        validated = fake_validated_inputs()
+        hashes = validated["input_hashes"]
+        pilot_manifest = {
+            "version": "v1.5.0",
+            "status": "ready",
+            "dataset": {
+                "question_count": 40,
+                "approved_count": 40,
+                "sha256": hashes["dataset_sha256"],
+            },
+            "inputs": {
+                name: {"path": f"{name}.json", "sha256": hashes[key]}
+                for name, key in (
+                    ("evidence_group", "evidence_group_sha256"),
+                    ("review_summary", "review_summary_sha256"),
+                    ("quality_gate", "quality_gate_sha256"),
+                    ("smoke_manifest", "smoke_manifest_sha256"),
+                    ("index_manifest", "index_manifest_sha256"),
+                    ("model_manifest", "model_manifest_sha256"),
+                    ("config", "config_sha256"),
+                    ("evidence", "evidence_sha256"),
+                    ("chunk_manifest", "chunk_manifest_sha256"),
+                )
+            },
+            "privacy": {
+                "full_corpus_committed": False,
+                "full_questions_committed": False,
+            },
+        }
+        pilot_manifest_path.write_text(
+            json.dumps(pilot_manifest, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        hashes["pilot_manifest_sha256"] = sha256_file(
+            pilot_manifest_path
+        )
+        summary = self.run_matrix(root, validated_inputs=validated)
+        return Path(summary["matrix_dir"]), pilot_manifest_path
 
     def test_new_run_writes_fixed_matrix_and_complete_config_artifacts(
         self,
@@ -481,6 +530,208 @@ class RunnerTests(unittest.TestCase):
                     ),
                 )
 
+    def test_freeze_pilot_runs_records_hashes_metrics_and_privacy(self) -> None:
+        from experiments.rag_v1_5.runner import (
+            PILOT_MATRIX,
+            freeze_pilot_runs,
+        )
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            matrix_dir, pilot_manifest_path = self.completed_matrix(root)
+            output_path = root / "pilot-runs.json"
+            per_question_path = (
+                matrix_dir
+                / "c0-hybrid-rerank"
+                / "per-question.jsonl"
+            )
+            rows = per_question_path.read_text(
+                encoding="utf-8"
+            ).splitlines()
+            first_row = json.loads(rows[0])
+            first_row["manual_comment"] = "PRIVATE_REVIEW_COMMENT"
+            rows[0] = json.dumps(first_row, ensure_ascii=False)
+            per_question_path.write_text(
+                "\n".join(rows) + "\n",
+                encoding="utf-8",
+            )
+
+            manifest = freeze_pilot_runs(
+                run_dir=matrix_dir,
+                pilot_manifest_path=pilot_manifest_path,
+                output_path=output_path,
+            )
+
+            self.assertEqual(manifest["status"], "ready")
+            self.assertEqual(manifest["config_count"], 8)
+            self.assertEqual(
+                [record["config_id"] for record in manifest["configs"]],
+                [config_id for config_id, _, _ in PILOT_MATRIX],
+            )
+            self.assertEqual(
+                manifest["input_hashes"]["pilot_manifest_sha256"],
+                sha256_file(pilot_manifest_path),
+            )
+            for config in manifest["configs"]:
+                self.assertEqual(config["completed_count"], 40)
+                self.assertEqual(config["error_count"], 0)
+                self.assertEqual(
+                    set(config["core_metrics"]),
+                    {
+                        "recall_at_1",
+                        "recall_at_5",
+                        "recall_at_10",
+                        "hit_at_5",
+                        "mrr_at_10",
+                        "ndcg_at_10",
+                    },
+                )
+                self.assertIn("total_ms", config["latency"])
+                self.assertEqual(config["index_size_bytes"], 1024)
+                self.assertEqual(len(config["files"]), 5)
+                for filename, file_record in config["files"].items():
+                    self.assertEqual(
+                        file_record["sha256"],
+                        sha256_file(
+                            matrix_dir / config["config_id"] / filename
+                        ),
+                    )
+
+            serialized = output_path.read_text(encoding="utf-8")
+            self.assertNotIn(approved_questions()[0].question, serialized)
+            self.assertNotIn("child text 1", serialized)
+            self.assertNotIn('"hits"', serialized)
+            self.assertNotIn("PRIVATE_REVIEW_COMMENT", serialized)
+            self.assertFalse(manifest["privacy"]["contains_question_text"])
+            self.assertFalse(manifest["privacy"]["contains_hit_text"])
+            self.assertFalse(
+                manifest["privacy"]["contains_manual_comments"]
+            )
+
+    def test_freeze_pilot_runs_rejects_incomplete_or_changed_matrix(self) -> None:
+        from experiments.rag_v1_5.runner import freeze_pilot_runs
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            matrix_dir, pilot_manifest_path = self.completed_matrix(root)
+            output_path = root / "pilot-runs.json"
+            metrics_path = (
+                matrix_dir / "c0-hybrid-rerank" / "metrics.json"
+            )
+            original_metrics = metrics_path.read_bytes()
+            metrics_path.unlink()
+            with self.assertRaises(FileNotFoundError):
+                freeze_pilot_runs(
+                    run_dir=matrix_dir,
+                    pilot_manifest_path=pilot_manifest_path,
+                    output_path=output_path,
+                )
+            metrics_path.write_bytes(original_metrics)
+
+            summary_path = matrix_dir / "matrix-summary.json"
+            summary = json.loads(summary_path.read_text(encoding="utf-8"))
+            summary["configs"].append(summary["configs"][0])
+            summary_path.write_text(
+                json.dumps(summary),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "重复 config"):
+                freeze_pilot_runs(
+                    run_dir=matrix_dir,
+                    pilot_manifest_path=pilot_manifest_path,
+                    output_path=output_path,
+                )
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            matrix_dir, pilot_manifest_path = self.completed_matrix(root)
+            matrix_config_path = matrix_dir / "matrix-config.json"
+            matrix_config = json.loads(
+                matrix_config_path.read_text(encoding="utf-8")
+            )
+            matrix_config["matrix"][0]["mode"] = "bm25"
+            matrix_config_path.write_text(
+                json.dumps(matrix_config),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "固定矩阵"):
+                freeze_pilot_runs(
+                    run_dir=matrix_dir,
+                    pilot_manifest_path=pilot_manifest_path,
+                    output_path=root / "pilot-runs.json",
+                )
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            matrix_dir, pilot_manifest_path = self.completed_matrix(root)
+            run_config_path = (
+                matrix_dir / "c0-hybrid-rerank" / "run-config.json"
+            )
+            run_config = json.loads(
+                run_config_path.read_text(encoding="utf-8")
+            )
+            run_config["input_hashes"]["dataset_sha256"] = "F" * 64
+            run_config_path.write_text(
+                json.dumps(run_config),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "input hash"):
+                freeze_pilot_runs(
+                    run_dir=matrix_dir,
+                    pilot_manifest_path=pilot_manifest_path,
+                    output_path=root / "pilot-runs.json",
+                )
+            matrix_config = json.loads(
+                (matrix_dir / "matrix-config.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            run_config["input_hashes"] = matrix_config["input_hashes"]
+            run_config["config"]["bm25"]["top_k"] = 999
+            run_config_path.write_text(
+                json.dumps(run_config),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "矩阵配置"):
+                freeze_pilot_runs(
+                    run_dir=matrix_dir,
+                    pilot_manifest_path=pilot_manifest_path,
+                    output_path=root / "pilot-runs.json",
+                )
+
+    def test_freeze_pilot_runs_rejects_result_changes_after_freeze(self) -> None:
+        from experiments.rag_v1_5.runner import freeze_pilot_runs
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            matrix_dir, pilot_manifest_path = self.completed_matrix(root)
+            output_path = root / "pilot-runs.json"
+            first = freeze_pilot_runs(
+                run_dir=matrix_dir,
+                pilot_manifest_path=pilot_manifest_path,
+                output_path=output_path,
+            )
+            second = freeze_pilot_runs(
+                run_dir=matrix_dir,
+                pilot_manifest_path=pilot_manifest_path,
+                output_path=output_path,
+            )
+            self.assertEqual(first, second)
+
+            metrics_path = (
+                matrix_dir / "c0-hybrid-rerank" / "metrics.json"
+            )
+            metrics_path.write_text(
+                metrics_path.read_text(encoding="utf-8") + " ",
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "已冻结"):
+                freeze_pilot_runs(
+                    run_dir=matrix_dir,
+                    pilot_manifest_path=pilot_manifest_path,
+                    output_path=output_path,
+                )
+
 
 class RunnerCliTests(unittest.TestCase):
     def test_run_pilot_cli_contract_matches_plan(self) -> None:
@@ -505,6 +756,31 @@ class RunnerCliTests(unittest.TestCase):
             Path("data/rag_v1_5/runs/pilot"),
         )
         self.assertIsNone(args.resume)
+
+    def test_freeze_pilot_runs_cli_contract_matches_plan(self) -> None:
+        from experiments.rag_v1_5.cli import build_parser
+
+        run_dir = Path("data/rag_v1_5/runs/pilot/example")
+        args = build_parser().parse_args(
+            ["freeze-pilot-runs", "--run-dir", str(run_dir)]
+        )
+
+        self.assertEqual(args.command, "freeze-pilot-runs")
+        self.assertEqual(args.run_dir, run_dir)
+        self.assertEqual(
+            args.pilot_manifest,
+            Path(
+                "experiments/rag_v1_5/manifests/"
+                "pilot-40-v1.5.0.json"
+            ),
+        )
+        self.assertEqual(
+            args.output,
+            Path(
+                "experiments/rag_v1_5/manifests/"
+                "pilot-runs-v1.5.0.json"
+            ),
+        )
 
 
 class RuntimeInputGateTests(unittest.TestCase):

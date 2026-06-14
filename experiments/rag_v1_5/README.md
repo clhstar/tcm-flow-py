@@ -39,6 +39,44 @@ statistics.json：本次处理结果的统计报告。
 
 `data/` 已被 Git 忽略，不会提交古籍全文或完整结构化语料。
 
+## Pilot-40 检索实验
+
+Pilot 数据集、模型、索引和运行结果都保存在本地 `data/rag_v1_5`。
+仓库只提交不含题目正文、命中正文和人工评论的 Manifest 与阶段报告。
+
+真实运行前检查环境和冻结输入：
+
+```powershell
+.\.venv\Scripts\python.exe -m experiments.rag_v1_5.cli retrieval-doctor
+.\.venv\Scripts\python.exe -m experiments.rag_v1_5.cli freeze-pilot-dataset
+```
+
+执行固定 8 组矩阵：
+
+```powershell
+.\.venv\Scripts\python.exe -m experiments.rag_v1_5.cli run-pilot
+```
+
+若运行中断，使用已有矩阵目录恢复。运行器会跳过已完成 question ID，并
+拒绝输入哈希、配置或固定矩阵发生变化的目录：
+
+```powershell
+.\.venv\Scripts\python.exe -m experiments.rag_v1_5.cli run-pilot `
+  --resume data/rag_v1_5/runs/pilot/<matrix_id>
+```
+
+完成后冻结可提交摘要：
+
+```powershell
+.\.venv\Scripts\python.exe -m experiments.rag_v1_5.cli freeze-pilot-runs `
+  --run-dir data/rag_v1_5/runs/pilot/<matrix_id>
+```
+
+冻结清单位于
+`experiments/rag_v1_5/manifests/pilot-runs-v1.5.0.json`，阶段报告位于
+`docs/experiments/v1.5-retrieval-pilot-summary.md`。逐题结果仍留在本地，
+不得将 `data/rag_v1_5` 加入 Git。
+
 ## C0-C4 Chunk 实验
 
 五种策略读取同一份 `data/rag_v1_5/processed/evidence.jsonl`：

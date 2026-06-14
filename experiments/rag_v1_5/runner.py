@@ -44,6 +44,32 @@ PILOT_MATRIX = (
     ("c4-hybrid-rerank", "c4", "hybrid_rerank"),
 )
 WARMUP_QUERY = "太阳病脉证与治法"
+RUN_FILE_NAMES = (
+    "run-config.json",
+    "per-question.jsonl",
+    "metrics.json",
+    "latency.json",
+    "errors.jsonl",
+)
+CORE_METRIC_FIELDS = (
+    "recall_at_1",
+    "recall_at_5",
+    "recall_at_10",
+    "hit_at_5",
+    "mrr_at_10",
+    "ndcg_at_10",
+)
+PILOT_INPUT_HASH_FIELDS = {
+    "evidence_group": "evidence_group_sha256",
+    "review_summary": "review_summary_sha256",
+    "quality_gate": "quality_gate_sha256",
+    "smoke_manifest": "smoke_manifest_sha256",
+    "index_manifest": "index_manifest_sha256",
+    "model_manifest": "model_manifest_sha256",
+    "config": "config_sha256",
+    "evidence": "evidence_sha256",
+    "chunk_manifest": "chunk_manifest_sha256",
+}
 
 
 @dataclass
@@ -150,6 +176,13 @@ def _resolve_path(path_value: str, *, repository_root: Path) -> Path:
     if not path.is_absolute():
         path = repository_root / path
     return path.resolve()
+
+
+def _display_path(path: Path, *, repository_root: Path) -> str:
+    try:
+        return path.relative_to(repository_root).as_posix()
+    except ValueError:
+        return path.as_posix()
 
 
 def _manifest_input(
@@ -971,3 +1004,331 @@ def run_pilot_matrix(
         **matrix_summary,
         "matrix_dir": str(matrix_dir.resolve()),
     }
+
+
+def _validate_pilot_manifest_hashes(
+    *,
+    pilot_manifest: dict,
+    pilot_manifest_sha256: str,
+    input_hashes: dict,
+) -> None:
+    if pilot_manifest.get("status") != "ready":
+        raise ValueError("Pilot Manifest 必须为 ready")
+    if (
+        input_hashes.get("pilot_manifest_sha256")
+        != pilot_manifest_sha256
+    ):
+        raise ValueError("matrix input hash 与 Pilot Manifest 不一致")
+    dataset = pilot_manifest.get("dataset", {})
+    if (
+        dataset.get("question_count") != 40
+        or dataset.get("approved_count") != 40
+        or dataset.get("sha256") != input_hashes.get("dataset_sha256")
+    ):
+        raise ValueError("Pilot dataset 与 matrix input hash 不一致")
+    pilot_inputs = pilot_manifest.get("inputs", {})
+    for manifest_key, input_hash_key in PILOT_INPUT_HASH_FIELDS.items():
+        record = pilot_inputs.get(manifest_key)
+        if (
+            not isinstance(record, dict)
+            or record.get("sha256") != input_hashes.get(input_hash_key)
+        ):
+            raise ValueError(
+                f"Pilot Manifest input hash 不一致: {manifest_key}"
+            )
+
+
+def _validate_frozen_config(
+    *,
+    config_dir: Path,
+    expected: dict,
+    config: dict,
+    input_hashes: dict,
+    summary: dict,
+) -> dict:
+    config_id = expected["config_id"]
+    missing = [
+        filename
+        for filename in RUN_FILE_NAMES
+        if not (config_dir / filename).is_file()
+    ]
+    if missing:
+        raise FileNotFoundError(
+            f"{config_id} 缺少运行文件: {', '.join(missing)}"
+        )
+
+    run_config = _read_json(
+        config_dir / "run-config.json",
+        label=f"{config_id} run-config",
+    )
+    metrics = _read_json(
+        config_dir / "metrics.json",
+        label=f"{config_id} metrics",
+    )
+    latency = _read_json(
+        config_dir / "latency.json",
+        label=f"{config_id} latency",
+    )
+    records = _read_jsonl_strict(
+        config_dir / "per-question.jsonl",
+        label=f"{config_id} per-question",
+    )
+    errors = _read_jsonl_strict(
+        config_dir / "errors.jsonl",
+        label=f"{config_id} errors",
+    )
+
+    if (
+        run_config.get("config_id") != config_id
+        or run_config.get("strategy") != expected["strategy"]
+        or run_config.get("mode") != expected["mode"]
+    ):
+        raise ValueError(f"{config_id} run-config 与固定矩阵不一致")
+    if run_config.get("input_hashes") != input_hashes:
+        raise ValueError(f"{config_id} input hash 不一致")
+    if (
+        run_config.get("config") != config
+        or run_config.get("config_hash")
+        != _config_hash(
+            config=config,
+            strategy=expected["strategy"],
+            mode=expected["mode"],
+        )
+    ):
+        raise ValueError(f"{config_id} run-config 与矩阵配置不一致")
+    if (
+        run_config.get("status") != "completed"
+        or run_config.get("completed_count") != 40
+        or run_config.get("error_count") != 0
+    ):
+        raise ValueError(f"{config_id} 未达到 completed 40/40、0 error")
+    question_ids = [record.get("question_id") for record in records]
+    if (
+        len(records) != 40
+        or len(set(question_ids)) != 40
+        or any(record.get("config_id") != config_id for record in records)
+    ):
+        raise ValueError(f"{config_id} per-question 必须为 40 个唯一问题")
+    if errors:
+        raise ValueError(f"{config_id} errors.jsonl 必须为空")
+    if (
+        metrics.get("status") != "completed"
+        or metrics.get("completed_count") != 40
+        or metrics.get("error_count") != 0
+        or metrics.get("question_count") != 40
+    ):
+        raise ValueError(f"{config_id} metrics 未达到 completed 40/40、0 error")
+    if (
+        metrics.get("top5_traceability_rate") != 1.0
+        or (
+            expected["strategy"] == "c4"
+            and metrics.get("c4_parent_recovery_rate") != 1.0
+        )
+    ):
+        raise ValueError(f"{config_id} 可追溯性或 Parent recovery 未通过")
+
+    comparable_fields = (
+        *CORE_METRIC_FIELDS,
+        "status",
+        "completed_count",
+        "error_count",
+        "question_count",
+        "top5_traceability_rate",
+        "c4_parent_recovery_rate",
+        "by_book",
+        "by_question_type",
+        "no_answer_score_distribution",
+    )
+    if any(
+        summary.get(field) != metrics.get(field)
+        for field in comparable_fields
+    ):
+        raise ValueError(f"{config_id} matrix summary 与 metrics 不一致")
+    if summary.get("latency") != latency.get("summary"):
+        raise ValueError(f"{config_id} matrix summary 与 latency 不一致")
+    runtime = run_config.get("runtime", {})
+    for field in (
+        "index_size_bytes",
+        "index_load_ms",
+        "embedding_load_ms",
+        "reranker_load_ms",
+        "warmup_ms",
+    ):
+        if summary.get(field) != runtime.get(field):
+            raise ValueError(f"{config_id} matrix summary 与 runtime 不一致")
+
+    return {
+        "config_id": config_id,
+        "strategy": expected["strategy"],
+        "mode": expected["mode"],
+        "run_id": run_config.get("run_id"),
+        "status": "completed",
+        "completed_count": 40,
+        "error_count": 0,
+        "core_metrics": {
+            field: metrics[field] for field in CORE_METRIC_FIELDS
+        },
+        "by_book": metrics["by_book"],
+        "by_question_type": metrics["by_question_type"],
+        "no_answer_score_distribution": metrics[
+            "no_answer_score_distribution"
+        ],
+        "top5_traceability_rate": metrics[
+            "top5_traceability_rate"
+        ],
+        "c4_parent_recovery_rate": metrics[
+            "c4_parent_recovery_rate"
+        ],
+        "latency": latency["summary"],
+        "index_size_bytes": runtime["index_size_bytes"],
+        "runtime": {
+            field: runtime[field]
+            for field in (
+                "index_load_ms",
+                "embedding_load_ms",
+                "reranker_load_ms",
+                "warmup_ms",
+            )
+        },
+        "files": {
+            filename: {
+                "path": f"{config_id}/{filename}",
+                "sha256": _sha256_file(config_dir / filename),
+            }
+            for filename in RUN_FILE_NAMES
+        },
+    }
+
+
+def freeze_pilot_runs(
+    *,
+    run_dir: Path,
+    pilot_manifest_path: Path,
+    output_path: Path,
+) -> dict:
+    run_dir = run_dir.resolve()
+    pilot_manifest_path = pilot_manifest_path.resolve()
+    repository_root = Path.cwd().resolve()
+    if not run_dir.is_dir():
+        raise FileNotFoundError(f"Pilot run 目录不存在: {run_dir}")
+
+    pilot_manifest = _read_json(
+        pilot_manifest_path,
+        label="Pilot Manifest",
+    )
+    matrix_config_path = run_dir / "matrix-config.json"
+    matrix_summary_path = run_dir / "matrix-summary.json"
+    matrix_config = _read_json(
+        matrix_config_path,
+        label="matrix-config",
+    )
+    matrix_summary = _read_json(
+        matrix_summary_path,
+        label="matrix-summary",
+    )
+    expected_matrix = _matrix_definition()
+    if matrix_config.get("matrix") != expected_matrix:
+        raise ValueError("运行目录不是固定矩阵")
+    if (
+        matrix_config.get("matrix_id") != matrix_summary.get("matrix_id")
+        or matrix_config.get("version") != "v1.5.0"
+        or matrix_summary.get("version") != "v1.5.0"
+    ):
+        raise ValueError("matrix config 与 summary 标识不一致")
+    if (
+        matrix_config.get("status") != "completed"
+        or matrix_summary.get("status") != "completed"
+        or matrix_summary.get("config_count") != 8
+        or matrix_summary.get("completed_config_count") != 8
+        or matrix_summary.get("failed_config_count") != 0
+    ):
+        raise ValueError("Pilot 矩阵必须为 8 个 completed config")
+
+    summaries = matrix_summary.get("configs")
+    if not isinstance(summaries, list):
+        raise ValueError("matrix summary configs 必须为列表")
+    summary_ids = [summary.get("config_id") for summary in summaries]
+    if len(summary_ids) != len(set(summary_ids)):
+        raise ValueError("matrix summary 存在重复 config")
+    if summary_ids != [entry["config_id"] for entry in expected_matrix]:
+        raise ValueError("matrix summary 与固定矩阵不一致")
+
+    input_hashes = matrix_config.get("input_hashes")
+    if (
+        not isinstance(input_hashes, dict)
+        or matrix_summary.get("input_hashes") != input_hashes
+    ):
+        raise ValueError("matrix input hash 不一致")
+    pilot_manifest_sha256 = _sha256_file(pilot_manifest_path)
+    _validate_pilot_manifest_hashes(
+        pilot_manifest=pilot_manifest,
+        pilot_manifest_sha256=pilot_manifest_sha256,
+        input_hashes=input_hashes,
+    )
+
+    configs = []
+    for expected, summary in zip(expected_matrix, summaries):
+        if (
+            summary.get("strategy") != expected["strategy"]
+            or summary.get("mode") != expected["mode"]
+        ):
+            raise ValueError(
+                f"{expected['config_id']} 与固定矩阵不一致"
+            )
+        configs.append(
+            _validate_frozen_config(
+                config_dir=run_dir / expected["config_id"],
+                expected=expected,
+                config=matrix_config["config"],
+                input_hashes=input_hashes,
+                summary=summary,
+            )
+        )
+
+    manifest_core = {
+        "version": "v1.5.0",
+        "status": "ready",
+        "matrix_id": matrix_summary.get("matrix_id"),
+        "run_dir": _display_path(
+            run_dir,
+            repository_root=repository_root,
+        ),
+        "config_count": 8,
+        "completed_config_count": 8,
+        "failed_config_count": 0,
+        "input_hashes": input_hashes,
+        "matrix_files": {
+            "matrix-config.json": {
+                "path": "matrix-config.json",
+                "sha256": _sha256_file(matrix_config_path),
+            },
+            "matrix-summary.json": {
+                "path": "matrix-summary.json",
+                "sha256": _sha256_file(matrix_summary_path),
+            },
+        },
+        "configs": configs,
+        "privacy": {
+            "full_results_committed": False,
+            "contains_question_text": False,
+            "contains_hit_text": False,
+            "contains_manual_comments": False,
+        },
+    }
+    if output_path.is_file():
+        existing = _read_json(output_path, label="Pilot runs Manifest")
+        existing_core = {
+            key: value
+            for key, value in existing.items()
+            if key != "frozen_at"
+        }
+        if existing_core != manifest_core:
+            raise ValueError("Pilot runs Manifest 已冻结，拒绝覆盖变更")
+        return existing
+
+    manifest = {
+        **manifest_core,
+        "frozen_at": datetime.now(timezone.utc).isoformat(),
+    }
+    _atomic_write_json(output_path, manifest)
+    return manifest

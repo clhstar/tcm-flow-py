@@ -1,0 +1,1544 @@
+{
+  "completed_config_count": 8,
+  "config_count": 8,
+  "configs": [
+    {
+      "by_book": {
+        "jin_gui_yao_lue": {
+          "answerable_question_count": 16,
+          "hit_at_5": 0.9375,
+          "mrr_at_10": 0.859375,
+          "ndcg_at_10": 0.8012980424430883,
+          "question_count": 20,
+          "recall_at_1": 0.78125,
+          "recall_at_10": 0.9375,
+          "recall_at_5": 0.9375,
+          "unanswerable_question_count": 4
+        },
+        "shang_han_lun": {
+          "answerable_question_count": 16,
+          "hit_at_5": 0.9375,
+          "mrr_at_10": 0.8266369047619048,
+          "ndcg_at_10": 0.7717205260025011,
+          "question_count": 20,
+          "recall_at_1": 0.75,
+          "recall_at_10": 1.0,
+          "recall_at_5": 0.9375,
+          "unanswerable_question_count": 4
+        }
+      },
+      "by_question_type": {
+        "formula_composition_or_use": {
+          "answerable_question_count": 8,
+          "hit_at_5": 1.0,
+          "mrr_at_10": 0.8541666666666666,
+          "ndcg_at_10": 0.8913662191964322,
+          "question_count": 8,
+          "recall_at_1": 0.75,
+          "recall_at_10": 1.0,
+          "recall_at_5": 1.0,
+          "unanswerable_question_count": 0
+        },
+        "multi_evidence": {
+          "answerable_question_count": 8,
+          "hit_at_5": 1.0,
+          "mrr_at_10": 1.0,
+          "ndcg_at_10": 0.6514688923132995,
+          "question_count": 8,
+          "recall_at_1": 0.9375,
+          "recall_at_10": 1.0,
+          "recall_at_5": 1.0,
+          "unanswerable_question_count": 0
+        },
+        "single_clause_fact": {
+          "answerable_question_count": 8,
+          "hit_at_5": 1.0,
+          "mrr_at_10": 0.90625,
+          "ndcg_at_10": 0.9288345697591741,
+          "question_count": 8,
+          "recall_at_1": 0.875,
+          "recall_at_10": 1.0,
+          "recall_at_5": 1.0,
+          "unanswerable_question_count": 0
+        },
+        "source_location": {
+          "answerable_question_count": 8,
+          "hit_at_5": 0.75,
+          "mrr_at_10": 0.6116071428571429,
+          "ndcg_at_10": 0.674367455622273,
+          "question_count": 8,
+          "recall_at_1": 0.5,
+          "recall_at_10": 0.875,
+          "recall_at_5": 0.75,
+          "unanswerable_question_count": 0
+        },
+        "unanswerable": {
+          "answerable_question_count": 0,
+          "hit_at_5": 0.0,
+          "mrr_at_10": 0.0,
+          "ndcg_at_10": 0.0,
+          "question_count": 8,
+          "recall_at_1": 0.0,
+          "recall_at_10": 0.0,
+          "recall_at_5": 0.0,
+          "unanswerable_question_count": 8
+        }
+      },
+      "c4_parent_recovery_rate": null,
+      "completed_count": 40,
+      "config_id": "c0-hybrid-rerank",
+      "core_metrics": {
+        "hit_at_5": 0.9375,
+        "mrr_at_10": 0.8430059523809523,
+        "ndcg_at_10": 0.7865092842227948,
+        "recall_at_1": 0.765625,
+        "recall_at_10": 0.96875,
+        "recall_at_5": 0.9375
+      },
+      "error_count": 0,
+      "files": {
+        "errors.jsonl": {
+          "path": "c0-hybrid-rerank/errors.jsonl",
+          "sha256": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855"
+        },
+        "latency.json": {
+          "path": "c0-hybrid-rerank/latency.json",
+          "sha256": "85FB782770A444DF9056763148567FA41BEC59C2444366F64B95629C0B1C2E8F"
+        },
+        "metrics.json": {
+          "path": "c0-hybrid-rerank/metrics.json",
+          "sha256": "5121152A7BFDFE916DC69AEB4AFD5CD01666FDDA58D7990F521E81A445C352E7"
+        },
+        "per-question.jsonl": {
+          "path": "c0-hybrid-rerank/per-question.jsonl",
+          "sha256": "9C5A927BB22A07046804315CA8185298CBB9A458531A15E3242E0CAD82D327AB"
+        },
+        "run-config.json": {
+          "path": "c0-hybrid-rerank/run-config.json",
+          "sha256": "54C3722CDCEBB40BDAC6070C482560A23BAC6BCBA893D5FB8DD5903FEBA175A6"
+        }
+      },
+      "index_size_bytes": 1849357,
+      "latency": {
+        "bm25_ms": {
+          "count": 40,
+          "max": 7.612599991261959,
+          "mean": 2.1740449956269003,
+          "median": 1.7108999891206622,
+          "p95": 5.513700016308576
+        },
+        "dense_ms": {
+          "count": 40,
+          "max": 117.41929996060207,
+          "mean": 59.5282850030344,
+          "median": 49.86970001482405,
+          "p95": 104.15559995453805
+        },
+        "reranker_ms": {
+          "count": 40,
+          "max": 902.1669999929145,
+          "mean": 670.6837600009749,
+          "median": 652.8764499817044,
+          "p95": 859.7191000008024
+        },
+        "returned_context_chars": {
+          "count": 40,
+          "max": 2446.0,
+          "mean": 2141.375,
+          "median": 2156.0,
+          "p95": 2400.0
+        },
+        "rrf_ms": {
+          "count": 40,
+          "max": 1.6220000106841326,
+          "mean": 0.3786200060858391,
+          "median": 0.26885000988841057,
+          "p95": 1.298899995163083
+        },
+        "total_ms": {
+          "count": 40,
+          "max": 964.740899973549,
+          "mean": 732.7769875031663,
+          "median": 718.9488000003621,
+          "p95": 917.5470999907702
+        }
+      },
+      "mode": "hybrid_rerank",
+      "no_answer_score_distribution": {
+        "top1": {
+          "count": 8,
+          "max": 0.011419614645648403,
+          "median": 0.0021892122899405545,
+          "min": 0.000646203290719727
+        },
+        "top5": {
+          "count": 40,
+          "max": 0.011419614645648403,
+          "median": 0.0014269704735683938,
+          "min": 0.0003611769721424466
+        }
+      },
+      "run_id": "20260614T143151Z-c0-hybrid-rerank-27151484",
+      "runtime": {
+        "embedding_load_ms": 9527.31259999564,
+        "index_load_ms": 68.62269999692217,
+        "reranker_load_ms": 2790.060799976345,
+        "warmup_ms": 4258.553799998481
+      },
+      "status": "completed",
+      "strategy": "c0",
+      "top5_traceability_rate": 1.0
+    },
+    {
+      "by_book": {
+        "jin_gui_yao_lue": {
+          "answerable_question_count": 16,
+          "hit_at_5": 0.875,
+          "mrr_at_10": 0.8020833333333334,
+          "ndcg_at_10": 0.7431307575635012,
+          "question_count": 20,
+          "recall_at_1": 0.71875,
+          "recall_at_10": 0.875,
+          "recall_at_5": 0.875,
+          "unanswerable_question_count": 4
+        },
+        "shang_han_lun": {
+          "answerable_question_count": 16,
+          "hit_at_5": 0.9375,
+          "mrr_at_10": 0.9010416666666666,
+          "ndcg_at_10": 0.8516453327173619,
+          "question_count": 20,
+          "recall_at_1": 0.8125,
+          "recall_at_10": 0.96875,
+          "recall_at_5": 0.90625,
+          "unanswerable_question_count": 4
+        }
+      },
+      "by_question_type": {
+        "formula_composition_or_use": {
+          "answerable_question_count": 8,
+          "hit_at_5": 1.0,
+          "mrr_at_10": 1.0,
+          "ndcg_at_10": 1.0,
+          "question_count": 8,
+          "recall_at_1": 1.0,
+          "recall_at_10": 1.0,
+          "recall_at_5": 1.0,
+          "unanswerable_question_count": 0
+        },
+        "multi_evidence": {
+          "answerable_question_count": 8,
+          "hit_at_5": 1.0,
+          "mrr_at_10": 1.0,
+          "ndcg_at_10": 0.6998254932176172,
+          "question_count": 8,
+          "recall_at_1": 0.8125,
+          "recall_at_10": 0.9375,
+          "recall_at_5": 0.9375,
+          "unanswerable_question_count": 0
+        },
+        "single_clause_fact": {
+          "answerable_question_count": 8,
+          "hit_at_5": 1.0,
+          "mrr_at_10": 0.9166666666666666,
+          "ndcg_at_10": 0.9375,
+          "question_count": 8,
+          "recall_at_1": 0.875,
+          "recall_at_10": 1.0,
+          "recall_at_5": 1.0,
+          "unanswerable_question_count": 0
+        },
+        "source_location": {
+          "answerable_question_count": 8,
+          "hit_at_5": 0.625,
+          "mrr_at_10": 0.4895833333333333,
+          "ndcg_at_10": 0.5522266873441091,
+          "question_count": 8,
+          "recall_at_1": 0.375,
+          "recall_at_10": 0.75,
+          "recall_at_5": 0.625,
+          "unanswerable_question_count": 0
+        },
+        "unanswerable": {
+          "answerable_question_count": 0,
+          "hit_at_5": 0.0,
+          "mrr_at_10": 0.0,
+          "ndcg_at_10": 0.0,
+          "question_count": 8,
+          "recall_at_1": 0.0,
+          "recall_at_10": 0.0,
+          "recall_at_5": 0.0,
+          "unanswerable_question_count": 8
+        }
+      },
+      "c4_parent_recovery_rate": null,
+      "completed_count": 40,
+      "config_id": "c1-hybrid-rerank",
+      "core_metrics": {
+        "hit_at_5": 0.90625,
+        "mrr_at_10": 0.8515625,
+        "ndcg_at_10": 0.7973880451404316,
+        "recall_at_1": 0.765625,
+        "recall_at_10": 0.921875,
+        "recall_at_5": 0.890625
+      },
+      "error_count": 0,
+      "files": {
+        "errors.jsonl": {
+          "path": "c1-hybrid-rerank/errors.jsonl",
+          "sha256": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855"
+        },
+        "latency.json": {
+          "path": "c1-hybrid-rerank/latency.json",
+          "sha256": "2EE4551519F32A0963A4FC6C611DA58860909A1A4CCCEE4E4CD19F6C1DC4D5DA"
+        },
+        "metrics.json": {
+          "path": "c1-hybrid-rerank/metrics.json",
+          "sha256": "2D1D3D638194BB518E407232713E24AAFAB2C1157E42668C42390A04C4CA65F0"
+        },
+        "per-question.jsonl": {
+          "path": "c1-hybrid-rerank/per-question.jsonl",
+          "sha256": "A0DA4EF6C10E513815010D7AC25C4014FB9A786480D0397294DD32688EBACCB7"
+        },
+        "run-config.json": {
+          "path": "c1-hybrid-rerank/run-config.json",
+          "sha256": "8DD8D2A49260614C723A2167471264462432A836293BE5B0377F5CD0A75CCC2D"
+        }
+      },
+      "index_size_bytes": 2810520,
+      "latency": {
+        "bm25_ms": {
+          "count": 40,
+          "max": 11.116100009530783,
+          "mean": 2.634679999027867,
+          "median": 2.041200001258403,
+          "p95": 4.6108000096865
+        },
+        "dense_ms": {
+          "count": 40,
+          "max": 169.03060005279258,
+          "mean": 57.20103499625111,
+          "median": 47.61404998134822,
+          "p95": 79.92230000672862
+        },
+        "reranker_ms": {
+          "count": 40,
+          "max": 708.8915000203997,
+          "mean": 520.4909749998478,
+          "median": 515.3089999803342,
+          "p95": 640.9201999776997
+        },
+        "returned_context_chars": {
+          "count": 40,
+          "max": 1206.0,
+          "mean": 962.825,
+          "median": 966.5,
+          "p95": 1156.0
+        },
+        "rrf_ms": {
+          "count": 40,
+          "max": 0.5748000112362206,
+          "mean": 0.28252249758224934,
+          "median": 0.2666999935172498,
+          "p95": 0.39679999463260174
+        },
+        "total_ms": {
+          "count": 40,
+          "max": 759.0472999727353,
+          "mean": 580.6214599986561,
+          "median": 578.7976999999955,
+          "p95": 720.5677999882028
+        }
+      },
+      "mode": "hybrid_rerank",
+      "no_answer_score_distribution": {
+        "top1": {
+          "count": 8,
+          "max": 0.022032264112695956,
+          "median": 0.0033557979452932636,
+          "min": 0.0008592476587280132
+        },
+        "top5": {
+          "count": 40,
+          "max": 0.022032264112695956,
+          "median": 0.0014942355956523304,
+          "min": 0.00019260287692100857
+        }
+      },
+      "run_id": "20260614T143151Z-c1-hybrid-rerank-18F3B27D",
+      "runtime": {
+        "embedding_load_ms": 0.0,
+        "index_load_ms": 87.69439999014139,
+        "reranker_load_ms": 0.0,
+        "warmup_ms": 620.484100014437
+      },
+      "status": "completed",
+      "strategy": "c1",
+      "top5_traceability_rate": 1.0
+    },
+    {
+      "by_book": {
+        "jin_gui_yao_lue": {
+          "answerable_question_count": 16,
+          "hit_at_5": 0.9375,
+          "mrr_at_10": 0.890625,
+          "ndcg_at_10": 0.8968998342013488,
+          "question_count": 20,
+          "recall_at_1": 0.75,
+          "recall_at_10": 0.9375,
+          "recall_at_5": 0.9375,
+          "unanswerable_question_count": 4
+        },
+        "shang_han_lun": {
+          "answerable_question_count": 16,
+          "hit_at_5": 0.875,
+          "mrr_at_10": 0.7994791666666666,
+          "ndcg_at_10": 0.823682938715519,
+          "question_count": 20,
+          "recall_at_1": 0.5625,
+          "recall_at_10": 1.0,
+          "recall_at_5": 0.84375,
+          "unanswerable_question_count": 4
+        }
+      },
+      "by_question_type": {
+        "formula_composition_or_use": {
+          "answerable_question_count": 8,
+          "hit_at_5": 1.0,
+          "mrr_at_10": 0.8125,
+          "ndcg_at_10": 0.8615986575892965,
+          "question_count": 8,
+          "recall_at_1": 0.625,
+          "recall_at_10": 1.0,
+          "recall_at_5": 1.0,
+          "unanswerable_question_count": 0
+        },
+        "multi_evidence": {
+          "answerable_question_count": 8,
+          "hit_at_5": 1.0,
+          "mrr_at_10": 1.0,
+          "ndcg_at_10": 0.9417733104985462,
+          "question_count": 8,
+          "recall_at_1": 0.5,
+          "recall_at_10": 1.0,
+          "recall_at_5": 0.9375,
+          "unanswerable_question_count": 0
+        },
+        "single_clause_fact": {
+          "answerable_question_count": 8,
+          "hit_at_5": 1.0,
+          "mrr_at_10": 0.90625,
+          "ndcg_at_10": 0.9288345697591741,
+          "question_count": 8,
+          "recall_at_1": 0.875,
+          "recall_at_10": 1.0,
+          "recall_at_5": 1.0,
+          "unanswerable_question_count": 0
+        },
+        "source_location": {
+          "answerable_question_count": 8,
+          "hit_at_5": 0.625,
+          "mrr_at_10": 0.6614583333333334,
+          "ndcg_at_10": 0.7089590079867188,
+          "question_count": 8,
+          "recall_at_1": 0.625,
+          "recall_at_10": 0.875,
+          "recall_at_5": 0.625,
+          "unanswerable_question_count": 0
+        },
+        "unanswerable": {
+          "answerable_question_count": 0,
+          "hit_at_5": 0.0,
+          "mrr_at_10": 0.0,
+          "ndcg_at_10": 0.0,
+          "question_count": 8,
+          "recall_at_1": 0.0,
+          "recall_at_10": 0.0,
+          "recall_at_5": 0.0,
+          "unanswerable_question_count": 8
+        }
+      },
+      "c4_parent_recovery_rate": null,
+      "completed_count": 40,
+      "config_id": "c2-hybrid-rerank",
+      "core_metrics": {
+        "hit_at_5": 0.90625,
+        "mrr_at_10": 0.8450520833333334,
+        "ndcg_at_10": 0.860291386458434,
+        "recall_at_1": 0.65625,
+        "recall_at_10": 0.96875,
+        "recall_at_5": 0.890625
+      },
+      "error_count": 0,
+      "files": {
+        "errors.jsonl": {
+          "path": "c2-hybrid-rerank/errors.jsonl",
+          "sha256": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855"
+        },
+        "latency.json": {
+          "path": "c2-hybrid-rerank/latency.json",
+          "sha256": "3C5ADF7EB513687292309E83C1AE986CB709D1A5E1F5D0E104EB0624A51483C9"
+        },
+        "metrics.json": {
+          "path": "c2-hybrid-rerank/metrics.json",
+          "sha256": "EAAFEF292F41C815F885F8C820E1EDD273F29886247B56DEDDFE6C0D4BB994A0"
+        },
+        "per-question.jsonl": {
+          "path": "c2-hybrid-rerank/per-question.jsonl",
+          "sha256": "976039414D692D4407AA40093D4B3BE9183CAAC9C2BB5781C421C11E3B612CF8"
+        },
+        "run-config.json": {
+          "path": "c2-hybrid-rerank/run-config.json",
+          "sha256": "19127CED27754A992E4A24282F85F46DBDFC388052FA2B36D648C06675CF6D53"
+        }
+      },
+      "index_size_bytes": 5078734,
+      "latency": {
+        "bm25_ms": {
+          "count": 40,
+          "max": 14.075900020543486,
+          "mean": 4.180734998953994,
+          "median": 3.7893499829806387,
+          "p95": 7.566099986433983
+        },
+        "dense_ms": {
+          "count": 40,
+          "max": 75.49479999579489,
+          "mean": 52.36598999763373,
+          "median": 50.68354998365976,
+          "p95": 69.13620000705123
+        },
+        "reranker_ms": {
+          "count": 40,
+          "max": 778.3400000189431,
+          "mean": 547.9828450042987,
+          "median": 553.6616500176024,
+          "p95": 666.4048000238836
+        },
+        "returned_context_chars": {
+          "count": 40,
+          "max": 1191.0,
+          "mean": 437.175,
+          "median": 355.0,
+          "p95": 927.0
+        },
+        "rrf_ms": {
+          "count": 40,
+          "max": 1.5384999569505453,
+          "mean": 0.4353675030870363,
+          "median": 0.27719998615793884,
+          "p95": 1.3670000480487943
+        },
+        "total_ms": {
+          "count": 40,
+          "max": 836.7064999765716,
+          "mean": 604.9807499875897,
+          "median": 608.9260499866214,
+          "p95": 719.7042999905534
+        }
+      },
+      "mode": "hybrid_rerank",
+      "no_answer_score_distribution": {
+        "top1": {
+          "count": 8,
+          "max": 0.09041372682383807,
+          "median": 0.0062058236936244245,
+          "min": 0.0004124558901102128
+        },
+        "top5": {
+          "count": 40,
+          "max": 0.09041372682383807,
+          "median": 0.002683412890682052,
+          "min": 0.00021318756129065197
+        }
+      },
+      "run_id": "20260614T143151Z-c2-hybrid-rerank-A1B4FF9F",
+      "runtime": {
+        "embedding_load_ms": 0.0,
+        "index_load_ms": 38.27579994685948,
+        "reranker_load_ms": 0.0,
+        "warmup_ms": 567.5896999891847
+      },
+      "status": "completed",
+      "strategy": "c2",
+      "top5_traceability_rate": 1.0
+    },
+    {
+      "by_book": {
+        "jin_gui_yao_lue": {
+          "answerable_question_count": 16,
+          "hit_at_5": 0.9375,
+          "mrr_at_10": 0.796875,
+          "ndcg_at_10": 0.8276991629959971,
+          "question_count": 20,
+          "recall_at_1": 0.5625,
+          "recall_at_10": 0.9375,
+          "recall_at_5": 0.9375,
+          "unanswerable_question_count": 4
+        },
+        "shang_han_lun": {
+          "answerable_question_count": 16,
+          "hit_at_5": 0.9375,
+          "mrr_at_10": 0.8645833333333334,
+          "ndcg_at_10": 0.8704916161286059,
+          "question_count": 20,
+          "recall_at_1": 0.6875,
+          "recall_at_10": 0.9375,
+          "recall_at_5": 0.9375,
+          "unanswerable_question_count": 4
+        }
+      },
+      "by_question_type": {
+        "formula_composition_or_use": {
+          "answerable_question_count": 8,
+          "hit_at_5": 1.0,
+          "mrr_at_10": 0.8541666666666666,
+          "ndcg_at_10": 0.8913662191964322,
+          "question_count": 8,
+          "recall_at_1": 0.75,
+          "recall_at_10": 1.0,
+          "recall_at_5": 1.0,
+          "unanswerable_question_count": 0
+        },
+        "multi_evidence": {
+          "answerable_question_count": 8,
+          "hit_at_5": 1.0,
+          "mrr_at_10": 1.0,
+          "ndcg_at_10": 0.9645821117043031,
+          "question_count": 8,
+          "recall_at_1": 0.5,
+          "recall_at_10": 1.0,
+          "recall_at_5": 1.0,
+          "unanswerable_question_count": 0
+        },
+        "single_clause_fact": {
+          "answerable_question_count": 8,
+          "hit_at_5": 1.0,
+          "mrr_at_10": 0.9375,
+          "ndcg_at_10": 0.9538662191964322,
+          "question_count": 8,
+          "recall_at_1": 0.875,
+          "recall_at_10": 1.0,
+          "recall_at_5": 1.0,
+          "unanswerable_question_count": 0
+        },
+        "source_location": {
+          "answerable_question_count": 8,
+          "hit_at_5": 0.75,
+          "mrr_at_10": 0.53125,
+          "ndcg_at_10": 0.5865670081520384,
+          "question_count": 8,
+          "recall_at_1": 0.375,
+          "recall_at_10": 0.75,
+          "recall_at_5": 0.75,
+          "unanswerable_question_count": 0
+        },
+        "unanswerable": {
+          "answerable_question_count": 0,
+          "hit_at_5": 0.0,
+          "mrr_at_10": 0.0,
+          "ndcg_at_10": 0.0,
+          "question_count": 8,
+          "recall_at_1": 0.0,
+          "recall_at_10": 0.0,
+          "recall_at_5": 0.0,
+          "unanswerable_question_count": 8
+        }
+      },
+      "c4_parent_recovery_rate": null,
+      "completed_count": 40,
+      "config_id": "c3-hybrid-rerank",
+      "core_metrics": {
+        "hit_at_5": 0.9375,
+        "mrr_at_10": 0.8307291666666666,
+        "ndcg_at_10": 0.8490953895623015,
+        "recall_at_1": 0.625,
+        "recall_at_10": 0.9375,
+        "recall_at_5": 0.9375
+      },
+      "error_count": 0,
+      "files": {
+        "errors.jsonl": {
+          "path": "c3-hybrid-rerank/errors.jsonl",
+          "sha256": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855"
+        },
+        "latency.json": {
+          "path": "c3-hybrid-rerank/latency.json",
+          "sha256": "3C52C52654AB2751DD01A0BA48C4953D20DFF8811D158FEBA71740D6AD651FD8"
+        },
+        "metrics.json": {
+          "path": "c3-hybrid-rerank/metrics.json",
+          "sha256": "9BE00744A947DF54D3AB992614772BEE9D023215BCB8363774E6F2662B927491"
+        },
+        "per-question.jsonl": {
+          "path": "c3-hybrid-rerank/per-question.jsonl",
+          "sha256": "296311D46FAC67FC324E7DCFC226CFEAF81975047260FBFBDCA34F27B7FD604E"
+        },
+        "run-config.json": {
+          "path": "c3-hybrid-rerank/run-config.json",
+          "sha256": "3E4A3C0206B20CAC535D4115CBE7082620D4D312E73A4EC692615339BAAEBEEF"
+        }
+      },
+      "index_size_bytes": 12922992,
+      "latency": {
+        "bm25_ms": {
+          "count": 40,
+          "max": 25.546399992890656,
+          "mean": 9.486775001278147,
+          "median": 7.912850007414818,
+          "p95": 16.170900024008006
+        },
+        "dense_ms": {
+          "count": 40,
+          "max": 163.0507999798283,
+          "mean": 61.538892504177056,
+          "median": 52.95139999361709,
+          "p95": 117.2074000351131
+        },
+        "reranker_ms": {
+          "count": 40,
+          "max": 766.8189000105485,
+          "mean": 503.30537999543594,
+          "median": 500.24095000117086,
+          "p95": 663.6512000113726
+        },
+        "returned_context_chars": {
+          "count": 40,
+          "max": 1251.0,
+          "mean": 504.85,
+          "median": 482.0,
+          "p95": 801.0
+        },
+        "rrf_ms": {
+          "count": 40,
+          "max": 1.502899976912886,
+          "mean": 0.46586999960709363,
+          "median": 0.28169999131932855,
+          "p95": 1.368700002785772
+        },
+        "total_ms": {
+          "count": 40,
+          "max": 827.3744999896735,
+          "mean": 574.8090699926252,
+          "median": 584.7436999902129,
+          "p95": 738.6417000088841
+        }
+      },
+      "mode": "hybrid_rerank",
+      "no_answer_score_distribution": {
+        "top1": {
+          "count": 8,
+          "max": 0.29563646595480153,
+          "median": 0.1287811773715768,
+          "min": 0.0369775545351458
+        },
+        "top5": {
+          "count": 40,
+          "max": 0.29563646595480153,
+          "median": 0.0974941422650289,
+          "min": 0.03167862478274483
+        }
+      },
+      "run_id": "20260614T143151Z-c3-hybrid-rerank-C733B9E7",
+      "runtime": {
+        "embedding_load_ms": 0.0,
+        "index_load_ms": 152.17120002489537,
+        "reranker_load_ms": 0.0,
+        "warmup_ms": 581.8635000032373
+      },
+      "status": "completed",
+      "strategy": "c3",
+      "top5_traceability_rate": 1.0
+    },
+    {
+      "by_book": {
+        "jin_gui_yao_lue": {
+          "answerable_question_count": 16,
+          "hit_at_5": 0.875,
+          "mrr_at_10": 0.765625,
+          "ndcg_at_10": 0.7781675925416575,
+          "question_count": 20,
+          "recall_at_1": 0.5625,
+          "recall_at_10": 0.90625,
+          "recall_at_5": 0.84375,
+          "unanswerable_question_count": 4
+        },
+        "shang_han_lun": {
+          "answerable_question_count": 16,
+          "hit_at_5": 0.75,
+          "mrr_at_10": 0.5778521825396825,
+          "ndcg_at_10": 0.6268350753213352,
+          "question_count": 20,
+          "recall_at_1": 0.375,
+          "recall_at_10": 0.875,
+          "recall_at_5": 0.71875,
+          "unanswerable_question_count": 4
+        }
+      },
+      "by_question_type": {
+        "formula_composition_or_use": {
+          "answerable_question_count": 8,
+          "hit_at_5": 0.875,
+          "mrr_at_10": 0.6845238095238095,
+          "ndcg_at_10": 0.7618991050595311,
+          "question_count": 8,
+          "recall_at_1": 0.5,
+          "recall_at_10": 1.0,
+          "recall_at_5": 0.875,
+          "unanswerable_question_count": 0
+        },
+        "multi_evidence": {
+          "answerable_question_count": 8,
+          "hit_at_5": 0.875,
+          "mrr_at_10": 0.828125,
+          "ndcg_at_10": 0.7387604121564619,
+          "question_count": 8,
+          "recall_at_1": 0.375,
+          "recall_at_10": 0.8125,
+          "recall_at_5": 0.75,
+          "unanswerable_question_count": 0
+        },
+        "single_clause_fact": {
+          "answerable_question_count": 8,
+          "hit_at_5": 1.0,
+          "mrr_at_10": 0.90625,
+          "ndcg_at_10": 0.9288345697591741,
+          "question_count": 8,
+          "recall_at_1": 0.875,
+          "recall_at_10": 1.0,
+          "recall_at_5": 1.0,
+          "unanswerable_question_count": 0
+        },
+        "source_location": {
+          "answerable_question_count": 8,
+          "hit_at_5": 0.5,
+          "mrr_at_10": 0.26805555555555555,
+          "ndcg_at_10": 0.3805112487508181,
+          "question_count": 8,
+          "recall_at_1": 0.125,
+          "recall_at_10": 0.75,
+          "recall_at_5": 0.5,
+          "unanswerable_question_count": 0
+        },
+        "unanswerable": {
+          "answerable_question_count": 0,
+          "hit_at_5": 0.0,
+          "mrr_at_10": 0.0,
+          "ndcg_at_10": 0.0,
+          "question_count": 8,
+          "recall_at_1": 0.0,
+          "recall_at_10": 0.0,
+          "recall_at_5": 0.0,
+          "unanswerable_question_count": 8
+        }
+      },
+      "c4_parent_recovery_rate": 1.0,
+      "completed_count": 40,
+      "config_id": "c4-bm25",
+      "core_metrics": {
+        "hit_at_5": 0.8125,
+        "mrr_at_10": 0.6717385912698413,
+        "ndcg_at_10": 0.7025013339314963,
+        "recall_at_1": 0.46875,
+        "recall_at_10": 0.890625,
+        "recall_at_5": 0.78125
+      },
+      "error_count": 0,
+      "files": {
+        "errors.jsonl": {
+          "path": "c4-bm25/errors.jsonl",
+          "sha256": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855"
+        },
+        "latency.json": {
+          "path": "c4-bm25/latency.json",
+          "sha256": "6F5257A83412FEE47C061B66EA31150A906EC421452F3C7F65ECE337D095A3F5"
+        },
+        "metrics.json": {
+          "path": "c4-bm25/metrics.json",
+          "sha256": "A412582453D70A0BCB230A7AF4BE037D3A1181D1F5AF68D6C7E7A54D40A700FC"
+        },
+        "per-question.jsonl": {
+          "path": "c4-bm25/per-question.jsonl",
+          "sha256": "E09261B3A2B74FD802A494D396A263E18EBE8C00CE2FC0D0A8E7CB1B045065CD"
+        },
+        "run-config.json": {
+          "path": "c4-bm25/run-config.json",
+          "sha256": "178EEFF3CD46502EB0D6C631FCFA15C46FFE11D140E8971AAD423609AE8D851E"
+        }
+      },
+      "index_size_bytes": 13404059,
+      "latency": {
+        "bm25_ms": {
+          "count": 40,
+          "max": 15.58350003324449,
+          "mean": 8.406267501413822,
+          "median": 7.578049990115687,
+          "p95": 13.60409997869283
+        },
+        "dense_ms": {
+          "count": 40,
+          "max": 0.0,
+          "mean": 0.0,
+          "median": 0.0,
+          "p95": 0.0
+        },
+        "reranker_ms": {
+          "count": 40,
+          "max": 0.0,
+          "mean": 0.0,
+          "median": 0.0,
+          "p95": 0.0
+        },
+        "returned_context_chars": {
+          "count": 40,
+          "max": 1394.0,
+          "mean": 608.875,
+          "median": 595.5,
+          "p95": 1008.0
+        },
+        "rrf_ms": {
+          "count": 40,
+          "max": 0.0,
+          "mean": 0.0,
+          "median": 0.0,
+          "p95": 0.0
+        },
+        "total_ms": {
+          "count": 40,
+          "max": 15.600899991113693,
+          "mean": 8.413715005735867,
+          "median": 7.584949984448031,
+          "p95": 13.611200032755733
+        }
+      },
+      "mode": "bm25",
+      "no_answer_score_distribution": {
+        "top1": {
+          "count": 8,
+          "max": 17.937779012252072,
+          "median": 14.206881304460984,
+          "min": 12.905830746444753
+        },
+        "top5": {
+          "count": 40,
+          "max": 17.937779012252072,
+          "median": 13.709412193198665,
+          "min": 11.934135867716474
+        }
+      },
+      "run_id": "20260614T143151Z-c4-bm25-16875679",
+      "runtime": {
+        "embedding_load_ms": 0.0,
+        "index_load_ms": 137.96210003783926,
+        "reranker_load_ms": 0.0,
+        "warmup_ms": 4.946700006257743
+      },
+      "status": "completed",
+      "strategy": "c4",
+      "top5_traceability_rate": 1.0
+    },
+    {
+      "by_book": {
+        "jin_gui_yao_lue": {
+          "answerable_question_count": 16,
+          "hit_at_5": 0.9375,
+          "mrr_at_10": 0.7864583333333334,
+          "ndcg_at_10": 0.8145262790113877,
+          "question_count": 20,
+          "recall_at_1": 0.625,
+          "recall_at_10": 0.9375,
+          "recall_at_5": 0.875,
+          "unanswerable_question_count": 4
+        },
+        "shang_han_lun": {
+          "answerable_question_count": 16,
+          "hit_at_5": 0.9375,
+          "mrr_at_10": 0.81875,
+          "ndcg_at_10": 0.7996875799873574,
+          "question_count": 20,
+          "recall_at_1": 0.59375,
+          "recall_at_10": 0.90625,
+          "recall_at_5": 0.84375,
+          "unanswerable_question_count": 4
+        }
+      },
+      "by_question_type": {
+        "formula_composition_or_use": {
+          "answerable_question_count": 8,
+          "hit_at_5": 1.0,
+          "mrr_at_10": 0.875,
+          "ndcg_at_10": 0.9077324383928643,
+          "question_count": 8,
+          "recall_at_1": 0.75,
+          "recall_at_10": 1.0,
+          "recall_at_5": 1.0,
+          "unanswerable_question_count": 0
+        },
+        "multi_evidence": {
+          "answerable_question_count": 8,
+          "hit_at_5": 1.0,
+          "mrr_at_10": 0.7604166666666666,
+          "ndcg_at_10": 0.6729635187255935,
+          "question_count": 8,
+          "recall_at_1": 0.3125,
+          "recall_at_10": 0.8125,
+          "recall_at_5": 0.6875,
+          "unanswerable_question_count": 0
+        },
+        "single_clause_fact": {
+          "answerable_question_count": 8,
+          "hit_at_5": 1.0,
+          "mrr_at_10": 0.875,
+          "ndcg_at_10": 0.9077324383928643,
+          "question_count": 8,
+          "recall_at_1": 0.75,
+          "recall_at_10": 1.0,
+          "recall_at_5": 1.0,
+          "unanswerable_question_count": 0
+        },
+        "source_location": {
+          "answerable_question_count": 8,
+          "hit_at_5": 0.75,
+          "mrr_at_10": 0.7,
+          "ndcg_at_10": 0.7399993224861682,
+          "question_count": 8,
+          "recall_at_1": 0.625,
+          "recall_at_10": 0.875,
+          "recall_at_5": 0.75,
+          "unanswerable_question_count": 0
+        },
+        "unanswerable": {
+          "answerable_question_count": 0,
+          "hit_at_5": 0.0,
+          "mrr_at_10": 0.0,
+          "ndcg_at_10": 0.0,
+          "question_count": 8,
+          "recall_at_1": 0.0,
+          "recall_at_10": 0.0,
+          "recall_at_5": 0.0,
+          "unanswerable_question_count": 8
+        }
+      },
+      "c4_parent_recovery_rate": 1.0,
+      "completed_count": 40,
+      "config_id": "c4-dense",
+      "core_metrics": {
+        "hit_at_5": 0.9375,
+        "mrr_at_10": 0.8026041666666667,
+        "ndcg_at_10": 0.8071069294993726,
+        "recall_at_1": 0.609375,
+        "recall_at_10": 0.921875,
+        "recall_at_5": 0.859375
+      },
+      "error_count": 0,
+      "files": {
+        "errors.jsonl": {
+          "path": "c4-dense/errors.jsonl",
+          "sha256": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855"
+        },
+        "latency.json": {
+          "path": "c4-dense/latency.json",
+          "sha256": "652A0D9CD6DA3429DAA9DA3A8F19C3F768C7BA3469AB15B36E1D0B588458CBE0"
+        },
+        "metrics.json": {
+          "path": "c4-dense/metrics.json",
+          "sha256": "7B05FA6874F56568CA218CCE1DE81ADA680D9F1E35808C78D505F447477A71CF"
+        },
+        "per-question.jsonl": {
+          "path": "c4-dense/per-question.jsonl",
+          "sha256": "5DB2C47E937F45F18DF6CAFDBFC8538F6B95493D84904F26FF99C9B17A48DDA1"
+        },
+        "run-config.json": {
+          "path": "c4-dense/run-config.json",
+          "sha256": "8E64F182CC34C99FF108940FE6CE3EF23C5D299B1C15FF26B842214EE001AC44"
+        }
+      },
+      "index_size_bytes": 13404059,
+      "latency": {
+        "bm25_ms": {
+          "count": 40,
+          "max": 0.0,
+          "mean": 0.0,
+          "median": 0.0,
+          "p95": 0.0
+        },
+        "dense_ms": {
+          "count": 40,
+          "max": 132.53519998397678,
+          "mean": 62.08361249882728,
+          "median": 56.70809996081516,
+          "p95": 94.12830002838746
+        },
+        "reranker_ms": {
+          "count": 40,
+          "max": 0.0,
+          "mean": 0.0,
+          "median": 0.0,
+          "p95": 0.0
+        },
+        "returned_context_chars": {
+          "count": 40,
+          "max": 1377.0,
+          "mean": 506.125,
+          "median": 461.0,
+          "p95": 993.0
+        },
+        "rrf_ms": {
+          "count": 40,
+          "max": 0.0,
+          "mean": 0.0,
+          "median": 0.0,
+          "p95": 0.0
+        },
+        "total_ms": {
+          "count": 40,
+          "max": 132.55959999514744,
+          "mean": 62.09598000132246,
+          "median": 56.72525000409223,
+          "p95": 94.15540000190958
+        }
+      },
+      "mode": "dense",
+      "no_answer_score_distribution": {
+        "top1": {
+          "count": 8,
+          "max": 0.6002980470657349,
+          "median": 0.5583532452583313,
+          "min": 0.5449533462524414
+        },
+        "top5": {
+          "count": 40,
+          "max": 0.6002980470657349,
+          "median": 0.5514566898345947,
+          "min": 0.5327431559562683
+        }
+      },
+      "run_id": "20260614T143151Z-c4-dense-1D621C38",
+      "runtime": {
+        "embedding_load_ms": 0.0,
+        "index_load_ms": 144.27500002784654,
+        "reranker_load_ms": 0.0,
+        "warmup_ms": 43.63470000680536
+      },
+      "status": "completed",
+      "strategy": "c4",
+      "top5_traceability_rate": 1.0
+    },
+    {
+      "by_book": {
+        "jin_gui_yao_lue": {
+          "answerable_question_count": 16,
+          "hit_at_5": 0.9375,
+          "mrr_at_10": 0.78125,
+          "ndcg_at_10": 0.801893288166785,
+          "question_count": 20,
+          "recall_at_1": 0.53125,
+          "recall_at_10": 0.90625,
+          "recall_at_5": 0.90625,
+          "unanswerable_question_count": 4
+        },
+        "shang_han_lun": {
+          "answerable_question_count": 16,
+          "hit_at_5": 0.9375,
+          "mrr_at_10": 0.8526785714285714,
+          "ndcg_at_10": 0.8403461091256876,
+          "question_count": 20,
+          "recall_at_1": 0.65625,
+          "recall_at_10": 0.9375,
+          "recall_at_5": 0.875,
+          "unanswerable_question_count": 4
+        }
+      },
+      "by_question_type": {
+        "formula_composition_or_use": {
+          "answerable_question_count": 8,
+          "hit_at_5": 1.0,
+          "mrr_at_10": 0.875,
+          "ndcg_at_10": 0.9077324383928643,
+          "question_count": 8,
+          "recall_at_1": 0.75,
+          "recall_at_10": 1.0,
+          "recall_at_5": 1.0,
+          "unanswerable_question_count": 0
+        },
+        "multi_evidence": {
+          "answerable_question_count": 8,
+          "hit_at_5": 1.0,
+          "mrr_at_10": 0.875,
+          "ndcg_at_10": 0.7696148127396855,
+          "question_count": 8,
+          "recall_at_1": 0.375,
+          "recall_at_10": 0.8125,
+          "recall_at_5": 0.8125,
+          "unanswerable_question_count": 0
+        },
+        "single_clause_fact": {
+          "answerable_question_count": 8,
+          "hit_at_5": 1.0,
+          "mrr_at_10": 0.875,
+          "ndcg_at_10": 0.9077324383928643,
+          "question_count": 8,
+          "recall_at_1": 0.75,
+          "recall_at_10": 1.0,
+          "recall_at_5": 1.0,
+          "unanswerable_question_count": 0
+        },
+        "source_location": {
+          "answerable_question_count": 8,
+          "hit_at_5": 0.75,
+          "mrr_at_10": 0.6428571428571429,
+          "ndcg_at_10": 0.6993991050595311,
+          "question_count": 8,
+          "recall_at_1": 0.5,
+          "recall_at_10": 0.875,
+          "recall_at_5": 0.75,
+          "unanswerable_question_count": 0
+        },
+        "unanswerable": {
+          "answerable_question_count": 0,
+          "hit_at_5": 0.0,
+          "mrr_at_10": 0.0,
+          "ndcg_at_10": 0.0,
+          "question_count": 8,
+          "recall_at_1": 0.0,
+          "recall_at_10": 0.0,
+          "recall_at_5": 0.0,
+          "unanswerable_question_count": 8
+        }
+      },
+      "c4_parent_recovery_rate": 1.0,
+      "completed_count": 40,
+      "config_id": "c4-hybrid",
+      "core_metrics": {
+        "hit_at_5": 0.9375,
+        "mrr_at_10": 0.8169642857142857,
+        "ndcg_at_10": 0.8211196986462364,
+        "recall_at_1": 0.59375,
+        "recall_at_10": 0.921875,
+        "recall_at_5": 0.890625
+      },
+      "error_count": 0,
+      "files": {
+        "errors.jsonl": {
+          "path": "c4-hybrid/errors.jsonl",
+          "sha256": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855"
+        },
+        "latency.json": {
+          "path": "c4-hybrid/latency.json",
+          "sha256": "D601D4B9AD4DC21ECD32DCF618D16501DBF33245F6CBA0DA4E0BBD8FFECE7533"
+        },
+        "metrics.json": {
+          "path": "c4-hybrid/metrics.json",
+          "sha256": "9FDECCCC1613327472936B96FB6D4530D6F3ED5D85426724A5E22043B06EDB3B"
+        },
+        "per-question.jsonl": {
+          "path": "c4-hybrid/per-question.jsonl",
+          "sha256": "D95EF922702430224B3097066A802D5474DFC79BD11F734D199574C758467608"
+        },
+        "run-config.json": {
+          "path": "c4-hybrid/run-config.json",
+          "sha256": "BE64EE8DBB99B0793735389A72BAA3BA0503757A341BA5E8A6D52161FBF8EE12"
+        }
+      },
+      "index_size_bytes": 13404059,
+      "latency": {
+        "bm25_ms": {
+          "count": 40,
+          "max": 25.64929996151477,
+          "mean": 10.146150000218768,
+          "median": 9.097250003833324,
+          "p95": 16.84279995970428
+        },
+        "dense_ms": {
+          "count": 40,
+          "max": 221.69599996414036,
+          "mean": 62.267912495008204,
+          "median": 56.05615000240505,
+          "p95": 87.13669999269769
+        },
+        "reranker_ms": {
+          "count": 40,
+          "max": 0.0,
+          "mean": 0.0,
+          "median": 0.0,
+          "p95": 0.0
+        },
+        "returned_context_chars": {
+          "count": 40,
+          "max": 1394.0,
+          "mean": 566.6,
+          "median": 533.0,
+          "p95": 1067.0
+        },
+        "rrf_ms": {
+          "count": 40,
+          "max": 1.4815999893471599,
+          "mean": 0.4824475079658441,
+          "median": 0.2899999963119626,
+          "p95": 1.3747999910265207
+        },
+        "total_ms": {
+          "count": 40,
+          "max": 247.8963000467047,
+          "mean": 72.90885750117013,
+          "median": 66.11239997437224,
+          "p95": 97.62009995756671
+        }
+      },
+      "mode": "hybrid",
+      "no_answer_score_distribution": {
+        "top1": {
+          "count": 8,
+          "max": 0.01639344262295082,
+          "median": 0.01639344262295082,
+          "min": 0.01639344262295082
+        },
+        "top5": {
+          "count": 40,
+          "max": 0.01639344262295082,
+          "median": 0.016129032258064516,
+          "min": 0.015873015873015872
+        }
+      },
+      "run_id": "20260614T143151Z-c4-hybrid-E490D088",
+      "runtime": {
+        "embedding_load_ms": 0.0,
+        "index_load_ms": 138.20679998025298,
+        "reranker_load_ms": 0.0,
+        "warmup_ms": 49.18169998563826
+      },
+      "status": "completed",
+      "strategy": "c4",
+      "top5_traceability_rate": 1.0
+    },
+    {
+      "by_book": {
+        "jin_gui_yao_lue": {
+          "answerable_question_count": 16,
+          "hit_at_5": 0.9375,
+          "mrr_at_10": 0.796875,
+          "ndcg_at_10": 0.8276991629959971,
+          "question_count": 20,
+          "recall_at_1": 0.5625,
+          "recall_at_10": 0.9375,
+          "recall_at_5": 0.9375,
+          "unanswerable_question_count": 4
+        },
+        "shang_han_lun": {
+          "answerable_question_count": 16,
+          "hit_at_5": 0.9375,
+          "mrr_at_10": 0.8645833333333334,
+          "ndcg_at_10": 0.8704916161286059,
+          "question_count": 20,
+          "recall_at_1": 0.6875,
+          "recall_at_10": 0.9375,
+          "recall_at_5": 0.9375,
+          "unanswerable_question_count": 4
+        }
+      },
+      "by_question_type": {
+        "formula_composition_or_use": {
+          "answerable_question_count": 8,
+          "hit_at_5": 1.0,
+          "mrr_at_10": 0.8541666666666666,
+          "ndcg_at_10": 0.8913662191964322,
+          "question_count": 8,
+          "recall_at_1": 0.75,
+          "recall_at_10": 1.0,
+          "recall_at_5": 1.0,
+          "unanswerable_question_count": 0
+        },
+        "multi_evidence": {
+          "answerable_question_count": 8,
+          "hit_at_5": 1.0,
+          "mrr_at_10": 1.0,
+          "ndcg_at_10": 0.9645821117043031,
+          "question_count": 8,
+          "recall_at_1": 0.5,
+          "recall_at_10": 1.0,
+          "recall_at_5": 1.0,
+          "unanswerable_question_count": 0
+        },
+        "single_clause_fact": {
+          "answerable_question_count": 8,
+          "hit_at_5": 1.0,
+          "mrr_at_10": 0.9375,
+          "ndcg_at_10": 0.9538662191964322,
+          "question_count": 8,
+          "recall_at_1": 0.875,
+          "recall_at_10": 1.0,
+          "recall_at_5": 1.0,
+          "unanswerable_question_count": 0
+        },
+        "source_location": {
+          "answerable_question_count": 8,
+          "hit_at_5": 0.75,
+          "mrr_at_10": 0.53125,
+          "ndcg_at_10": 0.5865670081520384,
+          "question_count": 8,
+          "recall_at_1": 0.375,
+          "recall_at_10": 0.75,
+          "recall_at_5": 0.75,
+          "unanswerable_question_count": 0
+        },
+        "unanswerable": {
+          "answerable_question_count": 0,
+          "hit_at_5": 0.0,
+          "mrr_at_10": 0.0,
+          "ndcg_at_10": 0.0,
+          "question_count": 8,
+          "recall_at_1": 0.0,
+          "recall_at_10": 0.0,
+          "recall_at_5": 0.0,
+          "unanswerable_question_count": 8
+        }
+      },
+      "c4_parent_recovery_rate": 1.0,
+      "completed_count": 40,
+      "config_id": "c4-hybrid-rerank",
+      "core_metrics": {
+        "hit_at_5": 0.9375,
+        "mrr_at_10": 0.8307291666666666,
+        "ndcg_at_10": 0.8490953895623015,
+        "recall_at_1": 0.625,
+        "recall_at_10": 0.9375,
+        "recall_at_5": 0.9375
+      },
+      "error_count": 0,
+      "files": {
+        "errors.jsonl": {
+          "path": "c4-hybrid-rerank/errors.jsonl",
+          "sha256": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855"
+        },
+        "latency.json": {
+          "path": "c4-hybrid-rerank/latency.json",
+          "sha256": "A28A48C6C54A9E059F5C0D04670A79E08E4554247EF7F1D1DDB21BC3180DCA7F"
+        },
+        "metrics.json": {
+          "path": "c4-hybrid-rerank/metrics.json",
+          "sha256": "38098BD8E4A3F0AE90B9BC1F1C715489CD721B82EB33918B6331EF2A5D8DA085"
+        },
+        "per-question.jsonl": {
+          "path": "c4-hybrid-rerank/per-question.jsonl",
+          "sha256": "5447FCEF7247BAF4889A6E1758ABBFA2DF4E6B9504B0AA2127516CBF00ED6F23"
+        },
+        "run-config.json": {
+          "path": "c4-hybrid-rerank/run-config.json",
+          "sha256": "0EC5872DAFB4182B96F74C15988CEDD777B2BD440B7977018DBFBA75F9563182"
+        }
+      },
+      "index_size_bytes": 13404059,
+      "latency": {
+        "bm25_ms": {
+          "count": 40,
+          "max": 53.828799980692565,
+          "mean": 11.9069974985905,
+          "median": 8.945499983383343,
+          "p95": 26.73880005022511
+        },
+        "dense_ms": {
+          "count": 40,
+          "max": 142.04289996996522,
+          "mean": 59.560510008304846,
+          "median": 56.629000027896836,
+          "p95": 83.69040000252426
+        },
+        "reranker_ms": {
+          "count": 40,
+          "max": 712.0014000101946,
+          "mean": 506.37282749667065,
+          "median": 512.2008999751415,
+          "p95": 631.1787000158802
+        },
+        "returned_context_chars": {
+          "count": 40,
+          "max": 1689.0,
+          "mean": 531.25,
+          "median": 473.0,
+          "p95": 1018.0
+        },
+        "rrf_ms": {
+          "count": 40,
+          "max": 1.3839000021107495,
+          "mean": 0.44928249990334734,
+          "median": 0.27749998844228685,
+          "p95": 1.2819000403396785
+        },
+        "total_ms": {
+          "count": 40,
+          "max": 805.2191000315361,
+          "mean": 578.301615001692,
+          "median": 578.3382999943569,
+          "p95": 723.3593999990262
+        }
+      },
+      "mode": "hybrid_rerank",
+      "no_answer_score_distribution": {
+        "top1": {
+          "count": 8,
+          "max": 0.29563646595480153,
+          "median": 0.1287811773715768,
+          "min": 0.0369775545351458
+        },
+        "top5": {
+          "count": 40,
+          "max": 0.29563646595480153,
+          "median": 0.0974941422650289,
+          "min": 0.03167862478274483
+        }
+      },
+      "run_id": "20260614T143151Z-c4-hybrid-rerank-8B824D01",
+      "runtime": {
+        "embedding_load_ms": 0.0,
+        "index_load_ms": 157.1813999908045,
+        "reranker_load_ms": 0.0,
+        "warmup_ms": 631.4770000171848
+      },
+      "status": "completed",
+      "strategy": "c4",
+      "top5_traceability_rate": 1.0
+    }
+  ],
+  "failed_config_count": 0,
+  "frozen_at": "2026-06-14T14:43:27.820386+00:00",
+  "input_hashes": {
+    "chunk_manifest_sha256": "7A7EC85D3E2782F7B0BA4D173F5F6AF6C23D89E8DA9E034CCC0C3F90AAC7418E",
+    "config_sha256": "29A47B7F4AC3D7CA305EBFFC6542FA43DE14F75937C0A235C71688ABA7DB7966",
+    "dataset_sha256": "EF87DF80B5D01250A5374A4EB1442195914DAB6C67EE7F5D95A8337F585C4F94",
+    "evidence_group_sha256": "4FBD984DBA9A0B98CEBA17F75735F4E490ACE9C81D1A71BDC569C2C96B88EC27",
+    "evidence_sha256": "9DBD2ED476F4AD7B89D628CACF6A2F963987C77276F8CFFC8E8FE1BE29F7FF4B",
+    "index_manifest_sha256": "997F99DAF226AC6D87476759B7075ACC29034886E71CFFA2F0579F551C7D537E",
+    "model_manifest_sha256": "5523130CBAB3DC8829644E41F747B0856A64809C211A9B2665527033E3E7CDCB",
+    "pilot_manifest_sha256": "1A8A783DB2BE32A4048D06DE670A03A7C954502B37542CD2AEC0D4548FF88F90",
+    "quality_gate_sha256": "D3F049B9E5856343ADE07FE054E95EABB1EDDA65EEA9737E09D89F91AF08136B",
+    "review_summary_sha256": "0B0547507D1C442563EC9F95461F9B8B8A074C416CE6BD32F0ABB236A4875E05",
+    "smoke_manifest_sha256": "20EC4D5909F10C09FFDC2E9D740C1C15D6FCE255918CC2EE542C2CA07B41CC81",
+    "strategy_manifest_sha256": {
+      "c0": "0CE2E8F20D79FD545DE8A1F57D8CCDD3DE93303B32E859D4157D604BDE068E03",
+      "c1": "0C28CD1D13BCAD173A1B46172B901B8B11D69797227D77654083FA63572AC695",
+      "c2": "1B4B041E8EF1FAB1EF0B7C1EE764EF7D92230FE17B29B4652BBF9564B02E9E8F",
+      "c3": "88D65FDC9ADAD5211EDB520721025F4E0D1BB93B40D682F295F4FF786A67E7BA",
+      "c4": "4DCDFA351122955ECBC6ADD7E886CB9090D1554398E3E069C5FA6252431B49E3"
+    }
+  },
+  "matrix_files": {
+    "matrix-config.json": {
+      "path": "matrix-config.json",
+      "sha256": "CE7AEE7517C308C6C31839175527BC56AE42F05A5016C36E71FF7E66C86F2D34"
+    },
+    "matrix-summary.json": {
+      "path": "matrix-summary.json",
+      "sha256": "1C01FE4436D16C6F8C8AB3BDADBD9DACA45FB602F625333885E91A6484682238"
+    }
+  },
+  "matrix_id": "pilot-20260614T143151Z-EF87DF80-29A47B7F",
+  "privacy": {
+    "contains_hit_text": false,
+    "contains_manual_comments": false,
+    "contains_question_text": false,
+    "full_results_committed": false
+  },
+  "run_dir": "data/rag_v1_5/runs/pilot/pilot-20260614T143151Z-EF87DF80-29A47B7F",
+  "status": "ready",
+  "version": "v1.5.0"
+}

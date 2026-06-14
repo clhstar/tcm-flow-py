@@ -912,3 +912,107 @@ rejected_count=0
 
 相同输入重复冻结返回原有 ready Manifest；任何核心输入哈希变化都会拒绝
 覆盖。Task 5 完成后可以进入分阶段计时检索入口和 8 组矩阵运行器实现。
+
+## 2026-06-14：Pilot-40 固定矩阵真实运行与结果冻结
+
+### 运行环境与范围
+
+真实矩阵于北京时间 `2026-06-14 22:31:51` 开始，约 `161.6` 秒后完成：
+
+```text
+matrix_id=pilot-20260614T143151Z-EF87DF80-29A47B7F
+config_count=8
+completed_config_count=8
+failed_config_count=0
+question_runs=320
+runtime_errors=0
+resume_triggered=false
+```
+
+运行环境：
+
+```text
+Python=3.10.6
+torch=2.7.0+cu128
+CUDA=true
+GPU=NVIDIA GeForce RTX 2070
+GPU memory=8192 MiB
+FlagEmbedding=1.4.0
+transformers=4.57.6
+```
+
+模型在 C0 首次加载后被后续配置复用。C0 记录 Embedding 加载
+`9527.31 ms`、Reranker 加载 `2790.06 ms`；因此各配置的稳态查询时延可
+比较，但冷启动加载列不能当作每组独立成本比较。
+
+### 核心指标与总时延
+
+| Config | R@1 | R@5 | R@10 | Hit@5 | MRR@10 | nDCG@10 | P95 ms |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| C0 Hybrid+Reranker | 0.7656 | 0.9375 | 0.9688 | 0.9375 | 0.8430 | 0.7865 | 917.55 |
+| C1 Hybrid+Reranker | 0.7656 | 0.8906 | 0.9219 | 0.9062 | 0.8516 | 0.7974 | 720.57 |
+| C2 Hybrid+Reranker | 0.6562 | 0.8906 | 0.9688 | 0.9062 | 0.8451 | 0.8603 | 719.70 |
+| C3 Hybrid+Reranker | 0.6250 | 0.9375 | 0.9375 | 0.9375 | 0.8307 | 0.8491 | 738.64 |
+| C4 BM25 | 0.4688 | 0.7812 | 0.8906 | 0.8125 | 0.6717 | 0.7025 | 13.61 |
+| C4 Dense | 0.6094 | 0.8594 | 0.9219 | 0.9375 | 0.8026 | 0.8071 | 94.16 |
+| C4 Hybrid | 0.5938 | 0.8906 | 0.9219 | 0.9375 | 0.8170 | 0.8211 | 97.62 |
+| C4 Hybrid+Reranker | 0.6250 | 0.9375 | 0.9375 | 0.9375 | 0.8307 | 0.8491 | 723.36 |
+
+观察到 C0/C2 的 Recall@10 最高，C2 的 nDCG@10 最高；样本只有 32 道
+可回答题，不做优越性或显著性结论。`source_location` 在全部配置中持续
+弱于方剂、单条事实和多数多证据问题。C4 Dense/Hybrid 的 Hit@5 均为
+`0.9375`，P95 约 `94-98 ms`；C4 Reranker 将 Recall@5 从 `0.8906`
+提高到 `0.9375`，同时将 P95 提高到 `723.36 ms`。
+
+8 组 `top5_traceability_rate=1.0`；四组 C4
+`c4_parent_recovery_rate=1.0`。逐配置人工抽查至少包含 2 道可回答题和
+1 道无答案题，另抽查 C4 Hybrid+Reranker 前 5 题及 2 道多证据题，未
+发现系统性 gold/support/parser 错误。两道 C4 Hybrid+Reranker
+Top-10 未命中的来源定位题为：
+
+```text
+pilot-jin_gui_yao_lue-source_location-02
+pilot-shang_han_lun-source_location-03
+```
+
+### 运行结果冻结
+
+执行：
+
+```powershell
+.\.venv\Scripts\python.exe -m experiments.rag_v1_5.cli freeze-pilot-runs `
+  --run-dir data/rag_v1_5/runs/pilot/pilot-20260614T143151Z-EF87DF80-29A47B7F
+```
+
+得到不含问题正文、hits 原文和人工评论的结果清单：
+
+```text
+matrix-summary.json SHA256=
+1C01FE4436D16C6F8C8AB3BDADBD9DACA45FB602F625333885E91A6484682238
+
+pilot-runs-v1.5.0.json SHA256=
+1CB8DDD0818B0F2B0D98AC5E0D2C0420E1CE8E82589F55CDCF8AE6545AD2994C
+```
+
+随后用独立 PowerShell `Get-FileHash` 对清单中的 42 个本地文件再次计算
+SHA256，结果 `checked_files=42`、`mismatch_count=0`。
+
+本轮真实运行没有发生中断或 runtime error，因此未实际触发 resume；
+resume 的跳过、损坏检测和输入哈希拒绝由自动化测试覆盖。
+
+### Readiness
+
+Quality Gate、Smoke、Pilot dataset、40 条审核、10 条二审、8 组矩阵、
+零运行错误、Top-5 可追溯和 C4 Parent recovery 均通过。正式 400 题数据
+集尚未构建，因此尚无 Pilot ID 复用；`pilot-exclusions.json` 已冻结
+Pilot/Smoke 的 clause 和 Evidence 排除集合。
+
+阶段决定：
+
+```text
+ready_for_formal_400=true
+```
+
+该状态只允许进入正式数据集构建和预注册比较，不表示 Pilot 已证明某一
+检索策略最终优越。完整报告见
+`docs/experiments/v1.5-retrieval-pilot-summary.md`。
