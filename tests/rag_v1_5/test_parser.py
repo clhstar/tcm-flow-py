@@ -425,6 +425,101 @@ class AncientBookParserTests(unittest.TestCase):
         self.assertEqual(len(grouped.get("preparation", [])), 2)
         self.assertNotIn("小承气汤", formulas[0].original_text)
 
+    def test_formula_count_restores_prefixed_formula_name(self):
+        clause_text = (
+            "太阳病，外证未解，脉浮弱者，当以汗解，"
+            "宜桂枝汤。方十二。\n"
+            "桂枝（去皮） 芍药 生姜（切，各三两）\n"
+            "上三味，以水七升，煮取三升。"
+        )
+
+        grouped = units_by_type(
+            parse_single_clause(clause_text, book_id="shang_han_lun")
+        )
+
+        self.assertEqual(
+            [
+                formula.normalized_text.splitlines()[0]
+                for formula in grouped.get("formula", [])
+            ],
+            ["桂枝汤"],
+        )
+        self.assertEqual(len(grouped.get("ingredients", [])), 1)
+        self.assertEqual(len(grouped.get("preparation", [])), 1)
+
+    def test_formula_count_normalizes_short_prefixed_reference(self):
+        grouped = units_by_type(
+            parse_single_clause(
+                "宜桂枝汤。方十九。（用前第十二方。）",
+                book_id="shang_han_lun",
+            )
+        )
+
+        self.assertEqual(
+            [
+                formula.normalized_text.splitlines()[0]
+                for formula in grouped.get("formula", [])
+            ],
+            ["桂枝汤"],
+        )
+
+    def test_formula_count_reference_without_body_does_not_create_formula(self):
+        clause_text = (
+            "血弱、气尽，邪气因入，小柴胡汤主之。"
+            "服柴胡汤已，渴者属阳明，以法治之。"
+            "方四十九。（用前方。）"
+        )
+
+        grouped = units_by_type(
+            parse_single_clause(clause_text, book_id="shang_han_lun")
+        )
+
+        self.assertEqual(grouped.get("formula", []), [])
+
+    def test_formula_count_before_noted_heading_is_metadata_only(self):
+        clause_text = (
+            "伤寒，先与小建中汤；不瘥者，小柴胡汤主之。"
+            "方五十一。（用前方。）\n"
+            "小建中汤方。\n"
+            "桂枝（三两） 甘草（二两） 芍药（六两）\n"
+            "上三味，以水七升，煮取三升。"
+        )
+
+        grouped = units_by_type(
+            parse_single_clause(clause_text, book_id="shang_han_lun")
+        )
+
+        self.assertEqual(
+            [
+                formula.normalized_text.splitlines()[0]
+                for formula in grouped.get("formula", [])
+            ],
+            ["小建中汤方"],
+        )
+        self.assertEqual(len(grouped.get("ingredients", [])), 1)
+        self.assertEqual(len(grouped.get("preparation", [])), 1)
+
+    def test_reference_heading_does_not_consume_next_formula_body(self):
+        clause_text = (
+            "里水，越婢加术汤主之，甘草麻黄汤亦主之。\n"
+            "越婢加术汤方（见上。）\n"
+            "\\x甘草麻黄汤方\\x\n"
+            "甘草（二两） 麻黄（四两）\n"
+            "上二味，以水五升，先煮麻黄。"
+        )
+
+        grouped = units_by_type(parse_single_clause(clause_text))
+
+        self.assertEqual(
+            [
+                formula.normalized_text.splitlines()[0]
+                for formula in grouped.get("formula", [])
+            ],
+            ["甘草麻黄汤方"],
+        )
+        self.assertEqual(len(grouped.get("ingredients", [])), 1)
+        self.assertEqual(len(grouped.get("preparation", [])), 1)
+
     def test_recognizes_additional_preparation_starts(self):
         cases = (
             (

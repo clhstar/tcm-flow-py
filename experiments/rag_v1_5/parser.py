@@ -204,6 +204,7 @@ def _implicit_formula_name_span(
 def _formula_count_name(
     clause_text: str,
     marker_start: int,
+    body_start: int,
 ) -> tuple[str, int | None] | None:
     prefix = clause_text[:marker_start].rstrip()
     without_punctuation = prefix.rstrip("。．")
@@ -213,8 +214,33 @@ def _formula_count_name(
     )
     fragment = without_punctuation[fragment_start:].strip()
     if FORMULA_NAME_PATTERN.fullmatch(fragment):
-        name_start = without_punctuation.rfind(fragment)
-        return fragment, name_start
+        formula_name = re.sub(
+            r"^(?:则|宜|与|服|用|可)+",
+            "",
+            fragment,
+        )
+        name_start = without_punctuation.rfind(formula_name)
+        return formula_name, name_start
+
+    candidate = prefix[-100:].rstrip(" \t\r\n。．；;：:")
+    if candidate.endswith("主之"):
+        candidate = candidate[:-2].rstrip(" \t\r\n。．；;：:")
+    candidate = re.split(
+        r"[，,。．；;：:\r\n]",
+        candidate,
+    )[-1].strip()
+    match = FORMULA_NAME_PATTERN.search(candidate)
+    if match is not None:
+        formula_name = re.sub(
+            r"^(?:则|宜|与|服|用|可)+",
+            "",
+            match.group(0),
+        )
+        if formula_name:
+            return formula_name, None
+
+    if PREPARATION_PATTERN.search(clause_text[body_start:]) is None:
+        return None
 
     references = list(FORMULA_TREATMENT_REFERENCE_PATTERN.finditer(prefix))
     if references:
@@ -227,10 +253,23 @@ def _formula_count_followed_by_heading(
     body_start: int,
 ) -> bool:
     remaining = clause_text[body_start:].lstrip()
+    while True:
+        note_match = re.match(
+            r"(?:（[^（）]*）|\([^()]*\))[ \t\r\n]*",
+            remaining,
+        )
+        if note_match is None:
+            break
+        remaining = remaining[note_match.end():]
+
+    formula_heading = (
+        rf"[\u4e00-\u9fff]{{2,30}}"
+        rf"{FORMULA_SUFFIX_PATTERN}方"
+    )
     return (
         re.match(
-            rf"[\u4e00-\u9fff]{{2,20}}"
-            rf"{FORMULA_SUFFIX_PATTERN}方[∶：]",
+            rf"{formula_heading}"
+            rf"(?:[∶：]|[。．]?(?=[ \t]*(?:\r?\n|$)))",
             remaining,
         )
         is not None
@@ -258,7 +297,24 @@ def _collect_formula_heading_markers(
         if _is_inside_marker(boundary_start, explicit_matches):
             continue
 
-        remaining = clause_text[line_match.end():]
+        following_boundaries = [
+            marker.start()
+            for marker in explicit_matches
+            if marker.start() >= line_match.end()
+        ]
+        following_boundaries.extend(
+            marker.start()
+            for pattern in (
+                FORMULA_COUNT_PATTERN,
+                FORMULA_COLON_PATTERN,
+            )
+            for marker in pattern.finditer(
+                clause_text,
+                line_match.end(),
+            )
+        )
+        remaining_end = min(following_boundaries, default=len(clause_text))
+        remaining = clause_text[line_match.end():remaining_end]
         if (
             PREPARATION_PATTERN.search(remaining) is None
             and "方未见" not in remaining
@@ -335,7 +391,11 @@ def _collect_formula_markers(clause_text: str) -> list[_FormulaMarker]:
             )
             continue
 
-        count_name = _formula_count_name(clause_text, match.start())
+        count_name = _formula_count_name(
+            clause_text,
+            match.start(),
+            match.end(),
+        )
         if count_name is None:
             continue
         formula_name, name_start = count_name
