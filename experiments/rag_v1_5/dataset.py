@@ -1,8 +1,10 @@
 import csv
 import hashlib
 import json
+import re
 import statistics
 import time
+from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Literal
@@ -10,13 +12,23 @@ from typing import Callable, Literal
 from experiments.rag_v1_5.metrics import evaluate_rankings
 from experiments.rag_v1_5.schema import (
     EvidenceUnit,
+    PilotEvidenceGroup,
     PilotQuestion,
     RetrievalHit,
 )
 
 
-DatasetProfile = Literal["auto", "smoke", "generic"]
+DatasetProfile = Literal["auto", "smoke", "pilot", "generic"]
 SmokeRetriever = Callable[[PilotQuestion], list[RetrievalHit]]
+PILOT_BOOKS = ("shang_han_lun", "jin_gui_yao_lue")
+PILOT_QUESTION_TYPES = (
+    "single_clause_fact",
+    "formula_composition_or_use",
+    "source_location",
+    "multi_evidence",
+    "unanswerable",
+)
+PILOT_PER_CELL = 4
 SMOKE_REVIEW_FIELDS = (
     "question_id",
     "gold_clause_ids",
@@ -83,7 +95,185 @@ def _resolve_profile(
         return profile
     if dataset_path.stem.startswith("smoke-10"):
         return "smoke"
+    if dataset_path.stem.startswith("pilot-40"):
+        return "pilot"
     return "generic"
+
+
+def _normalize_question_text(value: str) -> str:
+    return re.sub(r"\s+", " ", value.strip()).replace("？", "?")
+
+
+def _load_pilot_evidence_groups(
+    evidence_groups_path: Path,
+) -> dict[str, PilotEvidenceGroup]:
+    groups = _read_jsonl(evidence_groups_path, PilotEvidenceGroup)
+    groups_by_id = {group.group_id: group for group in groups}
+    if len(groups_by_id) != len(groups):
+        raise ValueError("Pilot Evidence Group 存在重复 group_id")
+    return groups_by_id
+
+
+def _validate_pilot_profile(
+    *,
+    questions: list[PilotQuestion],
+    evidence_by_id: dict[str, EvidenceUnit],
+    evidence_groups_path: Path | None,
+) -> dict:
+    if evidence_groups_path is None:
+        raise ValueError("Pilot profile 必须显式提供 Evidence Group 文件")
+    groups_by_id = _load_pilot_evidence_groups(evidence_groups_path)
+    clause_books: dict[str, set[str]] = {}
+    for evidence in evidence_by_id.values():
+        clause_books.setdefault(evidence.clause_id, set()).add(
+            evidence.book_id
+        )
+
+    normalized_questions = [
+        _normalize_question_text(question.question)
+        for question in questions
+    ]
+    duplicate_question_count = (
+        len(normalized_questions) - len(set(normalized_questions))
+    )
+    if duplicate_question_count:
+        raise ValueError("Pilot 问题文本归一化后存在重复")
+
+    quota = {
+        book: {question_type: 0 for question_type in PILOT_QUESTION_TYPES}
+        for book in PILOT_BOOKS
+    }
+    group_references = []
+    for question in questions:
+        required_fields = {
+            "split",
+            "evidence_group_id",
+            "question_version",
+        }
+        missing_fields = required_fields - question.model_fields_set
+        if missing_fields:
+            raise ValueError(
+                f"{question.question_id} 缺少 Pilot 元数据: "
+                f"{sorted(missing_fields)}"
+            )
+        if question.split != "pilot":
+            raise ValueError(f"{question.question_id} split 必须为 pilot")
+        if question.book_scope == "both":
+            raise ValueError(
+                f"{question.question_id} Pilot book_scope 禁止 both"
+            )
+        if question.evidence_group_id is None:
+            raise ValueError(
+                f"{question.question_id} 缺少 evidence_group_id"
+            )
+        if question.book_scope not in quota:
+            raise ValueError(
+                f"{question.question_id} Pilot book_scope 非法"
+            )
+        quota[question.book_scope][question.question_type] += 1
+        group_references.append(question.evidence_group_id)
+
+        group = groups_by_id.get(question.evidence_group_id)
+        if group is None:
+            raise ValueError(
+                f"{question.question_id} 找不到 Evidence Group: "
+                f"{question.evidence_group_id}"
+            )
+        if (
+            group.book_scope != question.book_scope
+            or group.question_type != question.question_type
+        ):
+            raise ValueError(
+                f"{question.question_id} 与 Evidence Group "
+                "书籍或问题类型不一致"
+            )
+
+        relevance_ids = set(question.graded_relevance)
+        allowed_relevance_ids = set(
+            question.gold_evidence_ids + question.gold_clause_ids
+        )
+        if not relevance_ids <= allowed_relevance_ids:
+            raise ValueError(
+                f"{question.question_id} graded_relevance "
+                "包含非 gold ID"
+            )
+
+        if question.answerable:
+            if not set(question.gold_evidence_ids) <= set(
+                group.anchor_evidence_ids
+            ):
+                raise ValueError(
+                    f"{question.question_id} gold Evidence "
+                    "不属于 Evidence Group anchor"
+                )
+            if not set(question.gold_clause_ids) <= set(
+                group.anchor_clause_ids
+            ):
+                raise ValueError(
+                    f"{question.question_id} gold clause "
+                    "不属于 Evidence Group anchor"
+                )
+        elif len(group.absence_queries) < 2:
+            raise ValueError(
+                f"{question.question_id} 无答案组至少需要 2 条 "
+                "absence_queries"
+            )
+
+        if question.question_type == "multi_evidence":
+            if len(set(question.gold_clause_ids)) < 2:
+                raise ValueError(
+                    f"{question.question_id} multi_evidence "
+                    "至少需要 2 个 gold clause"
+                )
+            gold_clause_books = set()
+            for clause_id in question.gold_clause_ids:
+                gold_clause_books.update(clause_books.get(clause_id, set()))
+            if gold_clause_books != {question.book_scope}:
+                raise ValueError(
+                    f"{question.question_id} multi_evidence "
+                    "gold clause 必须来自同一本书"
+                )
+
+    duplicate_group_references = [
+        group_id
+        for group_id, count in Counter(group_references).items()
+        if count > 1
+    ]
+    if duplicate_group_references:
+        raise ValueError(
+            "Pilot 问题重复引用 Evidence Group: "
+            f"{duplicate_group_references}"
+        )
+    if set(group_references) != set(groups_by_id):
+        raise ValueError("Pilot 问题与 Evidence Group 必须一一对应")
+
+    invalid_quota = {
+        f"{book}/{question_type}": count
+        for book, type_counts in quota.items()
+        for question_type, count in type_counts.items()
+        if count != PILOT_PER_CELL
+    }
+    if invalid_quota:
+        raise ValueError(f"Pilot 书籍 × 类型配额错误: {invalid_quota}")
+
+    answerable_count = sum(question.answerable for question in questions)
+    unanswerable_count = len(questions) - answerable_count
+    if (
+        len(questions) != 40
+        or answerable_count != 32
+        or unanswerable_count != 8
+    ):
+        raise ValueError("Pilot 数据集必须为 40/32/8 固定分布")
+
+    return {
+        "quota_by_book_and_type": quota,
+        "duplicate_question_count": duplicate_question_count,
+        "multi_evidence_count": sum(
+            question.question_type == "multi_evidence"
+            for question in questions
+        ),
+        "evidence_group_sha256": _sha256_file(evidence_groups_path),
+    }
 
 
 def validate_dataset(
@@ -91,6 +281,7 @@ def validate_dataset(
     dataset_path: Path,
     evidence_path: Path,
     profile: DatasetProfile = "auto",
+    evidence_groups_path: Path | None = None,
 ) -> dict:
     questions = load_dataset(dataset_path)
     evidence_by_id = _load_evidence(evidence_path)
@@ -105,6 +296,13 @@ def validate_dataset(
             raise ValueError(
                 "Smoke 数据集必须包含 9 条可回答问题和 1 条无答案问题"
             )
+    pilot_summary = {}
+    if resolved_profile == "pilot":
+        pilot_summary = _validate_pilot_profile(
+            questions=questions,
+            evidence_by_id=evidence_by_id,
+            evidence_groups_path=evidence_groups_path,
+        )
 
     clause_ids = {
         evidence.clause_id for evidence in evidence_by_id.values()
@@ -112,6 +310,15 @@ def validate_dataset(
     for question in questions:
         if not question.answerable:
             continue
+        relevance_ids = set(question.graded_relevance)
+        allowed_relevance_ids = set(
+            question.gold_evidence_ids + question.gold_clause_ids
+        )
+        if not relevance_ids <= allowed_relevance_ids:
+            raise ValueError(
+                f"{question.question_id} graded_relevance "
+                "包含非 gold ID"
+            )
         missing_evidence = [
             evidence_id
             for evidence_id in question.gold_evidence_ids
@@ -166,6 +373,7 @@ def validate_dataset(
         ),
         "dataset_sha256": _sha256_file(dataset_path),
         "evidence_sha256": _sha256_file(evidence_path),
+        **pilot_summary,
     }
 
 

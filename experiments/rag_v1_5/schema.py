@@ -28,6 +28,12 @@ QuestionType = Literal[
     "multi_evidence",
     "unanswerable",
 ]
+PilotSplit = Literal["smoke", "pilot", "formal"]
+PilotBookScope = Literal[
+    "shang_han_lun",
+    "jin_gui_yao_lue",
+    "both",
+]
 
 
 def normalize_sha256(value: str) -> str:
@@ -120,13 +126,27 @@ class RetrievalHit(BaseModel):
     reranker_score: float | None = None
 
 
+class PilotEvidenceGroup(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    group_id: str = Field(min_length=1)
+    split: Literal["pilot"]
+    book_scope: Literal["shang_han_lun", "jin_gui_yao_lue"]
+    question_type: QuestionType
+    anchor_evidence_ids: list[str]
+    anchor_clause_ids: list[str]
+    selection_seed: int
+    selection_reason: str = Field(min_length=1)
+    absence_queries: list[str] = Field(default_factory=list)
+
+
 class PilotQuestion(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     question_id: str = Field(min_length=1)
     question: str = Field(min_length=1)
     question_type: QuestionType
-    book_scope: str = Field(min_length=1)
+    book_scope: PilotBookScope
     answerable: bool
     reference_answer: str
     gold_evidence_ids: list[str]
@@ -134,6 +154,9 @@ class PilotQuestion(BaseModel):
     graded_relevance: dict[str, int]
     support_spans: list[str]
     review_status: Literal["draft", "approved", "rejected"]
+    split: PilotSplit | None = None
+    evidence_group_id: str | None = None
+    question_version: int = Field(default=1, ge=1)
 
     @field_validator("graded_relevance")
     @classmethod

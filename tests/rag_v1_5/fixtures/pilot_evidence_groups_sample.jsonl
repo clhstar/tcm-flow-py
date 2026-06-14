@@ -1,0 +1,2 @@
+{"group_id":"pilot-group-sample-01","split":"pilot","book_scope":"shang_han_lun","question_type":"single_clause_fact","anchor_evidence_ids":["test-evidence-01"],"anchor_clause_ids":["test-clause-01"],"selection_seed":20260614,"selection_reason":"最小可回答样例","absence_queries":[]}
+{"group_id":"pilot-group-sample-02","split":"pilot","book_scope":"jin_gui_yao_lue","question_type":"unanswerable","anchor_evidence_ids":[],"anchor_clause_ids":[],"selection_seed":20260614,"selection_reason":"最小无答案样例","absence_queries":["测试缺失查询一","测试缺失查询二"]}

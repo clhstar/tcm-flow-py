@@ -641,8 +641,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     validate_dataset_parser.add_argument(
         "--profile",
-        choices=("auto", "smoke", "generic"),
+        choices=("auto", "smoke", "pilot", "generic"),
         default="auto",
+    )
+    validate_dataset_parser.add_argument(
+        "--evidence-groups",
+        type=Path,
     )
 
     smoke_parser = subparsers.add_parser(
@@ -810,6 +814,7 @@ def main(
             dataset_path=args.dataset,
             evidence_path=args.evidence,
             profile=args.profile,
+            evidence_groups_path=args.evidence_groups,
         )
     elif args.command == "run-smoke":
         dataset_summary = validate_dataset(
