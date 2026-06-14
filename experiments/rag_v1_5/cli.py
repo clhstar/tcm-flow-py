@@ -20,7 +20,15 @@ from experiments.rag_v1_5.corpus import (
     prepare_corpus,
 )
 from experiments.rag_v1_5.chunkers import build_chunk_artifacts
-from experiments.rag_v1_5.indexing import build_indexes
+from experiments.rag_v1_5.dataset import (
+    load_dataset,
+    run_smoke_dataset,
+    validate_dataset,
+)
+from experiments.rag_v1_5.indexing import (
+    BgeM3DenseEncoder,
+    build_indexes,
+)
 from experiments.rag_v1_5.model_store import (
     prepare_models,
     snapshot_files,
@@ -28,6 +36,10 @@ from experiments.rag_v1_5.model_store import (
     validate_revision,
 )
 from experiments.rag_v1_5.pipeline import parse_prepared_corpus
+from experiments.rag_v1_5.reranker import (
+    FlagRerankerScorer,
+    resolve_model_snapshot,
+)
 from experiments.rag_v1_5.retrieval import retrieve
 
 
@@ -72,6 +84,10 @@ DEFAULT_AUDIT_SUMMARY_PATH = Path(
 DEFAULT_INDEX_MANIFEST_PATH = Path(
     "experiments/rag_v1_5/manifests/indexes-v1.5.0.json"
 )
+DEFAULT_SMOKE_REVIEW_PATH = Path(
+    "data/rag_v1_5/evaluation/smoke-review.csv"
+)
+DEFAULT_SMOKE_OUTPUT_DIR = Path("data/rag_v1_5/runs/smoke")
 DIRECT_DEPENDENCIES = (
     "pydantic",
     "PyYAML",
@@ -79,11 +95,68 @@ DIRECT_DEPENDENCIES = (
     "jieba",
     "rank-bm25",
     "FlagEmbedding",
+    "transformers",
 )
 
 
 def _sha256_file(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest().upper()
+
+
+def validate_smoke_runtime_inputs(
+    *,
+    quality_gate_path: Path,
+    index_manifest_path: Path,
+    indexes_dir: Path,
+    strategy: str,
+) -> dict:
+    if not quality_gate_path.is_file():
+        raise FileNotFoundError(f"缺少 Quality Gate: {quality_gate_path}")
+    if not index_manifest_path.is_file():
+        raise FileNotFoundError(
+            f"缺少索引 Manifest: {index_manifest_path}"
+        )
+    quality_gate = json.loads(
+        quality_gate_path.read_text(encoding="utf-8")
+    )
+    if quality_gate.get("status") != "ready":
+        raise ValueError("真实 Smoke 运行要求 Quality Gate 为 ready")
+    quality_gate_sha256 = _sha256_file(quality_gate_path)
+    index_manifest = json.loads(
+        index_manifest_path.read_text(encoding="utf-8")
+    )
+    if (
+        index_manifest.get("quality_gate_sha256")
+        != quality_gate_sha256
+    ):
+        raise ValueError("索引 Manifest 与当前 Quality Gate 哈希不一致")
+    strategy_record = index_manifest.get("strategies", {}).get(strategy)
+    if strategy_record is None:
+        raise ValueError(f"索引 Manifest 缺少策略: {strategy}")
+    strategy_manifest_path = indexes_dir / strategy / "manifest.json"
+    if not strategy_manifest_path.is_file():
+        raise FileNotFoundError(
+            f"缺少策略索引 Manifest: {strategy_manifest_path}"
+        )
+    strategy_manifest_sha256 = _sha256_file(strategy_manifest_path)
+    if (
+        strategy_record.get("manifest_sha256")
+        != strategy_manifest_sha256
+    ):
+        raise ValueError("策略索引 Manifest 与顶层索引 Manifest 不一致")
+    strategy_manifest = json.loads(
+        strategy_manifest_path.read_text(encoding="utf-8")
+    )
+    if (
+        strategy_manifest.get("quality_gate_sha256")
+        != quality_gate_sha256
+    ):
+        raise ValueError("策略索引 Manifest 与当前 Quality Gate 不一致")
+    return {
+        "quality_gate_sha256": quality_gate_sha256,
+        "index_manifest_sha256": _sha256_file(index_manifest_path),
+        "strategy_manifest_sha256": strategy_manifest_sha256,
+    }
 
 
 def _read_system_info() -> dict:
@@ -552,6 +625,86 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_MODEL_MANIFEST_PATH,
     )
 
+    validate_dataset_parser = subparsers.add_parser(
+        "validate-dataset",
+        help="校验检索试验问题集与 Evidence Tree 的引用契约",
+    )
+    validate_dataset_parser.add_argument(
+        "--dataset",
+        type=Path,
+        required=True,
+    )
+    validate_dataset_parser.add_argument(
+        "--evidence",
+        type=Path,
+        default=DEFAULT_EVIDENCE_PATH,
+    )
+    validate_dataset_parser.add_argument(
+        "--profile",
+        choices=("auto", "smoke", "generic"),
+        default="auto",
+    )
+
+    smoke_parser = subparsers.add_parser(
+        "run-smoke",
+        help="运行 10 条检索烟雾测试并生成 Top 5 人工复核表",
+    )
+    smoke_parser.add_argument(
+        "--dataset",
+        type=Path,
+        required=True,
+    )
+    smoke_parser.add_argument(
+        "--evidence",
+        type=Path,
+        default=DEFAULT_EVIDENCE_PATH,
+    )
+    smoke_parser.add_argument(
+        "--strategy",
+        choices=("c0", "c1", "c2", "c3", "c4"),
+        required=True,
+    )
+    smoke_parser.add_argument(
+        "--mode",
+        choices=("bm25", "dense", "hybrid", "hybrid_rerank"),
+        required=True,
+    )
+    smoke_parser.add_argument(
+        "--config",
+        type=Path,
+        default=DEFAULT_RETRIEVAL_CONFIG_PATH,
+    )
+    smoke_parser.add_argument(
+        "--indexes-dir",
+        type=Path,
+        default=DEFAULT_INDEXES_DIR,
+    )
+    smoke_parser.add_argument(
+        "--index-manifest",
+        type=Path,
+        default=DEFAULT_INDEX_MANIFEST_PATH,
+    )
+    smoke_parser.add_argument(
+        "--quality-gate",
+        type=Path,
+        default=DEFAULT_QUALITY_GATE_PATH,
+    )
+    smoke_parser.add_argument(
+        "--model-manifest",
+        type=Path,
+        default=DEFAULT_MODEL_MANIFEST_PATH,
+    )
+    smoke_parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=DEFAULT_SMOKE_OUTPUT_DIR,
+    )
+    smoke_parser.add_argument(
+        "--review-csv",
+        type=Path,
+        default=DEFAULT_SMOKE_REVIEW_PATH,
+    )
+
     return parser
 
 
@@ -651,6 +804,81 @@ def main(
             model_manifest_path=args.model_manifest,
             output_dir=args.output_dir,
             manifest_path=args.manifest,
+        )
+    elif args.command == "validate-dataset":
+        manifest = validate_dataset(
+            dataset_path=args.dataset,
+            evidence_path=args.evidence,
+            profile=args.profile,
+        )
+    elif args.command == "run-smoke":
+        dataset_summary = validate_dataset(
+            dataset_path=args.dataset,
+            evidence_path=args.evidence,
+            profile="smoke",
+        )
+        if (
+            dataset_summary["approved_count"]
+            != dataset_summary["question_count"]
+        ):
+            raise ValueError("Smoke 数据集必须全部审核为 approved")
+        runtime_provenance = validate_smoke_runtime_inputs(
+            quality_gate_path=args.quality_gate,
+            index_manifest_path=args.index_manifest,
+            indexes_dir=args.indexes_dir,
+            strategy=args.strategy,
+        )
+        config = yaml.safe_load(args.config.read_text(encoding="utf-8"))
+        dense_encoder = None
+        reranker_scorer = None
+        if args.mode in {"dense", "hybrid", "hybrid_rerank"}:
+            embedding_path, _ = resolve_model_snapshot(
+                config=config,
+                role="embedding",
+                model_manifest_path=args.model_manifest,
+            )
+            dense_encoder = BgeM3DenseEncoder(
+                embedding_path,
+                config["embedding"],
+            )
+        if args.mode == "hybrid_rerank":
+            reranker_path, _ = resolve_model_snapshot(
+                config=config,
+                role="reranker",
+                model_manifest_path=args.model_manifest,
+            )
+            reranker_scorer = FlagRerankerScorer(
+                reranker_path,
+                config["reranker"],
+            )
+
+        def retrieve_question(question):
+            return retrieve(
+                question.question,
+                strategy=args.strategy,
+                mode=args.mode,
+                indexes_dir=args.indexes_dir,
+                config=config,
+                dense_encoder=dense_encoder,
+                reranker_scorer=reranker_scorer,
+                model_manifest_path=args.model_manifest,
+            )
+
+        manifest = run_smoke_dataset(
+            questions=load_dataset(args.dataset),
+            strategy=args.strategy,
+            mode=args.mode,
+            output_dir=args.output_dir,
+            review_csv_path=args.review_csv,
+            retriever=retrieve_question,
+            provenance={
+                **dataset_summary,
+                **runtime_provenance,
+                "config_sha256": _sha256_file(args.config),
+                "model_manifest_sha256": _sha256_file(
+                    args.model_manifest
+                ),
+            },
         )
     else:
         config = yaml.safe_load(args.config.read_text(encoding="utf-8"))

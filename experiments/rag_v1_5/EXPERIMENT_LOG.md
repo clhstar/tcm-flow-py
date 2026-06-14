@@ -603,3 +603,131 @@ audit-migration-summary.json
 当前没有执行 `review-audit`，Quality Gate 尚未基于新 Evidence 和新审核表
 重新冻结，状态仍应视为 `blocked`。下一步只复审 CSV 中 `status=pending`
 的 14 行；全部完成后再导入审核并判断能否进入真实索引和 Smoke-10。
+
+## 2026-06-14：Quality Gate ready、真实索引与 Smoke-10 自动运行
+
+### 人工审核导入与门禁冻结
+
+14 条复审完成后，`audit-140.csv` 共 `140/140` 行为 `pass/correct`，
+`pending=0`。Excel 将文件保存为 CP936，因此先保留原始备份，再做无损
+UTF-8 BOM 转换：
+
+```text
+data/rag_v1_5/audit/audit-140.cp936-backup-20260614-170036.csv
+SHA256=1407E8F4007FF594907C4C594ABDB67A3C48B38C6917622BEA155D06050C7BE9
+```
+
+转换前后 Unicode 文本逐字符一致，随后执行：
+
+```powershell
+.\.venv\Scripts\python.exe -m experiments.rag_v1_5.cli review-audit
+.\.venv\Scripts\python.exe -m experiments.rag_v1_5.cli retrieval-doctor
+```
+
+冻结结果：
+
+```text
+quality_gate_status=ready
+reviewed_count=140
+pending_count=0
+unresolved boundary/type/parent/text errors=0
+reviewer=陈力恒
+reviewed_at=2026/6/14
+quality_gate_sha256=D3F049B9E5856343ADE07FE054E95EABB1EDDA65EEA9737E09D89F91AF08136B
+```
+
+### C0-C4 真实索引
+
+执行：
+
+```powershell
+.\.venv\Scripts\python.exe -m experiments.rag_v1_5.cli build-indexes
+```
+
+总耗时 `38.767 s`。索引记录数：
+
+| 策略 | 条数 | Dense 形状 |
+| --- | ---: | --- |
+| C0 | 198 | `198 × 1024` |
+| C1 | 414 | `414 × 1024` |
+| C2 | 918 | `918 × 1024` |
+| C3 | 2271 | `2271 × 1024` |
+| C4 | 2315 | `2315 × 1024` |
+
+独立复核确认每套 rows、BM25 tokens、Dense 和 manifest 的 SHA256 一致，
+条数与 Chunk manifest 一致，向量均为有限 `float32`，L2 范数为 `1.0`。
+
+```text
+indexes-v1.5.0.json
+997F99DAF226AC6D87476759B7075ACC29034886E71CFFA2F0579F551C7D537E
+```
+
+### 真实 Reranker 兼容修复
+
+首条 `c4 + hybrid_rerank` 查询暴露环境问题：
+
+```text
+AttributeError: XLMRobertaTokenizer has no attribute prepare_for_model
+```
+
+当时环境为 `FlagEmbedding 1.4.0 + transformers 5.12.0`。将实验依赖明确
+冻结为 `transformers==4.57.6`，同步 `huggingface_hub==0.36.2`，并增加
+依赖契约回归测试。`pip check` 无冲突，随后同一查询成功；目标
+`jgy-chapter-25-040` 排名第 1，ingredients Child 位于 Top 5，恢复上下文
+同时包含“饮食中毒，烦满”和“犀角汤亦佳”。
+
+### Smoke-10 数据集与自动结果
+
+按 evidence-first 原则建立本地 10 条问题：
+
+```text
+9 条 answerable
+1 条 unanswerable
+10 条 approved
+dataset_sha256=EC5F2478E51EBED90FC4C7B2A7135AF86F1D1DF50F6E0DEC7A9B6E475007F826
+```
+
+执行：
+
+```powershell
+.\.venv\Scripts\python.exe -m experiments.rag_v1_5.cli validate-dataset `
+  --dataset data\rag_v1_5\evaluation\smoke-10.jsonl
+.\.venv\Scripts\python.exe -m experiments.rag_v1_5.cli run-smoke `
+  --dataset data\rag_v1_5\evaluation\smoke-10.jsonl `
+  --strategy c4 `
+  --mode hybrid_rerank `
+  --output-dir data\rag_v1_5\runs\smoke
+```
+
+自动结果：
+
+```text
+runtime_errors=0
+answerable Hit@5=1.0000
+answerable Parent recovery=1.0000
+Recall@1=0.6667
+Recall@5=1.0000
+Recall@10=1.0000
+MRR@10=0.7481
+nDCG@10=0.8082
+Top5 Chunk/Evidence/Clause traceability=PASS
+median total latency=414.159 ms
+mean total latency=693.363 ms
+max total latency=3079.623 ms
+```
+
+首题和组成题的 gold 分别位于第 5；煎服法 gold 位于第 3；其余六条
+可回答问题 gold 位于第 1。无答案题 Top-1 reranker 分数为 `0.1007`，
+仅记录分布，不在本阶段设置拒答阈值。
+
+### 当前结论与限制
+
+自动 Smoke 已超过计划的 `Hit@5 >= 0.70` 门槛，且所有 Top 5 ID 可回溯。
+但 `smoke-review.csv` 的 `manual_comment/reviewer/reviewed_at` 仍为
+`10/10 pending`，所以 `smoke-10-v1.5.0.json` 状态为
+`pending_manual_review`，此时不得将 Task 7 写成最终人工验收通过，也不得
+直接进入 Pilot-40 冻结。
+
+提交前完整验证为 `116/116` 单元测试通过，`compileall`、`pip check`、
+`git diff --check`、Smoke manifest 文件哈希复核和 `retrieval-doctor`
+均通过。

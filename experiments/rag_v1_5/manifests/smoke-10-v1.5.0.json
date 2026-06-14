@@ -1,0 +1,56 @@
+{
+  "automatic_results": {
+    "answerable_hit_at_5": 1.0,
+    "answerable_parent_recovery_rate": 1.0,
+    "error_count": 0,
+    "mrr_at_10": 0.7481481481481481,
+    "ndcg_at_10": 0.808189512718787,
+    "recall_at_1": 0.6666666666666666,
+    "recall_at_5": 1.0,
+    "recall_at_10": 1.0,
+    "top5_traceability": "pass"
+  },
+  "dataset": {
+    "answerable_count": 9,
+    "approved_count": 10,
+    "path": "data/rag_v1_5/evaluation/smoke-10.jsonl",
+    "question_count": 10,
+    "sha256": "EC5F2478E51EBED90FC4C7B2A7135AF86F1D1DF50F6E0DEC7A9B6E475007F826",
+    "unanswerable_count": 1
+  },
+  "generated_at": "2026-06-14T09:16:13.046503+00:00",
+  "inputs": {
+    "config_sha256": "29A47B7F4AC3D7CA305EBFFC6542FA43DE14F75937C0A235C71688ABA7DB7966",
+    "evidence_sha256": "9DBD2ED476F4AD7B89D628CACF6A2F963987C77276F8CFFC8E8FE1BE29F7FF4B",
+    "index_manifest_sha256": "997F99DAF226AC6D87476759B7075ACC29034886E71CFFA2F0579F551C7D537E",
+    "model_manifest_sha256": "5523130CBAB3DC8829644E41F747B0856A64809C211A9B2665527033E3E7CDCB",
+    "quality_gate_sha256": "D3F049B9E5856343ADE07FE054E95EABB1EDDA65EEA9737E09D89F91AF08136B",
+    "strategy_manifest_sha256": "4DCDFA351122955ECBC6ADD7E886CB9090D1554398E3E069C5FA6252431B49E3"
+  },
+  "review": {
+    "path": "data/rag_v1_5/evaluation/smoke-review.csv",
+    "pending_count": 10,
+    "reviewed_count": 0,
+    "sha256": "9DF1625C8536457960717052F991D8E469CA21D42F8254B5B72A36D664A9EB2C"
+  },
+  "run": {
+    "files": {
+      "errors.jsonl": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+      "latency.json": "21B753386AD109A118C87F1AA42CFF02DA9150FF9A19B5C0B9024674C14D0665",
+      "metrics.json": "722D5A43CF56E60D2CF461C9329D48866810463DEE7D782232729ADC48413376",
+      "per-question.jsonl": "96F21990A0381D1399B2EE7EA6C6058310F5DFAB4920E1889D763779337F795E",
+      "run-config.json": "FE7774CE42271495845BBCFF4B0A04108C6F2CAA5622E91B7FDAC4FC08A30512"
+    },
+    "mode": "hybrid_rerank",
+    "output_dir": "data/rag_v1_5/runs/smoke",
+    "strategy": "c4",
+    "total_latency_ms": {
+      "count": 10,
+      "max": 3079.6229000552557,
+      "mean": 693.3625500067137,
+      "median": 414.1585500037763
+    }
+  },
+  "status": "pending_manual_review",
+  "version": "v1.5.0"
+}
