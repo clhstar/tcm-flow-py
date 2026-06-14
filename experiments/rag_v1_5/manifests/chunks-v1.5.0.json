@@ -1,8 +1,8 @@
 {
   "config_sha256": "EAC1CF154BAC4E887468EE84A38CBCD78A3639300D9B25F54F05035997384548",
   "corpus_manifest_sha256": "B9FB823BF736AD48F8F45722F971E398BBB755480EC5A125568E0147B342C82D",
-  "evidence_sha256": "D0A703699E2947C0FA9132436C1DBDB8C3EF1F1C0DDE831CF81485FC80083B7B",
-  "generated_at": "2026-06-13T06:33:29.739433Z",
+  "evidence_sha256": "9DBD2ED476F4AD7B89D628CACF6A2F963987C77276F8CFFC8E8FE1BE29F7FF4B",
+  "generated_at": "2026-06-14T05:50:15.176499Z",
   "strategies": {
     "c0": {
       "count": 198,
@@ -38,9 +38,9 @@
       }
     },
     "c3": {
-      "count": 2237,
+      "count": 2271,
       "output_file": "c3.jsonl",
-      "output_sha256": "EA87719FE9B39F34B1322522282DD6560B20F8721FC1E3CBC66D75CD650CB239",
+      "output_sha256": "75978E60EF81805B90D94ACEE4E4C620C87C7D6F3323477E0ACB315A6C0711AC",
       "parameters": {
         "kind": "evidence_unit",
         "max_length": 500,
@@ -48,9 +48,9 @@
       }
     },
     "c4": {
-      "count": 2281,
+      "count": 2315,
       "output_file": "c4.jsonl",
-      "output_sha256": "C2E49F8FF37F6F93AC7CBADD298B63023C4DD2CA3C0C3C617BD7275B35564A75",
+      "output_sha256": "E80F94C71FAA91C812F2E91660FC1E202282D1C19D9D903BABC1655D7D14B090",
       "parameters": {
         "kind": "evidence_unit",
         "max_length": 300,
