@@ -45,6 +45,7 @@ from experiments.rag_v1_5.reranker import (
     resolve_model_snapshot,
 )
 from experiments.rag_v1_5.retrieval import retrieve
+from experiments.rag_v1_5.runner import run_pilot_matrix
 
 
 DEFAULT_SOURCE_DIR = Path(r"G:\work\TCM-Ancient-Books-master")
@@ -122,6 +123,7 @@ DEFAULT_PILOT_MANIFEST_PATH = Path(
 DEFAULT_SMOKE_MANIFEST_PATH = Path(
     "experiments/rag_v1_5/manifests/smoke-10-v1.5.0.json"
 )
+DEFAULT_PILOT_RUNS_DIR = Path("data/rag_v1_5/runs/pilot")
 DIRECT_DEPENDENCIES = (
     "pydantic",
     "PyYAML",
@@ -838,6 +840,45 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_SMOKE_MANIFEST_PATH,
     )
 
+    run_pilot_parser = subparsers.add_parser(
+        "run-pilot",
+        help="运行固定 8 组 Pilot-40 检索矩阵",
+    )
+    run_pilot_parser.add_argument(
+        "--dataset",
+        type=Path,
+        default=DEFAULT_PILOT_DATASET_PATH,
+    )
+    run_pilot_parser.add_argument(
+        "--evidence-groups",
+        type=Path,
+        default=DEFAULT_PILOT_EVIDENCE_GROUPS_PATH,
+    )
+    run_pilot_parser.add_argument(
+        "--pilot-manifest",
+        type=Path,
+        default=DEFAULT_PILOT_MANIFEST_PATH,
+    )
+    run_pilot_parser.add_argument(
+        "--config",
+        type=Path,
+        default=DEFAULT_RETRIEVAL_CONFIG_PATH,
+    )
+    run_pilot_parser.add_argument(
+        "--indexes-dir",
+        type=Path,
+        default=DEFAULT_INDEXES_DIR,
+    )
+    run_pilot_parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=DEFAULT_PILOT_RUNS_DIR,
+    )
+    run_pilot_parser.add_argument(
+        "--resume",
+        type=Path,
+    )
+
     smoke_parser = subparsers.add_parser(
         "run-smoke",
         help="运行 10 条检索烟雾测试并生成 Top 5 人工复核表",
@@ -1043,6 +1084,16 @@ def main(
             model_manifest_path=args.model_manifest,
             config_path=args.config,
             smoke_manifest_path=args.smoke_manifest,
+        )
+    elif args.command == "run-pilot":
+        manifest = run_pilot_matrix(
+            dataset_path=args.dataset,
+            evidence_groups_path=args.evidence_groups,
+            pilot_manifest_path=args.pilot_manifest,
+            config_path=args.config,
+            indexes_dir=args.indexes_dir,
+            output_dir=args.output_dir,
+            resume_dir=args.resume,
         )
     elif args.command == "run-smoke":
         dataset_summary = validate_dataset(

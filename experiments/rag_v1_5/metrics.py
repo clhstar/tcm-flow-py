@@ -294,6 +294,23 @@ def summarize_latency(records: list[dict]) -> dict:
     return summary
 
 
+def summarize_score_distribution(values: list[float]) -> dict:
+    numeric = [float(value) for value in values]
+    if not numeric:
+        return {
+            "count": 0,
+            "min": None,
+            "median": None,
+            "max": None,
+        }
+    return {
+        "count": len(numeric),
+        "min": min(numeric),
+        "median": statistics.median(numeric),
+        "max": max(numeric),
+    }
+
+
 def index_size_bytes(path: Path) -> int:
     return sum(
         file_path.stat().st_size

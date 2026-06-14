@@ -206,6 +206,35 @@ class MetricsTests(unittest.TestCase):
             (nested / "b.bin").write_bytes(b"12345")
             self.assertEqual(metrics.index_size_bytes(root), 8)
 
+    def test_summarizes_score_distribution_without_retaining_raw_scores(
+        self,
+    ) -> None:
+        metrics = self.metrics_module()
+
+        summary = metrics.summarize_score_distribution(
+            [0.1, 0.4, 0.9, 0.2]
+        )
+        empty = metrics.summarize_score_distribution([])
+
+        self.assertEqual(
+            summary,
+            {
+                "count": 4,
+                "min": 0.1,
+                "median": 0.30000000000000004,
+                "max": 0.9,
+            },
+        )
+        self.assertEqual(
+            empty,
+            {
+                "count": 0,
+                "min": None,
+                "median": None,
+                "max": None,
+            },
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
