@@ -1193,6 +1193,17 @@ def _validate_review_round(
     return status
 
 
+def _review_immutable_values_equal(
+    *,
+    field: str,
+    reviewed_value: str,
+    expected_value: str,
+) -> bool:
+    if field in {"answerable", "second_review_required"}:
+        return reviewed_value.strip().lower() == expected_value
+    return reviewed_value == expected_value
+
+
 def _normalize_review_csv_encoding(
     *,
     reviewed_csv_path: Path,
@@ -1293,7 +1304,11 @@ def import_pilot_review(
             ),
         )
         for field in PILOT_REVIEW_IMMUTABLE_FIELDS:
-            if row[field] != expected[field]:
+            if not _review_immutable_values_equal(
+                field=field,
+                reviewed_value=row[field],
+                expected_value=expected[field],
+            ):
                 raise ValueError(
                     f"{question.question_id} 不允许修改列: {field}"
                 )

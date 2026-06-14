@@ -1046,6 +1046,11 @@ class PilotReviewWorkflowTests(unittest.TestCase):
                     rows = self.read_review_rows(review_path)
                     self.approve_rows(rows)
                     rows[0]["first_comment"] = comment
+                    for row in rows:
+                        row["answerable"] = row["answerable"].upper()
+                        row["second_review_required"] = (
+                            row["second_review_required"].upper()
+                        )
                     self.write_review_rows(
                         review_path,
                         rows,
