@@ -12,6 +12,18 @@ from experiments.rag_v1_5 import cli
 from experiments.rag_v1_5 import schema
 
 
+class ExperimentDependencyTests(unittest.TestCase):
+    def test_transformers_is_pinned_to_flagembedding_compatible_v4(
+        self,
+    ) -> None:
+        repository_root = Path(__file__).resolve().parents[2]
+        requirements = (
+            repository_root / "requirements-experiment.txt"
+        ).read_text(encoding="utf-8").splitlines()
+
+        self.assertIn("transformers==4.57.6", requirements)
+
+
 class RetrievalDoctorTests(unittest.TestCase):
     def test_reports_environment_and_gate_without_secrets(self) -> None:
         report_builder = getattr(cli, "build_retrieval_doctor_report", None)
