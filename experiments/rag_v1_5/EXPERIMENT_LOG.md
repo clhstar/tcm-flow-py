@@ -399,3 +399,31 @@ type_error=7
 3. `上先`、`上为末` 未被识别为 preparation 起点；
 4. `（方未见）` 被误建为 ingredients，而不是 note；
 5. `jgy-chapter-25-040` 的“又方”是否独立建 formula 仍需冻结审核口径。
+
+### “又方”口径冻结
+
+人工确认 `jgy-chapter-25-040` 中“又方：犀角汤”应独立作为第二个
+`formula`。当前 Evidence Tree 已满足该口径，因此将
+`audit-jin_gui_yao_lue-formula-001` 从 `fail/type_error` 更新为
+`pass/correct`，未修改审核表中的任何来源或结构字段。
+
+更新后的结果：
+
+```text
+pass=129
+fail=11
+boundary_error=5
+type_error=6
+parent_error=0
+text_error=0
+```
+
+审核 CSV SHA256 更新为：
+
+```text
+571F5940C08A3B54AC9BF53CCA68EBFA6ED461B799C2E80A1867163C33C9944D
+```
+
+`review-audit` 仍将 Quality Gate 写为 `blocked`，审核模块测试 `8/8`
+通过。剩余 11 条失败记录对应 9 个唯一 clause，后续 parser 修复不再调整
+“又方”独立 formula 的既定结构。

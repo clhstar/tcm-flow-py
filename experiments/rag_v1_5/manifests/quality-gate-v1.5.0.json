@@ -1,5 +1,5 @@
 {
-  "audit_review_sha256": "0A18BB8D79CC1F9DF4CDFDE6239627A5F42A0717FC8F515DF73B6AA84431EF5E",
+  "audit_review_sha256": "571F5940C08A3B54AC9BF53CCA68EBFA6ED461B799C2E80A1867163C33C9944D",
   "audit_sample_sha256": "91523494434A5EB58F5ED064DA18832D8EC2116C736FFEFC91FB04BB9D89B399",
   "chunk_manifest_sha256": "636A70A86306546C5C761127E2E2752F4C6E22CA29D35F9A4BFD71756960237B",
   "chunks": {
@@ -41,7 +41,7 @@
     "boundary_error": 5,
     "parent_error": 0,
     "text_error": 0,
-    "type_error": 7
+    "type_error": 6
   },
   "version": "v1.5.0"
 }
