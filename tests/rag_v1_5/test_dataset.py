@@ -3,6 +3,7 @@ import hashlib
 import json
 import tempfile
 import unittest
+from collections import Counter
 from copy import deepcopy
 from pathlib import Path
 
@@ -868,6 +869,324 @@ class PilotEvidenceSamplingTests(unittest.TestCase):
                 )
 
 
+class PilotReviewWorkflowTests(unittest.TestCase):
+    def prepare_review_files(
+        self,
+        root: Path,
+    ) -> tuple[Path, Path, Path, list[dict]]:
+        from experiments.rag_v1_5.dataset import prepare_pilot_review
+
+        questions, groups, _ = make_pilot_artifacts()
+        draft_path = root / "pilot-40-draft.jsonl"
+        groups_path = root / "pilot-evidence-groups.jsonl"
+        review_path = root / "pilot-review.csv"
+        write_jsonl_records(draft_path, questions)
+        write_jsonl_records(groups_path, groups)
+        prepare_pilot_review(
+            draft_dataset_path=draft_path,
+            evidence_groups_path=groups_path,
+            review_csv_path=review_path,
+            second_review_seed=20260614,
+        )
+        return draft_path, groups_path, review_path, questions
+
+    def read_review_rows(self, path: Path) -> list[dict[str, str]]:
+        with path.open(
+            "r",
+            encoding="utf-8-sig",
+            newline="",
+        ) as file_handle:
+            return list(csv.DictReader(file_handle))
+
+    def write_review_rows(
+        self,
+        path: Path,
+        rows: list[dict[str, str]],
+        *,
+        encoding: str = "utf-8-sig",
+    ) -> None:
+        with path.open(
+            "w",
+            encoding=encoding,
+            newline="",
+        ) as file_handle:
+            writer = csv.DictWriter(
+                file_handle,
+                fieldnames=list(rows[0]),
+                lineterminator="\n",
+            )
+            writer.writeheader()
+            writer.writerows(rows)
+
+    def approve_rows(self, rows: list[dict[str, str]]) -> None:
+        for row in rows:
+            row["first_status"] = "pass"
+            row["first_decision"] = "correct"
+            row["first_comment"] = "第一轮通过"
+            row["first_reviewer"] = "测试审核者"
+            row["first_reviewed_at"] = "2026-06-14"
+            if row["second_review_required"] == "true":
+                row["second_status"] = "pass"
+                row["second_decision"] = "correct"
+                row["second_comment"] = "第二轮通过"
+                row["second_reviewer"] = "测试复核者"
+                row["second_reviewed_at"] = "2026-06-14"
+
+    def test_prepare_review_writes_bom_and_stable_stratified_second_round(
+        self,
+    ) -> None:
+        from experiments.rag_v1_5.dataset import prepare_pilot_review
+
+        questions, groups, _ = make_pilot_artifacts()
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            draft_path = root / "pilot-40-draft.jsonl"
+            groups_path = root / "pilot-evidence-groups.jsonl"
+            first_path = root / "pilot-review-first.csv"
+            second_path = root / "pilot-review-second.csv"
+            write_jsonl_records(draft_path, questions)
+            write_jsonl_records(groups_path, groups)
+            first_summary = prepare_pilot_review(
+                draft_dataset_path=draft_path,
+                evidence_groups_path=groups_path,
+                review_csv_path=first_path,
+                second_review_seed=20260614,
+            )
+            second_summary = prepare_pilot_review(
+                draft_dataset_path=draft_path,
+                evidence_groups_path=groups_path,
+                review_csv_path=second_path,
+                second_review_seed=20260614,
+            )
+            rows = self.read_review_rows(first_path)
+
+            self.assertTrue(first_path.read_bytes().startswith(b"\xef\xbb\xbf"))
+            self.assertEqual(first_path.read_bytes(), second_path.read_bytes())
+
+        required_rows = [
+            row
+            for row in rows
+            if row["second_review_required"] == "true"
+        ]
+        strata = Counter(
+            (row["book_scope"], row["question_type"])
+            for row in required_rows
+        )
+        self.assertEqual(len(required_rows), 10)
+        self.assertEqual(set(strata.values()), {1})
+        self.assertEqual(first_summary["second_review_required_count"], 10)
+        self.assertEqual(
+            first_summary["second_review_question_ids"],
+            second_summary["second_review_question_ids"],
+        )
+
+    def test_prepare_review_inherits_only_unchanged_content(self) -> None:
+        from experiments.rag_v1_5.dataset import prepare_pilot_review
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            draft_path, groups_path, review_path, questions = (
+                self.prepare_review_files(root)
+            )
+            rows = self.read_review_rows(review_path)
+            rows[0]["first_status"] = "pass"
+            rows[0]["first_decision"] = "correct"
+            rows[0]["first_comment"] = "保留审核"
+            rows[0]["first_reviewer"] = "测试审核者"
+            rows[0]["first_reviewed_at"] = "2026-06-14"
+            original_hash = rows[0]["content_sha256"]
+            self.write_review_rows(review_path, rows)
+
+            prepare_pilot_review(
+                draft_dataset_path=draft_path,
+                evidence_groups_path=groups_path,
+                review_csv_path=review_path,
+                second_review_seed=20260614,
+            )
+            inherited_rows = self.read_review_rows(review_path)
+            self.assertEqual(inherited_rows[0]["first_status"], "pass")
+            self.assertEqual(
+                inherited_rows[0]["first_comment"],
+                "保留审核",
+            )
+
+            questions[0]["question"] += " 已修订"
+            write_jsonl_records(draft_path, questions)
+            prepare_pilot_review(
+                draft_dataset_path=draft_path,
+                evidence_groups_path=groups_path,
+                review_csv_path=review_path,
+                second_review_seed=20260614,
+            )
+            reset_rows = self.read_review_rows(review_path)
+
+        self.assertNotEqual(reset_rows[0]["content_sha256"], original_hash)
+        self.assertEqual(reset_rows[0]["first_status"], "pending")
+        self.assertEqual(reset_rows[0]["first_decision"], "")
+        self.assertEqual(reset_rows[0]["first_reviewer"], "")
+
+    def test_import_review_normalizes_legacy_encodings_and_approves_all(
+        self,
+    ) -> None:
+        from experiments.rag_v1_5.dataset import import_pilot_review
+
+        cases = (
+            ("cp936", "中文审核"),
+            ("gb18030", "中文审核𠮷"),
+        )
+        for encoding, comment in cases:
+            with self.subTest(encoding=encoding):
+                with tempfile.TemporaryDirectory() as temporary_directory:
+                    root = Path(temporary_directory)
+                    draft_path, groups_path, review_path, _ = (
+                        self.prepare_review_files(root)
+                    )
+                    output_path = root / "pilot-40.jsonl"
+                    summary_path = root / "pilot-review-summary.json"
+                    rows = self.read_review_rows(review_path)
+                    self.approve_rows(rows)
+                    rows[0]["first_comment"] = comment
+                    self.write_review_rows(
+                        review_path,
+                        rows,
+                        encoding=encoding,
+                    )
+
+                    summary = import_pilot_review(
+                        draft_dataset_path=draft_path,
+                        evidence_groups_path=groups_path,
+                        reviewed_csv_path=review_path,
+                        output_dataset_path=output_path,
+                        summary_path=summary_path,
+                    )
+                    approved = [
+                        json.loads(line)
+                        for line in output_path.read_text(
+                            encoding="utf-8"
+                        ).splitlines()
+                    ]
+                    encoding_summary = summary["encoding"]
+                    backup_path = Path(
+                        encoding_summary["backup_path"]
+                    )
+
+                    self.assertEqual(summary["status"], "ready")
+                    self.assertEqual(summary["first_review_pass_count"], 40)
+                    self.assertEqual(
+                        summary["second_review_pass_count"],
+                        10,
+                    )
+                    self.assertEqual(len(approved), 40)
+                    self.assertTrue(
+                        all(
+                            record["review_status"] == "approved"
+                            for record in approved
+                        )
+                    )
+                    self.assertEqual(
+                        encoding_summary["detected_encoding"],
+                        encoding,
+                    )
+                    self.assertTrue(encoding_summary["converted"])
+                    self.assertTrue(
+                        encoding_summary["unicode_equivalent"]
+                    )
+                    self.assertTrue(backup_path.is_file())
+                    self.assertEqual(
+                        encoding_summary["original_sha256"],
+                        encoding_summary["backup_sha256"],
+                    )
+                    self.assertTrue(
+                        review_path.read_bytes().startswith(
+                            b"\xef\xbb\xbf"
+                        )
+                    )
+
+    def test_import_review_rejects_immutable_changes(self) -> None:
+        from experiments.rag_v1_5.dataset import import_pilot_review
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            draft_path, groups_path, review_path, _ = (
+                self.prepare_review_files(root)
+            )
+            rows = self.read_review_rows(review_path)
+            self.approve_rows(rows)
+            rows[0]["question"] += " 被修改"
+            self.write_review_rows(review_path, rows)
+
+            with self.assertRaisesRegex(ValueError, "不允许修改"):
+                import_pilot_review(
+                    draft_dataset_path=draft_path,
+                    evidence_groups_path=groups_path,
+                    reviewed_csv_path=review_path,
+                    output_dataset_path=root / "pilot-40.jsonl",
+                    summary_path=root / "summary.json",
+                )
+
+    def test_import_review_blocks_incomplete_or_failed_rounds(self) -> None:
+        from experiments.rag_v1_5.dataset import import_pilot_review
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            draft_path, groups_path, review_path, _ = (
+                self.prepare_review_files(root)
+            )
+            output_path = root / "pilot-40.jsonl"
+            summary_path = root / "summary.json"
+
+            pending_summary = import_pilot_review(
+                draft_dataset_path=draft_path,
+                evidence_groups_path=groups_path,
+                reviewed_csv_path=review_path,
+                output_dataset_path=output_path,
+                summary_path=summary_path,
+            )
+            self.assertEqual(pending_summary["status"], "blocked")
+            self.assertEqual(
+                pending_summary["first_review_pending_count"],
+                40,
+            )
+            self.assertFalse(output_path.exists())
+
+            rows = self.read_review_rows(review_path)
+            for row in rows:
+                row["first_status"] = "pass"
+                row["first_decision"] = "correct"
+                row["first_reviewer"] = "测试审核者"
+                row["first_reviewed_at"] = "2026-06-14"
+            self.write_review_rows(review_path, rows)
+            second_pending_summary = import_pilot_review(
+                draft_dataset_path=draft_path,
+                evidence_groups_path=groups_path,
+                reviewed_csv_path=review_path,
+                output_dataset_path=output_path,
+                summary_path=summary_path,
+            )
+            self.assertEqual(second_pending_summary["status"], "blocked")
+            self.assertEqual(
+                second_pending_summary["second_review_pending_count"],
+                10,
+            )
+            self.assertFalse(output_path.exists())
+
+            self.approve_rows(rows)
+            rows[0]["first_status"] = "fail"
+            rows[0]["first_decision"] = "gold_id_error"
+            self.write_review_rows(review_path, rows)
+            failed_summary = import_pilot_review(
+                draft_dataset_path=draft_path,
+                evidence_groups_path=groups_path,
+                reviewed_csv_path=review_path,
+                output_dataset_path=output_path,
+                summary_path=summary_path,
+            )
+
+        self.assertEqual(failed_summary["status"], "blocked")
+        self.assertEqual(failed_summary["first_review_fail_count"], 1)
+        self.assertFalse(output_path.exists())
+
+
 class SmokeRunTests(unittest.TestCase):
     def test_writes_results_metrics_and_manual_review_csv(self) -> None:
         from experiments.rag_v1_5.dataset import (
@@ -1108,6 +1427,37 @@ class DatasetCliTests(unittest.TestCase):
             Path(
                 "data/rag_v1_5/evaluation/"
                 "pilot-exclusions.json"
+            ),
+        )
+
+    def test_pilot_review_cli_contract_matches_plan(self) -> None:
+        from experiments.rag_v1_5.cli import build_parser
+
+        prepare_args = build_parser().parse_args(
+            ["prepare-pilot-review"]
+        )
+        import_args = build_parser().parse_args(
+            ["import-pilot-review"]
+        )
+
+        self.assertEqual(
+            prepare_args.dataset,
+            Path("data/rag_v1_5/evaluation/pilot-40-draft.jsonl"),
+        )
+        self.assertEqual(
+            prepare_args.review_csv,
+            Path("data/rag_v1_5/evaluation/pilot-review.csv"),
+        )
+        self.assertEqual(prepare_args.second_review_seed, 20260614)
+        self.assertEqual(
+            import_args.output,
+            Path("data/rag_v1_5/evaluation/pilot-40.jsonl"),
+        )
+        self.assertEqual(
+            import_args.summary,
+            Path(
+                "data/rag_v1_5/evaluation/"
+                "pilot-review-summary.json"
             ),
         )
 

@@ -21,7 +21,9 @@ from experiments.rag_v1_5.corpus import (
 )
 from experiments.rag_v1_5.chunkers import build_chunk_artifacts
 from experiments.rag_v1_5.dataset import (
+    import_pilot_review,
     load_dataset,
+    prepare_pilot_review,
     run_smoke_dataset,
     sample_pilot_evidence_groups,
     validate_dataset,
@@ -100,6 +102,18 @@ DEFAULT_PILOT_EXCLUSIONS_PATH = Path(
 )
 DEFAULT_PILOT_CANDIDATE_REPORT_PATH = Path(
     "data/rag_v1_5/evaluation/pilot-candidate-report.json"
+)
+DEFAULT_PILOT_DRAFT_PATH = Path(
+    "data/rag_v1_5/evaluation/pilot-40-draft.jsonl"
+)
+DEFAULT_PILOT_REVIEW_PATH = Path(
+    "data/rag_v1_5/evaluation/pilot-review.csv"
+)
+DEFAULT_PILOT_REVIEW_SUMMARY_PATH = Path(
+    "data/rag_v1_5/evaluation/pilot-review-summary.json"
+)
+DEFAULT_PILOT_DATASET_PATH = Path(
+    "data/rag_v1_5/evaluation/pilot-40.jsonl"
 )
 DIRECT_DEPENDENCIES = (
     "pydantic",
@@ -697,6 +711,61 @@ def build_parser() -> argparse.ArgumentParser:
         default=20260614,
     )
 
+    prepare_pilot_review_parser = subparsers.add_parser(
+        "prepare-pilot-review",
+        help="导出 Pilot-40 双轮人工审核 CSV",
+    )
+    prepare_pilot_review_parser.add_argument(
+        "--dataset",
+        type=Path,
+        default=DEFAULT_PILOT_DRAFT_PATH,
+    )
+    prepare_pilot_review_parser.add_argument(
+        "--evidence-groups",
+        type=Path,
+        default=DEFAULT_PILOT_EVIDENCE_GROUPS_PATH,
+    )
+    prepare_pilot_review_parser.add_argument(
+        "--review-csv",
+        type=Path,
+        default=DEFAULT_PILOT_REVIEW_PATH,
+    )
+    prepare_pilot_review_parser.add_argument(
+        "--second-review-seed",
+        type=int,
+        default=20260614,
+    )
+
+    import_pilot_review_parser = subparsers.add_parser(
+        "import-pilot-review",
+        help="导入 Pilot-40 双轮审核并冻结本地问题集",
+    )
+    import_pilot_review_parser.add_argument(
+        "--dataset",
+        type=Path,
+        default=DEFAULT_PILOT_DRAFT_PATH,
+    )
+    import_pilot_review_parser.add_argument(
+        "--evidence-groups",
+        type=Path,
+        default=DEFAULT_PILOT_EVIDENCE_GROUPS_PATH,
+    )
+    import_pilot_review_parser.add_argument(
+        "--reviewed-csv",
+        type=Path,
+        default=DEFAULT_PILOT_REVIEW_PATH,
+    )
+    import_pilot_review_parser.add_argument(
+        "--output",
+        type=Path,
+        default=DEFAULT_PILOT_DATASET_PATH,
+    )
+    import_pilot_review_parser.add_argument(
+        "--summary",
+        type=Path,
+        default=DEFAULT_PILOT_REVIEW_SUMMARY_PATH,
+    )
+
     smoke_parser = subparsers.add_parser(
         "run-smoke",
         help="运行 10 条检索烟雾测试并生成 Top 5 人工复核表",
@@ -872,6 +941,21 @@ def main(
             exclusions_path=args.exclusions,
             candidate_report_path=args.candidate_report,
             seed=args.seed,
+        )
+    elif args.command == "prepare-pilot-review":
+        manifest = prepare_pilot_review(
+            draft_dataset_path=args.dataset,
+            evidence_groups_path=args.evidence_groups,
+            review_csv_path=args.review_csv,
+            second_review_seed=args.second_review_seed,
+        )
+    elif args.command == "import-pilot-review":
+        manifest = import_pilot_review(
+            draft_dataset_path=args.dataset,
+            evidence_groups_path=args.evidence_groups,
+            reviewed_csv_path=args.reviewed_csv,
+            output_dataset_path=args.output,
+            summary_path=args.summary,
         )
     elif args.command == "run-smoke":
         dataset_summary = validate_dataset(
