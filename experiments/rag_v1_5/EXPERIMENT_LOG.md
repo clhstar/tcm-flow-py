@@ -764,3 +764,91 @@ SHA256=4A6CE7AE30F05D1873B4B3385AF134CADFD3D72EC08CFE09400D39DF371EA080
 
 Smoke Manifest 已从 `pending_manual_review` 冻结为 `passed`。Task 7
 人工门禁完成，可以进入 Pilot-40 的 evidence-first 试标阶段。
+
+## 2026-06-14：Pilot-40 契约、Evidence Group 与审核草稿
+
+### 数据契约和审核工具
+
+按 `2026-06-14-tcm-flow-v1.5-pilot-40.md` 完成前三个代码任务：
+
+```text
+794287a test: 定义Pilot-40数据契约
+0782b11 feat: 建立Pilot证据组选择
+26d4ce2 feat: 建立Pilot双轮人工复核
+```
+
+新增门禁覆盖固定 `40/32/8` 分布、两书 × 五类型 × 每格 4 条、
+问题文本归一化去重、Evidence Group 映射、Smoke gold 防泄漏、
+multi-evidence 同书双条文、UTF-8 BOM 审核表、固定 10 条分层二审、
+CP936/GB18030 无损迁移和 immutable 字段防篡改。该阶段数据集测试为
+`28/28` 通过，`compileall` 和 `git diff --check` 通过。
+
+### Evidence Group 真实抽样
+
+固定 seed `20260614` 生成 40 个本地 Evidence Group：
+
+```text
+answerable_group_count=32
+unanswerable_group_count=8
+Smoke Evidence overlap=0
+Smoke clause overlap=0
+answerable anchor clause=40/40 unique
+answerable anchor Evidence=55/55 unique
+```
+
+方剂组均包含 `formula/ingredients/preparation` Child；source-location
+组在候选充足时全部优先选择 `note`。同一 seed 连续运行两次时三份产物
+哈希完全一致。无答案检查回填后：
+
+```text
+pilot-evidence-groups.jsonl
+SHA256=4FBD984DBA9A0B98CEBA17F75735F4E490ACE9C81D1A71BDC569C2C96B88EC27
+
+pilot-exclusions.json
+SHA256=A64C1CA29E51DA714BAA078D5513A2690A1A42E4AB0F7FBB2784E181F42536BA
+
+pilot-candidate-report.json
+SHA256=1624759F3DE90626FE0ACF69C03977E229EEBB5A723F6544BE624E1F06CF89F0
+```
+
+### 40 条草稿和无答案检查
+
+按 evidence-first 顺序本地编写 `32` 条可回答题和 `8` 条无答案题。
+可回答题的 support span 均逐字存在于 gold Evidence；未调用外部 LLM API
+批量生成问题或答案。
+
+8 条无答案题覆盖 HbA1c、CT、MIC 药敏、随机双盲试验、肌钙蛋白、
+MRI、基因测序和胰岛素泵参数。16 个核心词/同义改写在冻结 Evidence
+全文中均为零命中。随后保持 C4、模型、`candidate_k=40` 和其他参数不变，
+仅在内存中将返回深度扩为 Top 10，执行 `hybrid_rerank`；逐题人工查看
+Top 10 后均未发现能够支持现代检测、影像、试验或设备参数答案的条文。
+
+草稿自动校验结果：
+
+```text
+question_count=40
+answerable_count=32
+unanswerable_count=8
+approved_count=0
+duplicate_question_count=0
+multi_evidence_count=8
+pilot-40-draft.jsonl SHA256=
+7214571F84DD595D2F1DEC48D643421C34308E70F7CB8EE849B07F70924F6FF7
+```
+
+已生成 UTF-8 BOM `pilot-review.csv`：
+
+```text
+row_count=40
+first_status=pending: 40
+second_review_required=true: 10
+pilot-review.csv SHA256=
+2E68603BC4FCC494546D3CE2CE917C6951392A1939F2E7E5C0E6CAD99100ADED
+```
+
+### 当前门禁
+
+当前只完成了草稿构造、无答案检索检查和审核表导出。人工第一轮仍为
+`0/40 pass`、`40/40 pending`，第二轮也尚未开始，因此尚未生成
+`pilot-40.jsonl`，Task 4 仍处于人工审核检查点，不得进入 Pilot Manifest
+冻结或真实 8 组矩阵运行。
