@@ -23,6 +23,7 @@ from experiments.rag_v1_5.chunkers import build_chunk_artifacts
 from experiments.rag_v1_5.dataset import (
     load_dataset,
     run_smoke_dataset,
+    sample_pilot_evidence_groups,
     validate_dataset,
 )
 from experiments.rag_v1_5.indexing import (
@@ -88,6 +89,18 @@ DEFAULT_SMOKE_REVIEW_PATH = Path(
     "data/rag_v1_5/evaluation/smoke-review.csv"
 )
 DEFAULT_SMOKE_OUTPUT_DIR = Path("data/rag_v1_5/runs/smoke")
+DEFAULT_SMOKE_DATASET_PATH = Path(
+    "data/rag_v1_5/evaluation/smoke-10.jsonl"
+)
+DEFAULT_PILOT_EVIDENCE_GROUPS_PATH = Path(
+    "data/rag_v1_5/evaluation/pilot-evidence-groups.jsonl"
+)
+DEFAULT_PILOT_EXCLUSIONS_PATH = Path(
+    "data/rag_v1_5/evaluation/pilot-exclusions.json"
+)
+DEFAULT_PILOT_CANDIDATE_REPORT_PATH = Path(
+    "data/rag_v1_5/evaluation/pilot-candidate-report.json"
+)
 DIRECT_DEPENDENCIES = (
     "pydantic",
     "PyYAML",
@@ -649,6 +662,41 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
     )
 
+    pilot_evidence_parser = subparsers.add_parser(
+        "sample-pilot-evidence",
+        help="按固定配额选择 Pilot-40 Evidence Group",
+    )
+    pilot_evidence_parser.add_argument(
+        "--evidence",
+        type=Path,
+        default=DEFAULT_EVIDENCE_PATH,
+    )
+    pilot_evidence_parser.add_argument(
+        "--smoke-dataset",
+        type=Path,
+        default=DEFAULT_SMOKE_DATASET_PATH,
+    )
+    pilot_evidence_parser.add_argument(
+        "--output",
+        type=Path,
+        default=DEFAULT_PILOT_EVIDENCE_GROUPS_PATH,
+    )
+    pilot_evidence_parser.add_argument(
+        "--exclusions",
+        type=Path,
+        default=DEFAULT_PILOT_EXCLUSIONS_PATH,
+    )
+    pilot_evidence_parser.add_argument(
+        "--candidate-report",
+        type=Path,
+        default=DEFAULT_PILOT_CANDIDATE_REPORT_PATH,
+    )
+    pilot_evidence_parser.add_argument(
+        "--seed",
+        type=int,
+        default=20260614,
+    )
+
     smoke_parser = subparsers.add_parser(
         "run-smoke",
         help="运行 10 条检索烟雾测试并生成 Top 5 人工复核表",
@@ -815,6 +863,15 @@ def main(
             evidence_path=args.evidence,
             profile=args.profile,
             evidence_groups_path=args.evidence_groups,
+        )
+    elif args.command == "sample-pilot-evidence":
+        manifest = sample_pilot_evidence_groups(
+            evidence_path=args.evidence,
+            smoke_dataset_path=args.smoke_dataset,
+            output_path=args.output,
+            exclusions_path=args.exclusions,
+            candidate_report_path=args.candidate_report,
+            seed=args.seed,
         )
     elif args.command == "run-smoke":
         dataset_summary = validate_dataset(

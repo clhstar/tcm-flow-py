@@ -1,10 +1,11 @@
 import csv
 import hashlib
 import json
+import random
 import re
 import statistics
 import time
-from collections import Counter
+from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Literal
@@ -374,6 +375,453 @@ def validate_dataset(
         "dataset_sha256": _sha256_file(dataset_path),
         "evidence_sha256": _sha256_file(evidence_path),
         **pilot_summary,
+    }
+
+
+def _stable_sample(
+    records: list,
+    *,
+    count: int,
+    seed: int,
+    stratum: str,
+) -> list:
+    shuffled = list(records)
+    random.Random(f"{seed}:{stratum}").shuffle(shuffled)
+    return shuffled[:count]
+
+
+def _pilot_group_id(
+    book: str,
+    question_type: str,
+    index: int,
+) -> str:
+    return f"pilot-{book}-{question_type}-{index:02d}"
+
+
+def sample_pilot_evidence_groups(
+    *,
+    evidence_path: Path,
+    smoke_dataset_path: Path,
+    output_path: Path,
+    exclusions_path: Path,
+    candidate_report_path: Path,
+    seed: int = 20260614,
+) -> dict:
+    evidence_units = sorted(
+        _read_jsonl(evidence_path, EvidenceUnit),
+        key=lambda evidence: evidence.evidence_id,
+    )
+    evidence_by_id = {
+        evidence.evidence_id: evidence for evidence in evidence_units
+    }
+    if len(evidence_by_id) != len(evidence_units):
+        raise ValueError("Evidence Tree 存在重复 evidence_id")
+
+    smoke_questions = load_dataset(smoke_dataset_path)
+    smoke_gold_evidence_ids = sorted(
+        {
+            evidence_id
+            for question in smoke_questions
+            for evidence_id in question.gold_evidence_ids
+        }
+    )
+    smoke_gold_clause_ids = {
+        clause_id
+        for question in smoke_questions
+        for clause_id in question.gold_clause_ids
+    }
+    for evidence_id in smoke_gold_evidence_ids:
+        evidence = evidence_by_id.get(evidence_id)
+        if evidence is not None:
+            smoke_gold_clause_ids.add(evidence.clause_id)
+    smoke_gold_clause_ids = sorted(smoke_gold_clause_ids)
+
+    evidence_by_clause: dict[str, list[EvidenceUnit]] = defaultdict(list)
+    clause_units: dict[str, EvidenceUnit] = {}
+    for evidence in evidence_units:
+        evidence_by_clause[evidence.clause_id].append(evidence)
+        if evidence.content_type == "clause":
+            clause_units[evidence.clause_id] = evidence
+
+    excluded_clauses = set(smoke_gold_clause_ids)
+    available_by_book = {
+        book: [
+            clause
+            for clause in sorted(
+                clause_units.values(),
+                key=lambda item: (
+                    item.chapter_id,
+                    item.clause_number
+                    if item.clause_number is not None
+                    else 10**9,
+                    item.clause_id,
+                ),
+            )
+            if (
+                clause.book_id == book
+                and clause.clause_id not in excluded_clauses
+            )
+        ]
+        for book in PILOT_BOOKS
+    }
+    used_clause_ids: set[str] = set()
+    groups: list[PilotEvidenceGroup] = []
+    strata: dict[str, dict] = {}
+
+    def add_single_clause_groups(
+        *,
+        book: str,
+        question_type: str,
+        candidates: list[EvidenceUnit],
+        priority_candidates: list[EvidenceUnit] | None = None,
+    ) -> None:
+        stratum = f"{book}/{question_type}"
+        unused_candidates = [
+            candidate
+            for candidate in candidates
+            if candidate.clause_id not in used_clause_ids
+        ]
+        selected = []
+        if priority_candidates:
+            unused_priority = [
+                candidate
+                for candidate in priority_candidates
+                if candidate.clause_id not in used_clause_ids
+            ]
+            selected.extend(
+                _stable_sample(
+                    unused_priority,
+                    count=min(PILOT_PER_CELL, len(unused_priority)),
+                    seed=seed,
+                    stratum=f"{stratum}:priority",
+                )
+            )
+        selected_ids = {
+            candidate.clause_id for candidate in selected
+        }
+        if len(selected) < PILOT_PER_CELL:
+            fallback_candidates = [
+                candidate
+                for candidate in unused_candidates
+                if candidate.clause_id not in selected_ids
+            ]
+            selected.extend(
+                _stable_sample(
+                    fallback_candidates,
+                    count=PILOT_PER_CELL - len(selected),
+                    seed=seed,
+                    stratum=f"{stratum}:fallback",
+                )
+            )
+        if len(selected) != PILOT_PER_CELL:
+            raise ValueError(
+                f"Pilot 候选不足: {stratum} 需要 "
+                f"{PILOT_PER_CELL}，实际 {len(unused_candidates)}"
+            )
+        for index, clause in enumerate(selected, start=1):
+            clause_evidence = evidence_by_clause[clause.clause_id]
+            if question_type == "formula_composition_or_use":
+                anchor_evidence_ids = sorted(
+                    evidence.evidence_id
+                    for evidence in clause_evidence
+                    if evidence.content_type
+                    in {"formula", "ingredients", "preparation"}
+                )
+                selection_reason = (
+                    "包含 formula、ingredients 或 preparation Child"
+                )
+            elif question_type == "source_location":
+                note_ids = sorted(
+                    evidence.evidence_id
+                    for evidence in clause_evidence
+                    if evidence.content_type == "note"
+                )
+                anchor_evidence_ids = note_ids or [clause.evidence_id]
+                selection_reason = (
+                    "包含 note Child 或具备明确篇章与条文定位"
+                )
+            else:
+                anchor_evidence_ids = [clause.evidence_id]
+                selection_reason = "条文正文满足事实型问题候选条件"
+            groups.append(
+                PilotEvidenceGroup(
+                    group_id=_pilot_group_id(
+                        book,
+                        question_type,
+                        index,
+                    ),
+                    split="pilot",
+                    book_scope=book,
+                    question_type=question_type,
+                    anchor_evidence_ids=anchor_evidence_ids,
+                    anchor_clause_ids=[clause.clause_id],
+                    selection_seed=seed,
+                    selection_reason=selection_reason,
+                )
+            )
+            used_clause_ids.add(clause.clause_id)
+        strata[stratum] = {
+            "candidate_count": len(unused_candidates),
+            "selected_count": len(selected),
+            "rejection_counts": {
+                "smoke_excluded_clause_count": sum(
+                    clause.book_id == book
+                    for clause in clause_units.values()
+                    if clause.clause_id in excluded_clauses
+                ),
+                "already_selected_clause_count": (
+                    len(candidates) - len(unused_candidates)
+                ),
+            },
+        }
+
+    for book in PILOT_BOOKS:
+        book_candidates = available_by_book[book]
+        formula_candidates = [
+            clause
+            for clause in book_candidates
+            if any(
+                evidence.content_type
+                in {"formula", "ingredients", "preparation"}
+                for evidence in evidence_by_clause[clause.clause_id]
+            )
+        ]
+        add_single_clause_groups(
+            book=book,
+            question_type="formula_composition_or_use",
+            candidates=formula_candidates,
+        )
+
+        source_candidates = [
+            clause
+            for clause in book_candidates
+            if (
+                any(
+                    evidence.content_type == "note"
+                    for evidence in evidence_by_clause[clause.clause_id]
+                )
+                or (
+                    bool(clause.chapter_title.strip())
+                    and clause.clause_number is not None
+                )
+            )
+        ]
+        note_candidates = [
+            clause
+            for clause in source_candidates
+            if any(
+                evidence.content_type == "note"
+                for evidence in evidence_by_clause[clause.clause_id]
+            )
+        ]
+        add_single_clause_groups(
+            book=book,
+            question_type="source_location",
+            candidates=source_candidates,
+            priority_candidates=note_candidates,
+        )
+
+        fact_candidates = [
+            clause
+            for clause in book_candidates
+            if (
+                len(clause.normalized_text.strip()) >= 8
+                and re.search(
+                    r"[\w\u4e00-\u9fff]",
+                    clause.normalized_text,
+                )
+            )
+        ]
+        add_single_clause_groups(
+            book=book,
+            question_type="single_clause_fact",
+            candidates=fact_candidates,
+        )
+
+        remaining_by_chapter: dict[str, list[EvidenceUnit]] = defaultdict(
+            list
+        )
+        for clause in book_candidates:
+            if clause.clause_id not in used_clause_ids:
+                remaining_by_chapter[clause.chapter_id].append(clause)
+        pair_candidates = []
+        for chapter_id in sorted(remaining_by_chapter):
+            chapter_clauses = sorted(
+                remaining_by_chapter[chapter_id],
+                key=lambda item: (
+                    item.clause_number
+                    if item.clause_number is not None
+                    else 10**9,
+                    item.clause_id,
+                ),
+            )
+            pair_candidates.extend(
+                zip(chapter_clauses, chapter_clauses[1:])
+            )
+        shuffled_pairs = list(pair_candidates)
+        random.Random(
+            f"{seed}:{book}:multi_evidence"
+        ).shuffle(shuffled_pairs)
+        selected_pairs = []
+        paired_clause_ids: set[str] = set()
+        for first, second in shuffled_pairs:
+            pair_ids = {first.clause_id, second.clause_id}
+            if pair_ids & paired_clause_ids:
+                continue
+            selected_pairs.append((first, second))
+            paired_clause_ids.update(pair_ids)
+            if len(selected_pairs) == PILOT_PER_CELL:
+                break
+        stratum = f"{book}/multi_evidence"
+        if len(selected_pairs) != PILOT_PER_CELL:
+            raise ValueError(
+                f"Pilot 候选不足: {stratum} 需要 "
+                f"{PILOT_PER_CELL}，实际 {len(selected_pairs)}"
+            )
+        for index, (first, second) in enumerate(
+            selected_pairs,
+            start=1,
+        ):
+            groups.append(
+                PilotEvidenceGroup(
+                    group_id=_pilot_group_id(
+                        book,
+                        "multi_evidence",
+                        index,
+                    ),
+                    split="pilot",
+                    book_scope=book,
+                    question_type="multi_evidence",
+                    anchor_evidence_ids=[
+                        first.evidence_id,
+                        second.evidence_id,
+                    ],
+                    anchor_clause_ids=[
+                        first.clause_id,
+                        second.clause_id,
+                    ],
+                    selection_seed=seed,
+                    selection_reason=(
+                        "同篇章相邻条文组合候选，仅用于事实型多证据问题"
+                    ),
+                )
+            )
+            used_clause_ids.update(
+                {first.clause_id, second.clause_id}
+            )
+        strata[stratum] = {
+            "candidate_count": len(pair_candidates),
+            "selected_count": len(selected_pairs),
+            "rejection_counts": {
+                "overlapping_pair_count": (
+                    len(pair_candidates) - len(selected_pairs)
+                )
+            },
+        }
+
+        unanswerable_stratum = f"{book}/unanswerable"
+        for index in range(1, PILOT_PER_CELL + 1):
+            groups.append(
+                PilotEvidenceGroup(
+                    group_id=_pilot_group_id(
+                        book,
+                        "unanswerable",
+                        index,
+                    ),
+                    split="pilot",
+                    book_scope=book,
+                    question_type="unanswerable",
+                    anchor_evidence_ids=[],
+                    anchor_clause_ids=[],
+                    selection_seed=seed,
+                    selection_reason=(
+                        "需人工填写两书无答案主题并补充 absence queries"
+                    ),
+                )
+            )
+        strata[unanswerable_stratum] = {
+            "candidate_count": PILOT_PER_CELL,
+            "selected_count": PILOT_PER_CELL,
+            "rejection_counts": {},
+        }
+
+    book_order = {book: index for index, book in enumerate(PILOT_BOOKS)}
+    type_order = {
+        question_type: index
+        for index, question_type in enumerate(PILOT_QUESTION_TYPES)
+    }
+    groups.sort(
+        key=lambda group: (
+            book_order[group.book_scope],
+            type_order[group.question_type],
+            group.group_id,
+        )
+    )
+    group_records = [
+        group.model_dump(mode="json") for group in groups
+    ]
+    pilot_anchor_evidence_ids = sorted(
+        {
+            evidence_id
+            for group in groups
+            for evidence_id in group.anchor_evidence_ids
+        }
+    )
+    pilot_anchor_clause_ids = sorted(
+        {
+            clause_id
+            for group in groups
+            for clause_id in group.anchor_clause_ids
+        }
+    )
+    exclusions = {
+        "version": "v1.5.0",
+        "selection_seed": seed,
+        "smoke_gold_evidence_ids": smoke_gold_evidence_ids,
+        "smoke_gold_clause_ids": smoke_gold_clause_ids,
+        "pilot_group_ids": [group.group_id for group in groups],
+        "pilot_anchor_evidence_ids": pilot_anchor_evidence_ids,
+        "pilot_anchor_clause_ids": pilot_anchor_clause_ids,
+        "future_formal_excluded_evidence_ids": sorted(
+            set(smoke_gold_evidence_ids)
+            | set(pilot_anchor_evidence_ids)
+        ),
+        "future_formal_excluded_clause_ids": sorted(
+            set(smoke_gold_clause_ids)
+            | set(pilot_anchor_clause_ids)
+        ),
+    }
+    candidate_report = {
+        "version": "v1.5.0",
+        "selection_seed": seed,
+        "selected_group_count": len(groups),
+        "answerable_group_count": sum(
+            group.question_type != "unanswerable" for group in groups
+        ),
+        "unanswerable_group_count": sum(
+            group.question_type == "unanswerable" for group in groups
+        ),
+        "strata": strata,
+    }
+
+    for path in (output_path, exclusions_path, candidate_report_path):
+        path.parent.mkdir(parents=True, exist_ok=True)
+    _write_jsonl(output_path, group_records)
+    _write_json(exclusions_path, exclusions)
+    _write_json(candidate_report_path, candidate_report)
+    return {
+        "group_count": len(groups),
+        "answerable_group_count": (
+            candidate_report["answerable_group_count"]
+        ),
+        "unanswerable_group_count": (
+            candidate_report["unanswerable_group_count"]
+        ),
+        "evidence_group_sha256": _sha256_file(output_path),
+        "exclusions_sha256": _sha256_file(exclusions_path),
+        "candidate_report_sha256": _sha256_file(
+            candidate_report_path
+        ),
     }
 
 

@@ -186,6 +186,78 @@ def make_pilot_artifacts() -> tuple[list[dict], list[dict], list[dict]]:
     return questions, groups, evidence_records
 
 
+def make_sampling_evidence_records() -> list[dict]:
+    records = []
+    for book_index, book in enumerate(
+        ("shang_han_lun", "jin_gui_yao_lue"),
+        start=1,
+    ):
+        prefix = "shl" if book == "shang_han_lun" else "jgy"
+        for clause_index in range(1, 26):
+            clause_id = f"{prefix}-sample-clause-{clause_index:03d}"
+            base_record = {
+                "book_id": book,
+                "book_title": f"测试书籍 {book_index}",
+                "volume": "",
+                "chapter_id": f"{prefix}-sample-chapter",
+                "chapter_title": "测试定位篇章",
+                "clause_id": clause_id,
+                "clause_number": clause_index,
+                "parent_id": clause_id,
+                "notes": [],
+                "source_file": f"{prefix}.txt",
+                "source_hash": f"{book_index}" * 64,
+                "corpus_version": "v1.5.0",
+            }
+            clause_text = (
+                f"{book} 第 {clause_index} 条测试原文，"
+                "用于稳定候选选择。"
+            )
+            records.append(
+                {
+                    **base_record,
+                    "evidence_id": clause_id,
+                    "content_type": "clause",
+                    "original_text": clause_text,
+                    "normalized_text": clause_text,
+                }
+            )
+            if 6 <= clause_index <= 10:
+                formula_id = f"{clause_id}-formula-01"
+                records.append(
+                    {
+                        **base_record,
+                        "evidence_id": formula_id,
+                        "content_type": "formula",
+                        "parent_id": clause_id,
+                        "original_text": f"测试方剂 {clause_index}",
+                        "normalized_text": f"测试方剂 {clause_index}",
+                    }
+                )
+                records.append(
+                    {
+                        **base_record,
+                        "evidence_id": f"{formula_id}-ingredients",
+                        "content_type": "ingredients",
+                        "parent_id": formula_id,
+                        "original_text": "测试药物甲、测试药物乙",
+                        "normalized_text": "测试药物甲、测试药物乙",
+                    }
+                )
+            if 11 <= clause_index <= 15:
+                records.append(
+                    {
+                        **base_record,
+                        "evidence_id": f"{clause_id}-note-01",
+                        "content_type": "note",
+                        "parent_id": clause_id,
+                        "original_text": f"测试校注 {clause_index}",
+                        "normalized_text": f"测试校注 {clause_index}",
+                    }
+                )
+    return records
+
+
 class DatasetValidationTests(unittest.TestCase):
     def test_validates_smoke_count_and_evidence_contract(self) -> None:
         from experiments.rag_v1_5.dataset import validate_dataset
@@ -537,6 +609,265 @@ class PilotDatasetValidationTests(unittest.TestCase):
         self.assertEqual(len(groups), 2)
 
 
+class PilotEvidenceSamplingTests(unittest.TestCase):
+    def run_sampling(
+        self,
+        root: Path,
+        evidence_records: list[dict],
+        *,
+        suffix: str,
+    ) -> tuple[dict, Path, Path, Path]:
+        from experiments.rag_v1_5.dataset import (
+            sample_pilot_evidence_groups,
+        )
+
+        evidence_path = root / f"evidence-{suffix}.jsonl"
+        smoke_path = root / "smoke-10.jsonl"
+        output_path = root / f"groups-{suffix}.jsonl"
+        exclusions_path = root / f"exclusions-{suffix}.json"
+        report_path = root / f"report-{suffix}.json"
+        write_jsonl_records(evidence_path, evidence_records)
+        smoke_evidence = next(
+            record
+            for record in evidence_records
+            if record["evidence_id"] == "shl-sample-clause-001"
+        )
+        write_questions(
+            smoke_path,
+            [
+                make_question(
+                    "smoke-sampling-01",
+                    evidence_id=smoke_evidence["evidence_id"],
+                    clause_id=smoke_evidence["clause_id"],
+                    support_span=smoke_evidence["normalized_text"],
+                )
+            ],
+        )
+        summary = sample_pilot_evidence_groups(
+            evidence_path=evidence_path,
+            smoke_dataset_path=smoke_path,
+            output_path=output_path,
+            exclusions_path=exclusions_path,
+            candidate_report_path=report_path,
+            seed=20260614,
+        )
+        return summary, output_path, exclusions_path, report_path
+
+    def test_sampling_is_deterministic_and_input_order_independent(
+        self,
+    ) -> None:
+        evidence_records = make_sampling_evidence_records()
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            first = self.run_sampling(
+                root,
+                evidence_records,
+                suffix="first",
+            )
+            second = self.run_sampling(
+                root,
+                list(reversed(evidence_records)),
+                suffix="second",
+            )
+            first_summary, first_output, first_exclusions, first_report = (
+                first
+            )
+            _, second_output, second_exclusions, second_report = second
+
+            self.assertEqual(
+                first_output.read_bytes(),
+                second_output.read_bytes(),
+            )
+            self.assertEqual(
+                first_exclusions.read_bytes(),
+                second_exclusions.read_bytes(),
+            )
+            self.assertEqual(
+                first_report.read_bytes(),
+                second_report.read_bytes(),
+            )
+
+        self.assertEqual(first_summary["group_count"], 40)
+        self.assertEqual(first_summary["answerable_group_count"], 32)
+        self.assertEqual(first_summary["unanswerable_group_count"], 8)
+
+    def test_sampling_excludes_smoke_and_uses_unique_anchors(self) -> None:
+        evidence_records = make_sampling_evidence_records()
+        evidence_by_id = {
+            record["evidence_id"]: record for record in evidence_records
+        }
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            _, output_path, exclusions_path, _ = self.run_sampling(
+                Path(temporary_directory),
+                evidence_records,
+                suffix="unique",
+            )
+            groups = [
+                json.loads(line)
+                for line in output_path.read_text(
+                    encoding="utf-8"
+                ).splitlines()
+            ]
+            exclusions = json.loads(
+                exclusions_path.read_text(encoding="utf-8")
+            )
+
+        self.assertEqual(len({group["group_id"] for group in groups}), 40)
+        answerable_groups = [
+            group
+            for group in groups
+            if group["question_type"] != "unanswerable"
+        ]
+        anchor_evidence_ids = [
+            evidence_id
+            for group in answerable_groups
+            for evidence_id in group["anchor_evidence_ids"]
+        ]
+        anchor_clause_ids = [
+            clause_id
+            for group in answerable_groups
+            for clause_id in group["anchor_clause_ids"]
+        ]
+        self.assertEqual(
+            len(anchor_evidence_ids),
+            len(set(anchor_evidence_ids)),
+        )
+        self.assertEqual(
+            len(anchor_clause_ids),
+            len(set(anchor_clause_ids)),
+        )
+        self.assertNotIn(
+            "shl-sample-clause-001",
+            anchor_evidence_ids,
+        )
+        self.assertNotIn(
+            "shl-sample-clause-001",
+            anchor_clause_ids,
+        )
+        self.assertIn(
+            "shl-sample-clause-001",
+            exclusions["smoke_gold_evidence_ids"],
+        )
+        self.assertEqual(
+            set(exclusions["pilot_group_ids"]),
+            {group["group_id"] for group in groups},
+        )
+        self.assertEqual(
+            set(exclusions["future_formal_excluded_clause_ids"]),
+            set(anchor_clause_ids)
+            | set(exclusions["smoke_gold_clause_ids"]),
+        )
+
+        for group in answerable_groups:
+            self.assertTrue(group["anchor_evidence_ids"])
+            self.assertTrue(group["anchor_clause_ids"])
+            for evidence_id in group["anchor_evidence_ids"]:
+                self.assertEqual(
+                    evidence_by_id[evidence_id]["book_id"],
+                    group["book_scope"],
+                )
+
+    def test_sampling_enforces_type_specific_candidate_contracts(
+        self,
+    ) -> None:
+        evidence_records = make_sampling_evidence_records()
+        evidence_by_id = {
+            record["evidence_id"]: record for record in evidence_records
+        }
+        clause_book = {
+            record["clause_id"]: record["book_id"]
+            for record in evidence_records
+        }
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            _, output_path, _, report_path = self.run_sampling(
+                Path(temporary_directory),
+                evidence_records,
+                suffix="types",
+            )
+            groups = [
+                json.loads(line)
+                for line in output_path.read_text(
+                    encoding="utf-8"
+                ).splitlines()
+            ]
+            report = json.loads(
+                report_path.read_text(encoding="utf-8")
+            )
+
+        formula_types = {"formula", "ingredients", "preparation"}
+        for group in groups:
+            if group["question_type"] == "formula_composition_or_use":
+                self.assertTrue(
+                    formula_types
+                    & {
+                        evidence_by_id[evidence_id]["content_type"]
+                        for evidence_id in group[
+                            "anchor_evidence_ids"
+                        ]
+                    }
+                )
+            elif group["question_type"] == "source_location":
+                anchor_records = [
+                    evidence_by_id[evidence_id]
+                    for evidence_id in group["anchor_evidence_ids"]
+                ]
+                self.assertTrue(anchor_records)
+                self.assertTrue(
+                    all(
+                        record["content_type"] == "note"
+                        for record in anchor_records
+                    ),
+                    "存在足够 note 候选时必须优先选择 note",
+                )
+            elif group["question_type"] == "multi_evidence":
+                self.assertEqual(
+                    len(set(group["anchor_clause_ids"])),
+                    2,
+                )
+                self.assertGreaterEqual(
+                    len(set(group["anchor_evidence_ids"])),
+                    2,
+                )
+                self.assertEqual(
+                    {
+                        clause_book[clause_id]
+                        for clause_id in group["anchor_clause_ids"]
+                    },
+                    {group["book_scope"]},
+                )
+            elif group["question_type"] == "unanswerable":
+                self.assertEqual(group["anchor_evidence_ids"], [])
+                self.assertEqual(group["anchor_clause_ids"], [])
+                self.assertEqual(group["absence_queries"], [])
+                self.assertIn("人工", group["selection_reason"])
+
+        self.assertEqual(report["selected_group_count"], 40)
+        self.assertEqual(len(report["strata"]), 10)
+        self.assertNotIn("normalized_text", json.dumps(report))
+        self.assertNotIn("original_text", json.dumps(report))
+
+    def test_sampling_reports_insufficient_stratum(self) -> None:
+        evidence_records = [
+            record
+            for record in make_sampling_evidence_records()
+            if not (
+                record["book_id"] == "jin_gui_yao_lue"
+                and record["content_type"]
+                in {"formula", "ingredients", "preparation"}
+            )
+        ]
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            with self.assertRaisesRegex(
+                ValueError,
+                "jin_gui_yao_lue/formula_composition_or_use",
+            ):
+                self.run_sampling(
+                    Path(temporary_directory),
+                    evidence_records,
+                    suffix="insufficient",
+                )
+
+
 class SmokeRunTests(unittest.TestCase):
     def test_writes_results_metrics_and_manual_review_csv(self) -> None:
         from experiments.rag_v1_5.dataset import (
@@ -749,6 +1080,34 @@ class DatasetCliTests(unittest.TestCase):
             Path(
                 "data/rag_v1_5/evaluation/"
                 "pilot-evidence-groups.jsonl"
+            ),
+        )
+
+    def test_sample_pilot_evidence_cli_contract_matches_plan(self) -> None:
+        from experiments.rag_v1_5.cli import build_parser
+
+        args = build_parser().parse_args(
+            [
+                "sample-pilot-evidence",
+                "--seed",
+                "20260614",
+            ]
+        )
+
+        self.assertEqual(args.command, "sample-pilot-evidence")
+        self.assertEqual(args.seed, 20260614)
+        self.assertEqual(
+            args.output,
+            Path(
+                "data/rag_v1_5/evaluation/"
+                "pilot-evidence-groups.jsonl"
+            ),
+        )
+        self.assertEqual(
+            args.exclusions,
+            Path(
+                "data/rag_v1_5/evaluation/"
+                "pilot-exclusions.json"
             ),
         )
 
