@@ -19,20 +19,34 @@ CLAUSE_PATTERN = re.compile(
     r"(?m)^(?:属性：)?[ \t]*(?P<number>\d{1,4})[．.]"
 )
 FORMULA_PATTERN = re.compile(r"\\x(?P<name>[^\\\r\n]+)\\x")
-IMPLICIT_FORMULA_MARKER_PATTERN = re.compile(
-    r"方(?:[一二三四五六七八九十百\d]+[。．]?|[∶：])"
+FORMULA_COUNT_PATTERN = re.compile(
+    r"方(?P<count>[一二三四五六七八九十百\d]+)[。．]?"
 )
+FORMULA_COLON_PATTERN = re.compile(r"方[∶：]")
+FORMULA_SUFFIX_PATTERN = r"(?:汤|丸|散|饮子|饮|煎|膏|丹|酒)"
 FORMULA_NAME_PATTERN = re.compile(
-    r"[\u4e00-\u9fff]{2,16}(?:汤|丸|散|饮|煎|膏|丹|酒)$"
+    rf"[\u4e00-\u9fff]{{2,20}}{FORMULA_SUFFIX_PATTERN}$"
 )
 FORMULA_REFERENCE_PATTERN = re.compile(
     r"^[ \t\r\n]*(?:《[^》]+》)?"
-    r"(?P<name>[\u4e00-\u9fff]{2,16}(?:汤|丸|散|饮|煎|膏|丹|酒))"
+    rf"(?P<name>[\u4e00-\u9fff]{{2,20}}{FORMULA_SUFFIX_PATTERN})"
+)
+FORMULA_TREATMENT_REFERENCE_PATTERN = re.compile(
+    rf"(?P<name>[\u4e00-\u9fff]{{2,20}}{FORMULA_SUFFIX_PATTERN})主之"
+)
+FORMULA_HEADING_NAME_PATTERN = re.compile(
+    rf"^[\u4e00-\u9fff]{{2,30}}{FORMULA_SUFFIX_PATTERN}方$"
 )
 PREPARATION_PATTERN = re.compile(
-    r"(?m)^[ \t]*(?:上|右)(?=[一二三四五六七八九十百〇零两\d \t，、味药])"
+    r"(?m)^[ \t]*(?:"
+    r"上(?:先|为|各)"
+    r"|(?:上|右)(?=[一二三四五六七八九十百〇零两\d \t，、味药])"
+    r")"
 )
 PARENTHETICAL_PATTERN = re.compile(r"（(?P<fullwidth>[^（）]+)）|\((?P<ascii>[^()]+)\)")
+FORMULA_NOT_SEEN_PATTERN = re.compile(
+    r"^[ \t\r\n]*[（(][ \t]*方未见[ \t]*[）)][ \t\r\n]*$"
+)
 NOTE_KEYWORDS = (
     "一云",
     "一本",
@@ -44,6 +58,7 @@ NOTE_KEYWORDS = (
     "玉函",
     "千金",
     "方见",
+    "方未见",
     "用前",
     "校",
     "注",
@@ -58,10 +73,11 @@ GENERIC_FORMULA_LABELS = {"又方", "治方"}
 
 @dataclass(frozen=True)
 class _FormulaMarker:
-    start: int
-    end: int
+    boundary_start: int
+    body_start: int
     formula_name: str | None
     original_start: int
+    source_kind: str
     creates_formula: bool = True
     ingredients_without_preparation: bool = False
 
@@ -170,6 +186,98 @@ def _is_inside_marker(
     )
 
 
+def _implicit_formula_name_span(
+    clause_text: str,
+    marker_start: int,
+) -> tuple[str, int] | None:
+    prefix = clause_text[:marker_start]
+    match = re.search(
+        rf"(?P<name>[\u4e00-\u9fff]{{2,20}}"
+        rf"{FORMULA_SUFFIX_PATTERN})[ \t]*$",
+        prefix,
+    )
+    if match is None:
+        return None
+    return match.group("name"), match.start("name")
+
+
+def _formula_count_name(
+    clause_text: str,
+    marker_start: int,
+) -> tuple[str, int | None] | None:
+    prefix = clause_text[:marker_start].rstrip()
+    without_punctuation = prefix.rstrip("。．")
+    fragment_start = _sentence_fragment_start(
+        without_punctuation,
+        len(without_punctuation),
+    )
+    fragment = without_punctuation[fragment_start:].strip()
+    if FORMULA_NAME_PATTERN.fullmatch(fragment):
+        name_start = without_punctuation.rfind(fragment)
+        return fragment, name_start
+
+    references = list(FORMULA_TREATMENT_REFERENCE_PATTERN.finditer(prefix))
+    if references:
+        return references[-1].group("name"), None
+    return None
+
+
+def _formula_count_followed_by_heading(
+    clause_text: str,
+    body_start: int,
+) -> bool:
+    remaining = clause_text[body_start:].lstrip()
+    return (
+        re.match(
+            rf"[\u4e00-\u9fff]{{2,20}}"
+            rf"{FORMULA_SUFFIX_PATTERN}方[∶：]",
+            remaining,
+        )
+        is not None
+    )
+
+
+def _collect_formula_heading_markers(
+    clause_text: str,
+    explicit_matches: list[re.Match[str]],
+) -> list[_FormulaMarker]:
+    markers = []
+    for line_match in re.finditer(r"(?m)^(?P<line>[^\r\n]+)", clause_text):
+        line = line_match.group("line").strip()
+        title = re.sub(
+            r"[（(][^（）()]*[）)][ \t]*$",
+            "",
+            line,
+        ).rstrip("。． \t")
+        candidate = re.split(r"[，,；;]", title)[-1].strip()
+        if not FORMULA_HEADING_NAME_PATTERN.fullmatch(candidate):
+            continue
+
+        candidate_offset = line_match.group("line").rfind(candidate)
+        boundary_start = line_match.start("line") + candidate_offset
+        if _is_inside_marker(boundary_start, explicit_matches):
+            continue
+
+        remaining = clause_text[line_match.end():]
+        if (
+            PREPARATION_PATTERN.search(remaining) is None
+            and "方未见" not in remaining
+        ):
+            continue
+
+        markers.append(
+            _FormulaMarker(
+                boundary_start=boundary_start,
+                body_start=line_match.end(),
+                formula_name=candidate,
+                original_start=line_match.start("line"),
+                source_kind="formula_heading",
+                ingredients_without_preparation=True,
+            )
+        )
+    return markers
+
+
 def _collect_formula_markers(clause_text: str) -> list[_FormulaMarker]:
     explicit_matches = list(FORMULA_PATTERN.finditer(clause_text))
     markers: list[_FormulaMarker] = []
@@ -180,10 +288,11 @@ def _collect_formula_markers(clause_text: str) -> list[_FormulaMarker]:
         if label in FORMULA_SECTION_LABELS:
             markers.append(
                 _FormulaMarker(
-                    start=match.start(),
-                    end=match.end(),
+                    boundary_start=match.start(),
+                    body_start=match.end(),
                     formula_name=None,
                     original_start=match.start(),
+                    source_kind="section_boundary",
                     creates_formula=False,
                 )
             )
@@ -192,43 +301,95 @@ def _collect_formula_markers(clause_text: str) -> list[_FormulaMarker]:
         is_generic = label in GENERIC_FORMULA_LABELS
         markers.append(
             _FormulaMarker(
-                start=match.start(),
-                end=match.end(),
+                boundary_start=match.start(),
+                body_start=match.end(),
                 formula_name=None if is_generic else raw_label,
                 original_start=match.start(),
+                source_kind=(
+                    "generic_alternative"
+                    if is_generic
+                    else "explicit_markup"
+                ),
                 ingredients_without_preparation=not is_generic,
             )
         )
 
-    for match in IMPLICIT_FORMULA_MARKER_PATTERN.finditer(clause_text):
+    markers.extend(
+        _collect_formula_heading_markers(clause_text, explicit_matches)
+    )
+
+    for match in FORMULA_COUNT_PATTERN.finditer(clause_text):
         if _is_inside_marker(match.start(), explicit_matches):
             continue
 
-        formula_name = _implicit_formula_name(clause_text[:match.start()])
-        original_start = match.start()
-        if not formula_name:
+        if _formula_count_followed_by_heading(clause_text, match.end()):
+            markers.append(
+                _FormulaMarker(
+                    boundary_start=match.start(),
+                    body_start=match.end(),
+                    formula_name=None,
+                    original_start=match.start(),
+                    source_kind="formula_count",
+                    creates_formula=False,
+                )
+            )
+            continue
+
+        count_name = _formula_count_name(clause_text, match.start())
+        if count_name is None:
+            continue
+        formula_name, name_start = count_name
+        formula_start = (
+            name_start if name_start is not None else match.start()
+        )
+        markers.append(
+            _FormulaMarker(
+                boundary_start=formula_start,
+                body_start=match.end(),
+                formula_name=formula_name,
+                original_start=formula_start,
+                source_kind="formula_count",
+            )
+        )
+
+    for match in FORMULA_COLON_PATTERN.finditer(clause_text):
+        if _is_inside_marker(match.start(), explicit_matches):
+            continue
+
+        name_span = _implicit_formula_name_span(
+            clause_text,
+            match.start(),
+        )
+        if name_span is not None:
+            formula_name, formula_start = name_span
+        else:
             text_before_marker = clause_text[:match.start()].rstrip()
             if not re.search(r"(?:治|解)之$", text_before_marker):
                 continue
-
-            original_start = _sentence_fragment_start(
+            formula_start = _sentence_fragment_start(
                 clause_text,
                 match.start(),
             )
             formula_name = _clean_formula_label(
-                normalize_text(clause_text[original_start:match.end()])
+                normalize_text(clause_text[formula_start:match.end()])
             )
-
         markers.append(
             _FormulaMarker(
-                start=match.start(),
-                end=match.end(),
+                boundary_start=formula_start,
+                body_start=match.end(),
                 formula_name=formula_name,
-                original_start=original_start,
+                original_start=formula_start,
+                source_kind="generic_alternative",
             )
         )
 
-    return sorted(markers, key=lambda marker: (marker.start, marker.end))
+    return sorted(
+        markers,
+        key=lambda marker: (
+            marker.boundary_start,
+            marker.body_start,
+        ),
+    )
 
 
 def _formula_units(
@@ -250,14 +411,14 @@ def _formula_units(
 
     for marker_index, marker in enumerate(markers):
         segment_end = (
-            markers[marker_index + 1].start
+            markers[marker_index + 1].boundary_start
             if marker_index + 1 < len(markers)
             else len(clause_text)
         )
         if not marker.creates_formula:
             continue
 
-        formula_body = clause_text[marker.end:segment_end].strip()
+        formula_body = clause_text[marker.body_start:segment_end].strip()
         formula_name = marker.formula_name or _formula_reference_name(formula_body)
         formula_name = formula_name or "又方"
         accepted_formula_count += 1
@@ -289,21 +450,25 @@ def _formula_units(
             )
         )
 
-        preparation_match = PREPARATION_PATTERN.search(formula_body)
-        ingredients_text = (
-            formula_body[:preparation_match.start()].strip()
-            if preparation_match
-            else (
-                formula_body.strip()
-                if marker.ingredients_without_preparation
+        if FORMULA_NOT_SEEN_PATTERN.fullmatch(formula_body):
+            ingredients_text = ""
+            preparation_text = ""
+        else:
+            preparation_match = PREPARATION_PATTERN.search(formula_body)
+            ingredients_text = (
+                formula_body[:preparation_match.start()].strip()
+                if preparation_match
+                else (
+                    formula_body.strip()
+                    if marker.ingredients_without_preparation
+                    else ""
+                )
+            )
+            preparation_text = (
+                formula_body[preparation_match.start():].strip()
+                if preparation_match
                 else ""
             )
-        )
-        preparation_text = (
-            formula_body[preparation_match.start():].strip()
-            if preparation_match
-            else ""
-        )
 
         if ingredients_text:
             units.append(
@@ -348,21 +513,6 @@ def _formula_units(
             )
 
     return units
-
-
-def _implicit_formula_name(text_before_marker: str) -> str | None:
-    candidate = text_before_marker[-100:].rstrip(" \t\r\n。．；;：:")
-    if candidate.endswith("主之"):
-        candidate = candidate[:-2].rstrip(" \t\r\n。．；;：:")
-
-    candidate = re.split(r"[，,。．；;：:\r\n]", candidate)[-1].strip()
-    match = FORMULA_NAME_PATTERN.search(candidate)
-    if not match:
-        return None
-
-    formula_name = match.group(0)
-    formula_name = re.sub(r"^(?:则|宜|与|服|用|可)+", "", formula_name)
-    return formula_name or None
 
 
 def _write_jsonl(path: Path, rows: list[dict]) -> None:
