@@ -8,7 +8,11 @@ import unittest
 from collections import Counter, defaultdict
 from pathlib import Path
 
-from experiments.rag_v1_5.schema import EvidenceUnit, ParseAnomaly
+from experiments.rag_v1_5.schema import (
+    AuditRecord,
+    EvidenceUnit,
+    ParseAnomaly,
+)
 
 
 BOOKS = ("shang_han_lun", "jin_gui_yao_lue")
@@ -135,6 +139,29 @@ def make_anomalies() -> list[ParseAnomaly]:
             original_text="KT",
         )
     ]
+
+
+def make_audit_record(
+    *,
+    audit_id: str,
+    clause_id: str,
+    structured_summary: str | None = None,
+    evidence_ids: list[str] | None = None,
+) -> AuditRecord:
+    return AuditRecord(
+        audit_id=audit_id,
+        book_id="jin_gui_yao_lue",
+        sample_type="formula",
+        chapter_id="jgy-chapter-01",
+        clause_id=clause_id,
+        evidence_ids=evidence_ids or [clause_id, f"{clause_id}-formula-01"],
+        original_text=f"[clause] {clause_id}",
+        structured_summary=(
+            structured_summary
+            if structured_summary is not None
+            else f"[formula] {clause_id}"
+        ),
+    )
 
 
 class AuditSamplingTests(unittest.TestCase):
@@ -565,6 +592,183 @@ class AuditReviewTests(unittest.TestCase):
             json.loads(quality_gate_path.read_text(encoding="utf-8")),
             gate,
         )
+
+
+class AuditMigrationTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temporary_directory = tempfile.TemporaryDirectory()
+        self.root = Path(self.temporary_directory.name)
+        self.audit = importlib.import_module("experiments.rag_v1_5.audit")
+        self.previous_source = self.root / "previous.jsonl"
+        self.previous_reviewed_csv = self.root / "previous.csv"
+        self.new_source = self.root / "new.jsonl"
+        self.output_csv = self.root / "migrated.csv"
+        self.summary_path = self.root / "migration-summary.json"
+
+    def tearDown(self) -> None:
+        self.temporary_directory.cleanup()
+
+    def write_previous(self, records: list[AuditRecord]) -> None:
+        reviewed = [
+            record.model_copy(
+                update={
+                    "status": "pass",
+                    "decision": "correct",
+                    "reviewer": "reviewer-a",
+                    "reviewed_at": "2026-06-14",
+                    "comment": f"reviewed {record.audit_id}",
+                }
+            )
+            for record in records
+        ]
+        self.audit._write_jsonl(self.previous_source, records)
+        self.audit._write_csv(self.previous_reviewed_csv, reviewed)
+
+    def write_new(self, records: list[AuditRecord]) -> None:
+        self.audit._write_jsonl(self.new_source, records)
+
+    def migrate(self) -> dict:
+        migrate_audit_review = getattr(
+            self.audit,
+            "migrate_audit_review",
+            None,
+        )
+        self.assertTrue(
+            callable(migrate_audit_review),
+            "migrate_audit_review is not implemented",
+        )
+        return migrate_audit_review(
+            previous_source_jsonl=self.previous_source,
+            previous_reviewed_csv=self.previous_reviewed_csv,
+            new_source_jsonl=self.new_source,
+            output_csv=self.output_csv,
+            summary_path=self.summary_path,
+        )
+
+    def read_output_rows(self) -> list[dict[str, str]]:
+        with self.output_csv.open(
+            "r",
+            encoding="utf-8-sig",
+            newline="",
+        ) as file_handle:
+            return list(csv.DictReader(file_handle))
+
+    def test_inherits_only_exact_structure_matches(self) -> None:
+        old_same = make_audit_record(
+            audit_id="audit-old-001",
+            clause_id="jgy-chapter-01-001",
+        )
+        old_changed = make_audit_record(
+            audit_id="audit-old-002",
+            clause_id="jgy-chapter-01-002",
+        )
+        self.write_previous([old_same, old_changed])
+        new_same = old_same.model_copy(
+            update={"audit_id": "audit-new-010"}
+        )
+        new_changed = old_changed.model_copy(
+            update={
+                "audit_id": "audit-new-011",
+                "structured_summary": "[formula] corrected",
+            }
+        )
+        new_missing = make_audit_record(
+            audit_id="audit-new-012",
+            clause_id="jgy-chapter-01-003",
+        )
+        self.write_new([new_same, new_changed, new_missing])
+
+        summary = self.migrate()
+        rows = {
+            row["audit_id"]: row for row in self.read_output_rows()
+        }
+
+        self.assertEqual(summary["inherited_count"], 1)
+        self.assertEqual(summary["reset_count"], 2)
+        self.assertEqual(summary["missing_count"], 1)
+        self.assertEqual(summary["ambiguous_count"], 0)
+        self.assertEqual(rows["audit-new-010"]["status"], "pass")
+        self.assertEqual(
+            rows["audit-new-010"]["comment"],
+            "reviewed audit-old-001",
+        )
+        self.assertEqual(rows["audit-new-011"]["status"], "pending")
+        self.assertEqual(rows["audit-new-011"]["decision"], "")
+        self.assertEqual(rows["audit-new-011"]["reviewer"], "")
+        self.assertEqual(
+            rows["audit-new-011"]["structured_summary"],
+            "[formula] corrected",
+        )
+        self.assertEqual(rows["audit-new-012"]["status"], "pending")
+        self.assertEqual(
+            summary["pending_audit_ids"],
+            ["audit-new-011", "audit-new-012"],
+        )
+        self.assertEqual(
+            json.loads(self.summary_path.read_text(encoding="utf-8")),
+            summary,
+        )
+
+    def test_duplicate_semantic_key_is_ambiguous(self) -> None:
+        first = make_audit_record(
+            audit_id="audit-old-001",
+            clause_id="jgy-chapter-01-001",
+        )
+        second = first.model_copy(
+            update={"audit_id": "audit-old-002"}
+        )
+        self.write_previous([first, second])
+        self.write_new(
+            [
+                first.model_copy(
+                    update={"audit_id": "audit-new-001"}
+                )
+            ]
+        )
+
+        summary = self.migrate()
+        row = self.read_output_rows()[0]
+
+        self.assertEqual(summary["inherited_count"], 0)
+        self.assertEqual(summary["ambiguous_count"], 1)
+        self.assertEqual(summary["reset_count"], 1)
+        self.assertEqual(row["status"], "pending")
+
+    def test_rejects_tampered_previous_immutable_columns(self) -> None:
+        record = make_audit_record(
+            audit_id="audit-old-001",
+            clause_id="jgy-chapter-01-001",
+        )
+        self.write_previous([record])
+        self.write_new(
+            [
+                record.model_copy(
+                    update={"audit_id": "audit-new-001"}
+                )
+            ]
+        )
+        with self.previous_reviewed_csv.open(
+            "r",
+            encoding="utf-8-sig",
+            newline="",
+        ) as file_handle:
+            rows = list(csv.DictReader(file_handle))
+        rows[0]["evidence_ids"] = "tampered-evidence"
+        with self.previous_reviewed_csv.open(
+            "w",
+            encoding="utf-8-sig",
+            newline="",
+        ) as file_handle:
+            writer = csv.DictWriter(
+                file_handle,
+                fieldnames=list(rows[0]),
+                lineterminator="\n",
+            )
+            writer.writeheader()
+            writer.writerows(rows)
+
+        with self.assertRaisesRegex(ValueError, "evidence_ids"):
+            self.migrate()
 
 
 if __name__ == "__main__":

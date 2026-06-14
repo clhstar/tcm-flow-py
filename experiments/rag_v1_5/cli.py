@@ -12,6 +12,7 @@ from experiments.rag_v1_5.audit import (
     build_audit_artifacts,
     freeze_quality_gate,
     import_audit_review,
+    migrate_audit_review,
 )
 from experiments.rag_v1_5.corpus import (
     DEFAULT_CORPUS_SPECS,
@@ -450,6 +451,36 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_CHUNK_MANIFEST_PATH,
     )
 
+    migration_parser = subparsers.add_parser(
+        "migrate-audit-review",
+        help="仅为结构完全未变化的新样本继承旧人工审核结论",
+    )
+    migration_parser.add_argument(
+        "--previous-source",
+        type=Path,
+        required=True,
+    )
+    migration_parser.add_argument(
+        "--previous-reviewed-csv",
+        type=Path,
+        required=True,
+    )
+    migration_parser.add_argument(
+        "--new-source",
+        type=Path,
+        required=True,
+    )
+    migration_parser.add_argument(
+        "--output-csv",
+        type=Path,
+        required=True,
+    )
+    migration_parser.add_argument(
+        "--summary",
+        type=Path,
+        required=True,
+    )
+
     index_parser = subparsers.add_parser(
         "build-indexes",
         help="构建 C0-C4 的 BM25 token 与 Dense 向量索引",
@@ -602,6 +633,14 @@ def main(
             chunks_dir=args.chunks_dir,
             chunk_manifest_path=args.chunk_manifest,
             quality_gate_path=args.quality_gate,
+        )
+    elif args.command == "migrate-audit-review":
+        manifest = migrate_audit_review(
+            previous_source_jsonl=args.previous_source,
+            previous_reviewed_csv=args.previous_reviewed_csv,
+            new_source_jsonl=args.new_source,
+            output_csv=args.output_csv,
+            summary_path=args.summary,
         )
     elif args.command == "build-indexes":
         manifest = build_indexes(

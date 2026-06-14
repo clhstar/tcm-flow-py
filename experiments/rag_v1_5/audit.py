@@ -51,6 +51,24 @@ IMMUTABLE_REVIEW_FIELDS = (
     "original_text",
     "structured_summary",
 )
+REVIEW_MIGRATION_KEY_FIELDS = (
+    "book_id",
+    "sample_type",
+    "clause_id",
+)
+REVIEW_MIGRATION_COMPARE_FIELDS = (
+    "chapter_id",
+    "evidence_ids",
+    "original_text",
+    "structured_summary",
+)
+REVIEW_MUTABLE_FIELDS = (
+    "status",
+    "decision",
+    "reviewer",
+    "reviewed_at",
+    "comment",
+)
 ERROR_DECISIONS = (
     "boundary_error",
     "type_error",
@@ -534,6 +552,158 @@ def _validate_review_row(
             "comment": comment,
         }
     )
+
+
+def _review_migration_key(record: AuditRecord) -> tuple[str, str, str]:
+    return tuple(
+        str(getattr(record, field))
+        for field in REVIEW_MIGRATION_KEY_FIELDS
+    )
+
+
+def _records_by_migration_key(
+    records: list[AuditRecord],
+) -> dict[tuple[str, str, str], list[AuditRecord]]:
+    grouped: dict[tuple[str, str, str], list[AuditRecord]] = defaultdict(list)
+    for record in records:
+        grouped[_review_migration_key(record)].append(record)
+    return grouped
+
+
+def _load_validated_previous_reviews(
+    *,
+    source_jsonl: Path,
+    reviewed_csv: Path,
+) -> list[AuditRecord]:
+    source_records = _load_jsonl(source_jsonl, AuditRecord)
+    source_by_id = {record.audit_id: record for record in source_records}
+    if len(source_by_id) != len(source_records):
+        raise ValueError("旧审核源样本存在重复 audit_id")
+
+    reviewed_rows = _read_review_csv(reviewed_csv)
+    reviewed_ids = [row["audit_id"] for row in reviewed_rows]
+    if len(set(reviewed_ids)) != len(reviewed_ids):
+        raise ValueError("旧审核 CSV 存在重复 audit_id")
+    if set(reviewed_ids) != set(source_by_id):
+        raise ValueError("旧审核 CSV audit_id 与旧源样本不匹配")
+
+    return [
+        _validate_review_row(
+            source_record=source_by_id[row["audit_id"]],
+            reviewed_row=row,
+        )
+        for row in reviewed_rows
+    ]
+
+
+def _pending_review(record: AuditRecord) -> AuditRecord:
+    return record.model_copy(
+        update={
+            "status": "pending",
+            "decision": None,
+            "reviewer": None,
+            "reviewed_at": None,
+            "comment": "",
+        }
+    )
+
+
+def migrate_audit_review(
+    *,
+    previous_source_jsonl: Path,
+    previous_reviewed_csv: Path,
+    new_source_jsonl: Path,
+    output_csv: Path,
+    summary_path: Path,
+) -> dict:
+    previous_records = _load_validated_previous_reviews(
+        source_jsonl=previous_source_jsonl,
+        reviewed_csv=previous_reviewed_csv,
+    )
+    new_records = _load_jsonl(new_source_jsonl, AuditRecord)
+    new_ids = [record.audit_id for record in new_records]
+    if len(set(new_ids)) != len(new_ids):
+        raise ValueError("新审核源样本存在重复 audit_id")
+
+    previous_by_key = _records_by_migration_key(previous_records)
+    new_by_key = _records_by_migration_key(new_records)
+    migrated_records = []
+    details = []
+    inherited_count = 0
+    missing_count = 0
+    ambiguous_count = 0
+    structure_changed_count = 0
+
+    for new_record in new_records:
+        key = _review_migration_key(new_record)
+        previous_matches = previous_by_key.get(key, [])
+        new_matches = new_by_key[key]
+        reason = None
+        changed_fields = []
+
+        if len(previous_matches) > 1 or len(new_matches) > 1:
+            reason = "ambiguous"
+            ambiguous_count += 1
+        elif not previous_matches:
+            reason = "missing"
+            missing_count += 1
+        else:
+            previous_record = previous_matches[0]
+            changed_fields = [
+                field
+                for field in REVIEW_MIGRATION_COMPARE_FIELDS
+                if getattr(previous_record, field) != getattr(new_record, field)
+            ]
+            if changed_fields:
+                reason = "structure_changed"
+                structure_changed_count += 1
+            else:
+                inherited_count += 1
+                migrated_records.append(
+                    new_record.model_copy(
+                        update={
+                            field: getattr(previous_record, field)
+                            for field in REVIEW_MUTABLE_FIELDS
+                        }
+                    )
+                )
+                continue
+
+        migrated_records.append(_pending_review(new_record))
+        details.append(
+            {
+                "audit_id": new_record.audit_id,
+                "book_id": new_record.book_id,
+                "sample_type": new_record.sample_type,
+                "clause_id": new_record.clause_id,
+                "reason": reason,
+                "changed_fields": changed_fields,
+            }
+        )
+
+    _write_csv(output_csv, migrated_records)
+    pending_audit_ids = [
+        record.audit_id
+        for record in migrated_records
+        if record.status == "pending"
+    ]
+    summary = {
+        "total_count": len(migrated_records),
+        "inherited_count": inherited_count,
+        "reset_count": len(pending_audit_ids),
+        "missing_count": missing_count,
+        "ambiguous_count": ambiguous_count,
+        "structure_changed_count": structure_changed_count,
+        "pending_audit_ids": pending_audit_ids,
+        "details": details,
+    }
+    summary_path.parent.mkdir(parents=True, exist_ok=True)
+    summary_path.write_text(
+        json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True)
+        + "\n",
+        encoding="utf-8",
+    )
+    return summary
 
 
 def _write_review_issues(
