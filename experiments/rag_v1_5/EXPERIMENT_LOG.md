@@ -371,3 +371,31 @@ Pilot-40。12 条失败记录仍需逐条归因：审核表将同一 clause Pare
 全部 Child 放在一组，并允许同一 clause 出现在不同抽样层，单纯的展示重复
 不等于解析重复。下一阶段必须先区分审核口径误判与真实 parser 边界/类型
 缺陷，再针对确认缺陷增加回归测试、重新解析、重建 C0-C4，并复审受影响项。
+
+### 二次复核
+
+对 `audit-jin_gui_yao_lue-formula-001` 和
+`audit-jin_gui_yao_lue-note-or-boundary-010` 再次人工复核后，两项仍保留为
+`type_error`，批注改为更明确的预期结构说明。复核后的统计保持不变：
+
+```text
+pass=128
+fail=12
+boundary_error=5
+type_error=7
+```
+
+复核后的审核 CSV SHA256 更新为：
+
+```text
+0A18BB8D79CC1F9DF4CDFDE6239627A5F42A0717FC8F515DF73B6AA84431EF5E
+```
+
+再次执行 `review-audit` 后，Quality Gate 仍为 `blocked`；审核模块测试
+`8/8` 通过。12 条失败记录对应 10 个唯一 clause，初步归因集中在：
+
+1. `方二/方三` 等方数标记与真实方名边界混淆；
+2. 未带 `\x...\x` 标记的方名未生成 formula Child；
+3. `上先`、`上为末` 未被识别为 preparation 起点；
+4. `（方未见）` 被误建为 ingredients，而不是 note；
+5. `jgy-chapter-25-040` 的“又方”是否独立建 formula 仍需冻结审核口径。
