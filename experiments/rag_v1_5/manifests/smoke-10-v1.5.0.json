@@ -18,6 +18,7 @@
     "sha256": "EC5F2478E51EBED90FC4C7B2A7135AF86F1D1DF50F6E0DEC7A9B6E475007F826",
     "unanswerable_count": 1
   },
+  "frozen_at": "2026-06-14T18:17:35+08:00",
   "generated_at": "2026-06-14T09:16:13.046503+00:00",
   "inputs": {
     "config_sha256": "29A47B7F4AC3D7CA305EBFFC6542FA43DE14F75937C0A235C71688ABA7DB7966",
@@ -29,9 +30,15 @@
   },
   "review": {
     "path": "data/rag_v1_5/evaluation/smoke-review.csv",
-    "pending_count": 10,
-    "reviewed_count": 0,
-    "sha256": "9DF1625C8536457960717052F991D8E469CA21D42F8254B5B72A36D664A9EB2C"
+    "pending_count": 0,
+    "reviewed_at": [
+      "2026/6/14"
+    ],
+    "reviewed_count": 10,
+    "reviewers": [
+      "陈力恒"
+    ],
+    "sha256": "2849E3BC4577AC9E3E20045D471E4F8C73C12D70F36193F571BFE903CC8A5E3D"
   },
   "run": {
     "files": {
@@ -51,6 +58,6 @@
       "median": 414.1585500037763
     }
   },
-  "status": "pending_manual_review",
+  "status": "passed",
   "version": "v1.5.0"
 }

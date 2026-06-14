@@ -731,3 +731,36 @@ max total latency=3079.623 ms
 提交前完整验证为 `116/116` 单元测试通过，`compileall`、`pip check`、
 `git diff --check`、Smoke manifest 文件哈希复核和 `retrieval-doctor`
 均通过。
+
+### Smoke-10 人工复核冻结
+
+人工 Top 5 复核于 `2026/6/14` 完成：
+
+```text
+reviewed_count=10
+pending_count=0
+reviewer=陈力恒
+answerable hit_at_5 TRUE=9/9
+answerable parent_recovery_ok TRUE=9/9
+unanswerable 自动列留空=1/1
+smoke-review.csv SHA256=
+2849E3BC4577AC9E3E20045D471E4F8C73C12D70F36193F571BFE903CC8A5E3D
+```
+
+Excel 再次将 CSV 保存为 CP936。已保留原始文件：
+
+```text
+data/rag_v1_5/evaluation/smoke-review.cp936-backup-20260614-181712.csv
+SHA256=4A6CE7AE30F05D1873B4B3385AF134CADFD3D72EC08CFE09400D39DF371EA080
+```
+
+转换后的 UTF-8 BOM 文件与备份的 CSV 字段和值完全一致。
+
+辅助表 `smoke-review-details.csv` 的 `is_gold_clause=FALSE` 只表示该候选
+不是预先标注的 gold clause，不表示候选一定无关，也不表示整题失败。
+辅助表共 50 个候选，系统原始结果为 `TRUE=11`、`FALSE=39`，人工复核后
+与运行产物逐项比对仍为 `0` 处差异。最终门禁只依据正式复核表中的题目级
+`hit_at_5`、`parent_recovery_ok` 和人工意见。
+
+Smoke Manifest 已从 `pending_manual_review` 冻结为 `passed`。Task 7
+人工门禁完成，可以进入 Pilot-40 的 evidence-first 试标阶段。
