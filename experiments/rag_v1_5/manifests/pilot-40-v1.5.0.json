@@ -1,0 +1,83 @@
+{
+  "dataset": {
+    "answerable_count": 32,
+    "approved_count": 40,
+    "path": "data/rag_v1_5/evaluation/pilot-40.jsonl",
+    "question_count": 40,
+    "sha256": "EF87DF80B5D01250A5374A4EB1442195914DAB6C67EE7F5D95A8337F585C4F94",
+    "unanswerable_count": 8
+  },
+  "distribution": {
+    "jin_gui_yao_lue": {
+      "formula_composition_or_use": 4,
+      "multi_evidence": 4,
+      "single_clause_fact": 4,
+      "source_location": 4,
+      "unanswerable": 4
+    },
+    "shang_han_lun": {
+      "formula_composition_or_use": 4,
+      "multi_evidence": 4,
+      "single_clause_fact": 4,
+      "source_location": 4,
+      "unanswerable": 4
+    }
+  },
+  "frozen_at": "2026-06-14T14:17:11.500803+00:00",
+  "inputs": {
+    "chunk_manifest": {
+      "path": "experiments/rag_v1_5/manifests/chunks-v1.5.0.json",
+      "sha256": "7A7EC85D3E2782F7B0BA4D173F5F6AF6C23D89E8DA9E034CCC0C3F90AAC7418E"
+    },
+    "config": {
+      "path": "experiments/rag_v1_5/configs/retrieval-pilot.yaml",
+      "sha256": "29A47B7F4AC3D7CA305EBFFC6542FA43DE14F75937C0A235C71688ABA7DB7966"
+    },
+    "evidence": {
+      "path": "data/rag_v1_5/processed/evidence.jsonl",
+      "sha256": "9DBD2ED476F4AD7B89D628CACF6A2F963987C77276F8CFFC8E8FE1BE29F7FF4B"
+    },
+    "evidence_group": {
+      "path": "data/rag_v1_5/evaluation/pilot-evidence-groups.jsonl",
+      "sha256": "4FBD984DBA9A0B98CEBA17F75735F4E490ACE9C81D1A71BDC569C2C96B88EC27"
+    },
+    "exclusions": {
+      "path": "data/rag_v1_5/evaluation/pilot-exclusions.json",
+      "sha256": "A64C1CA29E51DA714BAA078D5513A2690A1A42E4AB0F7FBB2784E181F42536BA"
+    },
+    "index_manifest": {
+      "path": "experiments/rag_v1_5/manifests/indexes-v1.5.0.json",
+      "sha256": "997F99DAF226AC6D87476759B7075ACC29034886E71CFFA2F0579F551C7D537E"
+    },
+    "model_manifest": {
+      "path": "experiments/rag_v1_5/manifests/models-v1.5.0.json",
+      "sha256": "5523130CBAB3DC8829644E41F747B0856A64809C211A9B2665527033E3E7CDCB"
+    },
+    "quality_gate": {
+      "path": "experiments/rag_v1_5/manifests/quality-gate-v1.5.0.json",
+      "sha256": "D3F049B9E5856343ADE07FE054E95EABB1EDDA65EEA9737E09D89F91AF08136B"
+    },
+    "review_csv_sha256": "239CB78EC5FE64F8ABBD0B3D7C75B17E36482562E56FA60C1AC1C5864FF4A066",
+    "review_summary": {
+      "path": "data/rag_v1_5/evaluation/pilot-review-summary.json",
+      "sha256": "0B0547507D1C442563EC9F95461F9B8B8A074C416CE6BD32F0ABB236A4875E05"
+    },
+    "smoke_manifest": {
+      "path": "experiments/rag_v1_5/manifests/smoke-10-v1.5.0.json",
+      "sha256": "20EC4D5909F10C09FFDC2E9D740C1C15D6FCE255918CC2EE542C2CA07B41CC81"
+    }
+  },
+  "privacy": {
+    "full_corpus_committed": false,
+    "full_questions_committed": false
+  },
+  "review": {
+    "first_pass_count": 40,
+    "rejected_count": 0,
+    "revision_count": 0,
+    "second_pass_count": 10,
+    "second_required_count": 10
+  },
+  "status": "ready",
+  "version": "v1.5.0"
+}

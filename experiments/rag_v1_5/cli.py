@@ -21,6 +21,7 @@ from experiments.rag_v1_5.corpus import (
 )
 from experiments.rag_v1_5.chunkers import build_chunk_artifacts
 from experiments.rag_v1_5.dataset import (
+    freeze_pilot_manifest,
     import_pilot_review,
     load_dataset,
     prepare_pilot_review,
@@ -114,6 +115,12 @@ DEFAULT_PILOT_REVIEW_SUMMARY_PATH = Path(
 )
 DEFAULT_PILOT_DATASET_PATH = Path(
     "data/rag_v1_5/evaluation/pilot-40.jsonl"
+)
+DEFAULT_PILOT_MANIFEST_PATH = Path(
+    "experiments/rag_v1_5/manifests/pilot-40-v1.5.0.json"
+)
+DEFAULT_SMOKE_MANIFEST_PATH = Path(
+    "experiments/rag_v1_5/manifests/smoke-10-v1.5.0.json"
 )
 DIRECT_DEPENDENCIES = (
     "pydantic",
@@ -766,6 +773,71 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_PILOT_REVIEW_SUMMARY_PATH,
     )
 
+    freeze_pilot_parser = subparsers.add_parser(
+        "freeze-pilot-dataset",
+        help="校验并冻结 Pilot-40 Manifest 与输入哈希链",
+    )
+    freeze_pilot_parser.add_argument(
+        "--dataset",
+        type=Path,
+        default=DEFAULT_PILOT_DATASET_PATH,
+    )
+    freeze_pilot_parser.add_argument(
+        "--evidence-groups",
+        type=Path,
+        default=DEFAULT_PILOT_EVIDENCE_GROUPS_PATH,
+    )
+    freeze_pilot_parser.add_argument(
+        "--review-summary",
+        type=Path,
+        default=DEFAULT_PILOT_REVIEW_SUMMARY_PATH,
+    )
+    freeze_pilot_parser.add_argument(
+        "--exclusions",
+        type=Path,
+        default=DEFAULT_PILOT_EXCLUSIONS_PATH,
+    )
+    freeze_pilot_parser.add_argument(
+        "--manifest",
+        type=Path,
+        default=DEFAULT_PILOT_MANIFEST_PATH,
+    )
+    freeze_pilot_parser.add_argument(
+        "--evidence",
+        type=Path,
+        default=DEFAULT_EVIDENCE_PATH,
+    )
+    freeze_pilot_parser.add_argument(
+        "--chunk-manifest",
+        type=Path,
+        default=DEFAULT_CHUNK_MANIFEST_PATH,
+    )
+    freeze_pilot_parser.add_argument(
+        "--quality-gate",
+        type=Path,
+        default=DEFAULT_QUALITY_GATE_PATH,
+    )
+    freeze_pilot_parser.add_argument(
+        "--index-manifest",
+        type=Path,
+        default=DEFAULT_INDEX_MANIFEST_PATH,
+    )
+    freeze_pilot_parser.add_argument(
+        "--model-manifest",
+        type=Path,
+        default=DEFAULT_MODEL_MANIFEST_PATH,
+    )
+    freeze_pilot_parser.add_argument(
+        "--config",
+        type=Path,
+        default=DEFAULT_RETRIEVAL_CONFIG_PATH,
+    )
+    freeze_pilot_parser.add_argument(
+        "--smoke-manifest",
+        type=Path,
+        default=DEFAULT_SMOKE_MANIFEST_PATH,
+    )
+
     smoke_parser = subparsers.add_parser(
         "run-smoke",
         help="运行 10 条检索烟雾测试并生成 Top 5 人工复核表",
@@ -956,6 +1028,21 @@ def main(
             reviewed_csv_path=args.reviewed_csv,
             output_dataset_path=args.output,
             summary_path=args.summary,
+        )
+    elif args.command == "freeze-pilot-dataset":
+        manifest = freeze_pilot_manifest(
+            dataset_path=args.dataset,
+            evidence_groups_path=args.evidence_groups,
+            review_summary_path=args.review_summary,
+            exclusions_path=args.exclusions,
+            manifest_path=args.manifest,
+            evidence_path=args.evidence,
+            chunk_manifest_path=args.chunk_manifest,
+            quality_gate_path=args.quality_gate,
+            index_manifest_path=args.index_manifest,
+            model_manifest_path=args.model_manifest,
+            config_path=args.config,
+            smoke_manifest_path=args.smoke_manifest,
         )
     elif args.command == "run-smoke":
         dataset_summary = validate_dataset(

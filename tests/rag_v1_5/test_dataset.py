@@ -1081,6 +1081,8 @@ class PilotReviewWorkflowTests(unittest.TestCase):
                         summary["second_review_pass_count"],
                         10,
                     )
+                    self.assertEqual(summary["revision_count"], 0)
+                    self.assertEqual(summary["rejected_count"], 0)
                     self.assertEqual(len(approved), 40)
                     self.assertTrue(
                         all(
@@ -1189,7 +1191,318 @@ class PilotReviewWorkflowTests(unittest.TestCase):
 
         self.assertEqual(failed_summary["status"], "blocked")
         self.assertEqual(failed_summary["first_review_fail_count"], 1)
+        self.assertEqual(failed_summary["rejected_count"], 1)
         self.assertFalse(output_path.exists())
+
+
+class PilotManifestFreezeTests(unittest.TestCase):
+    def prepare_freeze_files(self, root: Path) -> dict[str, Path]:
+        questions, groups, evidence_records = make_pilot_artifacts()
+        for question in questions:
+            question["review_status"] = "approved"
+        questions[0]["question_version"] = 2
+
+        dataset_path = root / "pilot-40.jsonl"
+        groups_path = root / "pilot-evidence-groups.jsonl"
+        evidence_path = root / "evidence.jsonl"
+        review_summary_path = root / "pilot-review-summary.json"
+        exclusions_path = root / "pilot-exclusions.json"
+        chunk_manifest_path = root / "chunks-v1.5.0.json"
+        quality_gate_path = root / "quality-gate-v1.5.0.json"
+        index_manifest_path = root / "indexes-v1.5.0.json"
+        model_manifest_path = root / "models-v1.5.0.json"
+        config_path = root / "retrieval-pilot.yaml"
+        smoke_manifest_path = root / "smoke-10-v1.5.0.json"
+        manifest_path = root / "pilot-40-v1.5.0.json"
+
+        write_jsonl_records(dataset_path, questions)
+        write_jsonl_records(groups_path, groups)
+        write_jsonl_records(evidence_path, evidence_records)
+        dataset_sha256 = hashlib.sha256(
+            dataset_path.read_bytes()
+        ).hexdigest().upper()
+        groups_sha256 = hashlib.sha256(
+            groups_path.read_bytes()
+        ).hexdigest().upper()
+        evidence_sha256 = hashlib.sha256(
+            evidence_path.read_bytes()
+        ).hexdigest().upper()
+
+        review_summary_path.write_text(
+            json.dumps(
+                {
+                    "status": "ready",
+                    "question_count": 40,
+                    "first_review_pass_count": 40,
+                    "first_review_pending_count": 0,
+                    "first_review_fail_count": 0,
+                    "second_review_required_count": 10,
+                    "second_review_pass_count": 10,
+                    "second_review_pending_count": 0,
+                    "second_review_fail_count": 0,
+                    "revision_count": 1,
+                    "rejected_count": 0,
+                    "output_dataset_sha256": dataset_sha256,
+                    "evidence_group_sha256": groups_sha256,
+                    "review_csv_sha256": "A" * 64,
+                }
+            ),
+            encoding="utf-8",
+        )
+        exclusions_path.write_text(
+            json.dumps(
+                {
+                    "version": "v1.5.0",
+                    "pilot_group_ids": [
+                        group["group_id"] for group in reversed(groups)
+                    ],
+                    "pilot_anchor_evidence_ids": sorted(
+                        {
+                            evidence_id
+                            for group in groups
+                            for evidence_id in group[
+                                "anchor_evidence_ids"
+                            ]
+                        }
+                    ),
+                    "pilot_anchor_clause_ids": sorted(
+                        {
+                            clause_id
+                            for group in groups
+                            for clause_id in group[
+                                "anchor_clause_ids"
+                            ]
+                        }
+                    ),
+                }
+            ),
+            encoding="utf-8",
+        )
+        chunk_manifest_path.write_text(
+            json.dumps(
+                {
+                    "version": "v1.5.0",
+                    "evidence_sha256": evidence_sha256,
+                }
+            ),
+            encoding="utf-8",
+        )
+        chunk_sha256 = hashlib.sha256(
+            chunk_manifest_path.read_bytes()
+        ).hexdigest().upper()
+        quality_gate_path.write_text(
+            json.dumps(
+                {
+                    "version": "v1.5.0",
+                    "status": "ready",
+                    "evidence_sha256": evidence_sha256,
+                    "chunk_manifest_sha256": chunk_sha256,
+                }
+            ),
+            encoding="utf-8",
+        )
+        quality_gate_sha256 = hashlib.sha256(
+            quality_gate_path.read_bytes()
+        ).hexdigest().upper()
+        model_manifest_path.write_text(
+            json.dumps({"version": "v1.5.0"}),
+            encoding="utf-8",
+        )
+        model_sha256 = hashlib.sha256(
+            model_manifest_path.read_bytes()
+        ).hexdigest().upper()
+        index_manifest_path.write_text(
+            json.dumps(
+                {
+                    "version": "v1.5.0",
+                    "chunk_manifest_sha256": chunk_sha256,
+                    "quality_gate_sha256": quality_gate_sha256,
+                    "model_manifest_sha256": model_sha256,
+                }
+            ),
+            encoding="utf-8",
+        )
+        index_sha256 = hashlib.sha256(
+            index_manifest_path.read_bytes()
+        ).hexdigest().upper()
+        config_path.write_text("version: v1.5.0\n", encoding="utf-8")
+        config_sha256 = hashlib.sha256(
+            config_path.read_bytes()
+        ).hexdigest().upper()
+        smoke_manifest_path.write_text(
+            json.dumps(
+                {
+                    "version": "v1.5.0",
+                    "status": "passed",
+                    "inputs": {
+                        "config_sha256": config_sha256,
+                        "evidence_sha256": evidence_sha256,
+                        "index_manifest_sha256": index_sha256,
+                        "model_manifest_sha256": model_sha256,
+                        "quality_gate_sha256": quality_gate_sha256,
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        return {
+            "dataset_path": dataset_path,
+            "evidence_groups_path": groups_path,
+            "review_summary_path": review_summary_path,
+            "exclusions_path": exclusions_path,
+            "manifest_path": manifest_path,
+            "evidence_path": evidence_path,
+            "chunk_manifest_path": chunk_manifest_path,
+            "quality_gate_path": quality_gate_path,
+            "index_manifest_path": index_manifest_path,
+            "model_manifest_path": model_manifest_path,
+            "config_path": config_path,
+            "smoke_manifest_path": smoke_manifest_path,
+        }
+
+    def test_freezes_ready_manifest_with_complete_private_safe_hash_chain(
+        self,
+    ) -> None:
+        from experiments.rag_v1_5.dataset import freeze_pilot_manifest
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            paths = self.prepare_freeze_files(
+                Path(temporary_directory)
+            )
+            first = freeze_pilot_manifest(**paths)
+            second = freeze_pilot_manifest(**paths)
+            serialized = json.dumps(first, ensure_ascii=False)
+
+        self.assertEqual(first["status"], "ready")
+        self.assertEqual(first["dataset"]["question_count"], 40)
+        self.assertEqual(first["dataset"]["answerable_count"], 32)
+        self.assertEqual(first["dataset"]["unanswerable_count"], 8)
+        self.assertEqual(first["dataset"]["approved_count"], 40)
+        self.assertEqual(first["review"]["first_pass_count"], 40)
+        self.assertEqual(first["review"]["second_pass_count"], 10)
+        self.assertEqual(first["review"]["revision_count"], 1)
+        self.assertEqual(first["review"]["rejected_count"], 0)
+        self.assertEqual(
+            set(first["inputs"]),
+            {
+                "evidence_group",
+                "review_summary",
+                "review_csv_sha256",
+                "exclusions",
+                "evidence",
+                "chunk_manifest",
+                "quality_gate",
+                "index_manifest",
+                "model_manifest",
+                "config",
+                "smoke_manifest",
+            },
+        )
+        self.assertTrue(
+            all(
+                len(value["sha256"]) == 64
+                for value in first["inputs"].values()
+                if isinstance(value, dict)
+            )
+        )
+        self.assertNotIn("测试 shang_han_lun", serialized)
+        self.assertNotIn("reference_answer", serialized)
+        self.assertNotIn("support_spans", serialized)
+        self.assertNotIn("first_comment", serialized)
+        first_without_time = dict(first)
+        second_without_time = dict(second)
+        first_without_time.pop("frozen_at")
+        second_without_time.pop("frozen_at")
+        self.assertEqual(first_without_time, second_without_time)
+
+    def test_rejects_incomplete_review_hash_mismatch_and_bad_quota(
+        self,
+    ) -> None:
+        from experiments.rag_v1_5.dataset import freeze_pilot_manifest
+
+        cases = ("missing", "pending", "hash", "quota")
+        for case in cases:
+            with self.subTest(case=case):
+                with tempfile.TemporaryDirectory() as temporary_directory:
+                    paths = self.prepare_freeze_files(
+                        Path(temporary_directory)
+                    )
+                    if case == "missing":
+                        paths["review_summary_path"].unlink()
+                        expected_error = FileNotFoundError
+                    else:
+                        summary = json.loads(
+                            paths["review_summary_path"].read_text(
+                                encoding="utf-8"
+                            )
+                        )
+                        if case == "pending":
+                            summary["first_review_pass_count"] = 39
+                            summary["first_review_pending_count"] = 1
+                        elif case == "hash":
+                            summary["output_dataset_sha256"] = "B" * 64
+                        else:
+                            dataset_records = [
+                                json.loads(line)
+                                for line in paths[
+                                    "dataset_path"
+                                ].read_text(
+                                    encoding="utf-8"
+                                ).splitlines()
+                            ]
+                            write_jsonl_records(
+                                paths["dataset_path"],
+                                dataset_records[:-1],
+                            )
+                            summary["output_dataset_sha256"] = (
+                                hashlib.sha256(
+                                    paths["dataset_path"].read_bytes()
+                                ).hexdigest().upper()
+                            )
+                        paths["review_summary_path"].write_text(
+                            json.dumps(summary),
+                            encoding="utf-8",
+                        )
+                        expected_error = ValueError
+
+                    with self.assertRaises(expected_error):
+                        freeze_pilot_manifest(**paths)
+
+    def test_rejects_exclusion_mismatch_and_ready_manifest_input_change(
+        self,
+    ) -> None:
+        from experiments.rag_v1_5.dataset import freeze_pilot_manifest
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            paths = self.prepare_freeze_files(
+                Path(temporary_directory)
+            )
+            exclusions = json.loads(
+                paths["exclusions_path"].read_text(encoding="utf-8")
+            )
+            exclusions["pilot_group_ids"].pop()
+            paths["exclusions_path"].write_text(
+                json.dumps(exclusions),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "排除清单"):
+                freeze_pilot_manifest(**paths)
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            paths = self.prepare_freeze_files(
+                Path(temporary_directory)
+            )
+            freeze_pilot_manifest(**paths)
+            smoke_manifest = json.loads(
+                paths["smoke_manifest_path"].read_text(encoding="utf-8")
+            )
+            smoke_manifest["generated_at"] = "changed"
+            paths["smoke_manifest_path"].write_text(
+                json.dumps(smoke_manifest),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "拒绝覆盖"):
+                freeze_pilot_manifest(**paths)
 
 
 class SmokeRunTests(unittest.TestCase):
@@ -1463,6 +1776,31 @@ class DatasetCliTests(unittest.TestCase):
             Path(
                 "data/rag_v1_5/evaluation/"
                 "pilot-review-summary.json"
+            ),
+        )
+
+    def test_freeze_pilot_cli_contract_matches_plan(self) -> None:
+        from experiments.rag_v1_5.cli import build_parser
+
+        args = build_parser().parse_args(["freeze-pilot-dataset"])
+
+        self.assertEqual(args.command, "freeze-pilot-dataset")
+        self.assertEqual(
+            args.dataset,
+            Path("data/rag_v1_5/evaluation/pilot-40.jsonl"),
+        )
+        self.assertEqual(
+            args.review_summary,
+            Path(
+                "data/rag_v1_5/evaluation/"
+                "pilot-review-summary.json"
+            ),
+        )
+        self.assertEqual(
+            args.manifest,
+            Path(
+                "experiments/rag_v1_5/manifests/"
+                "pilot-40-v1.5.0.json"
             ),
         )
 

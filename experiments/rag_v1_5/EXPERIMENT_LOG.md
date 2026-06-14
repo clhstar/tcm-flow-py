@@ -848,7 +848,67 @@ pilot-review.csv SHA256=
 
 ### 当前门禁
 
-当前只完成了草稿构造、无答案检索检查和审核表导出。人工第一轮仍为
-`0/40 pass`、`40/40 pending`，第二轮也尚未开始，因此尚未生成
-`pilot-40.jsonl`，Task 4 仍处于人工审核检查点，不得进入 Pilot Manifest
-冻结或真实 8 组矩阵运行。
+人工审核已完成并关闭。Excel 保存后的审核表被识别为 CP936，原始文件已
+保留为：
+
+```text
+data/rag_v1_5/evaluation/pilot-review.cp936-backup-20260614-141009.csv
+SHA256=A3826A53683848E1BFFA3906481E49755C43D33D57F7D68EE36CDBCFE888F935
+```
+
+规范化后的 UTF-8 BOM 审核表与备份在 Unicode 行列值上完全一致：
+
+```text
+pilot-review.csv SHA256=
+239CB78EC5FE64F8ABBD0B3D7C75B17E36482562E56FA60C1AC1C5864FF4A066
+first_review_pass_count=40
+second_review_required_count=10
+second_review_pass_count=10
+revision_count=0
+rejected_count=0
+```
+
+导入时发现 Excel 将布尔展示列保存为 `TRUE/FALSE`，而导出模板使用
+`true/false`。这些列是同义布尔值，不是内容篡改；已增加仅针对布尔不可
+编辑列的大小写兼容回归测试，其他不可编辑字段仍逐值严格比较。
+
+最终本地问题集通过固定配额、重复文本、Evidence Group、gold/support 和
+审核状态校验：
+
+```text
+question_count=40
+answerable_count=32
+unanswerable_count=8
+approved_count=40
+duplicate_question_count=0
+multi_evidence_count=8
+pilot-40.jsonl SHA256=
+EF87DF80B5D01250A5374A4EB1442195914DAB6C67EE7F5D95A8337F585C4F94
+pilot-review-summary.json SHA256=
+0B0547507D1C442563EC9F95461F9B8B8A074C416CE6BD32F0ABB236A4875E05
+```
+
+### Pilot-40 Manifest 冻结
+
+执行 `freeze-pilot-dataset`，逐项核对 Evidence Group、review summary、
+排除清单、Evidence、Chunk、Quality Gate、Index、Model、config 和
+Smoke Manifest 的 SHA256。第一次真实冻结发现排除清单 ID 顺序与字典序
+不同；两边均为 40 个唯一 ID 且集合一致。校验已改为顺序无关，同时继续
+拒绝缺失、额外或重复 ID。
+
+最终 `pilot-40-v1.5.0.json` 状态为 `ready`，不包含问题正文、参考答案、
+support span 或人工评论，并明确记录：
+
+```text
+pilot-40-v1.5.0.json SHA256=
+1A8A783DB2BE32A4048D06DE670A03A7C954502B37542CD2AEC0D4548FF88F90
+full_questions_committed=false
+full_corpus_committed=false
+first_pass_count=40
+second_pass_count=10
+revision_count=0
+rejected_count=0
+```
+
+相同输入重复冻结返回原有 ready Manifest；任何核心输入哈希变化都会拒绝
+覆盖。Task 5 完成后可以进入分阶段计时检索入口和 8 组矩阵运行器实现。

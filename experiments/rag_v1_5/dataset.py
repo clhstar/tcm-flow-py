@@ -1338,6 +1338,17 @@ def import_pilot_review(
         "second_review_fail_count": (
             second_required_statuses.count("fail")
         ),
+        "revision_count": sum(
+            question.question_version > 1 for question in questions
+        ),
+        "rejected_count": sum(
+            row["first_status"].strip() == "fail"
+            or (
+                row["question_id"] in second_review_ids
+                and row["second_status"].strip() == "fail"
+            )
+            for row in rows
+        ),
         "encoding": encoding_summary,
         "draft_dataset_sha256": _sha256_file(draft_dataset_path),
         "evidence_group_sha256": _sha256_file(evidence_groups_path),
@@ -1370,6 +1381,339 @@ def import_pilot_review(
     summary_path.parent.mkdir(parents=True, exist_ok=True)
     _write_json(summary_path, summary)
     return summary
+
+
+def _load_json_object(path: Path, *, label: str) -> dict:
+    if not path.is_file():
+        raise FileNotFoundError(f"缺少 {label}: {path}")
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        raise ValueError(f"{label} 不是合法 JSON: {path}") from error
+    if not isinstance(payload, dict):
+        raise ValueError(f"{label} 顶层必须是 JSON object: {path}")
+    return payload
+
+
+def _manifest_path(path: Path) -> str:
+    if not path.is_absolute():
+        return path.as_posix()
+    try:
+        return path.resolve().relative_to(Path.cwd().resolve()).as_posix()
+    except ValueError:
+        return path.as_posix()
+
+
+def _hashed_input(path: Path) -> dict[str, str]:
+    if not path.is_file():
+        raise FileNotFoundError(path)
+    return {
+        "path": _manifest_path(path),
+        "sha256": _sha256_file(path),
+    }
+
+
+def _require_sha256(value: object, *, label: str) -> str:
+    if (
+        not isinstance(value, str)
+        or re.fullmatch(r"[0-9A-Fa-f]{64}", value) is None
+    ):
+        raise ValueError(f"{label} 缺少合法 SHA256")
+    return value.upper()
+
+
+def _validate_pilot_review_summary(
+    *,
+    review_summary: dict,
+    dataset_sha256: str,
+    evidence_group_sha256: str,
+) -> None:
+    required_counts = {
+        "question_count": 40,
+        "first_review_pass_count": 40,
+        "first_review_pending_count": 0,
+        "first_review_fail_count": 0,
+        "second_review_required_count": 10,
+        "second_review_pass_count": 10,
+        "second_review_pending_count": 0,
+        "second_review_fail_count": 0,
+        "rejected_count": 0,
+    }
+    if review_summary.get("status") != "ready":
+        raise ValueError("Pilot review summary 必须为 ready")
+    mismatches = {
+        key: review_summary.get(key)
+        for key, expected in required_counts.items()
+        if review_summary.get(key) != expected
+    }
+    if mismatches:
+        raise ValueError(f"Pilot review summary 审核门禁未通过: {mismatches}")
+    revision_count = review_summary.get("revision_count")
+    if not isinstance(revision_count, int) or revision_count < 0:
+        raise ValueError("Pilot review summary 缺少 revision_count")
+    if (
+        review_summary.get("output_dataset_sha256")
+        != dataset_sha256
+    ):
+        raise ValueError("Pilot review summary 的 dataset 哈希不一致")
+    if (
+        review_summary.get("evidence_group_sha256")
+        != evidence_group_sha256
+    ):
+        raise ValueError("Pilot review summary 的 Evidence Group 哈希不一致")
+    _require_sha256(
+        review_summary.get("review_csv_sha256"),
+        label="Pilot review CSV",
+    )
+
+
+def _validate_pilot_exclusions(
+    *,
+    exclusions: dict,
+    groups_by_id: dict[str, PilotEvidenceGroup],
+) -> None:
+    expected = {
+        "pilot_group_ids": sorted(groups_by_id),
+        "pilot_anchor_evidence_ids": sorted(
+            {
+                evidence_id
+                for group in groups_by_id.values()
+                for evidence_id in group.anchor_evidence_ids
+            }
+        ),
+        "pilot_anchor_clause_ids": sorted(
+            {
+                clause_id
+                for group in groups_by_id.values()
+                for clause_id in group.anchor_clause_ids
+            }
+        ),
+    }
+    mismatches = {}
+    for key, expected_values in expected.items():
+        actual_values = exclusions.get(key)
+        valid = (
+            isinstance(actual_values, list)
+            and len(actual_values) == len(set(actual_values))
+            and set(actual_values) == set(expected_values)
+        )
+        if not valid:
+            mismatches[key] = {
+                "expected_count": len(expected_values),
+                "actual_count": (
+                    len(actual_values)
+                    if isinstance(actual_values, list)
+                    else None
+                ),
+            }
+    if mismatches:
+        raise ValueError(f"Pilot 排除清单与实际数据不一致: {mismatches}")
+
+
+def _validate_pilot_upstream_manifests(
+    *,
+    evidence_sha256: str,
+    chunk_manifest: dict,
+    chunk_manifest_sha256: str,
+    quality_gate: dict,
+    quality_gate_sha256: str,
+    index_manifest: dict,
+    model_manifest_sha256: str,
+    config_sha256: str,
+    smoke_manifest: dict,
+    index_manifest_sha256: str,
+) -> None:
+    if chunk_manifest.get("evidence_sha256") != evidence_sha256:
+        raise ValueError("Chunk Manifest 与当前 Evidence 哈希不一致")
+    if quality_gate.get("status") != "ready":
+        raise ValueError("Pilot 冻结要求 Quality Gate 为 ready")
+    if (
+        quality_gate.get("evidence_sha256") != evidence_sha256
+        or quality_gate.get("chunk_manifest_sha256")
+        != chunk_manifest_sha256
+    ):
+        raise ValueError("Quality Gate 与 Evidence/Chunk Manifest 不一致")
+    if (
+        index_manifest.get("chunk_manifest_sha256")
+        != chunk_manifest_sha256
+        or index_manifest.get("quality_gate_sha256")
+        != quality_gate_sha256
+        or index_manifest.get("model_manifest_sha256")
+        != model_manifest_sha256
+    ):
+        raise ValueError("Index Manifest 上游哈希链不一致")
+    if smoke_manifest.get("status") != "passed":
+        raise ValueError("Pilot 冻结要求 Smoke Manifest 为 passed")
+    smoke_inputs = smoke_manifest.get("inputs", {})
+    expected_smoke_inputs = {
+        "config_sha256": config_sha256,
+        "evidence_sha256": evidence_sha256,
+        "index_manifest_sha256": index_manifest_sha256,
+        "model_manifest_sha256": model_manifest_sha256,
+        "quality_gate_sha256": quality_gate_sha256,
+    }
+    mismatches = {
+        key: smoke_inputs.get(key)
+        for key, expected in expected_smoke_inputs.items()
+        if smoke_inputs.get(key) != expected
+    }
+    if mismatches:
+        raise ValueError(f"Smoke Manifest 上游哈希链不一致: {mismatches}")
+
+
+def freeze_pilot_manifest(
+    *,
+    dataset_path: Path,
+    evidence_groups_path: Path,
+    review_summary_path: Path,
+    exclusions_path: Path,
+    manifest_path: Path,
+    evidence_path: Path,
+    chunk_manifest_path: Path,
+    quality_gate_path: Path,
+    index_manifest_path: Path,
+    model_manifest_path: Path,
+    config_path: Path,
+    smoke_manifest_path: Path,
+) -> dict:
+    dataset_summary = validate_dataset(
+        dataset_path=dataset_path,
+        evidence_path=evidence_path,
+        profile="pilot",
+        evidence_groups_path=evidence_groups_path,
+    )
+    if dataset_summary["approved_count"] != 40:
+        raise ValueError("Pilot-40 必须全部审核为 approved")
+
+    review_summary = _load_json_object(
+        review_summary_path,
+        label="Pilot review summary",
+    )
+    exclusions = _load_json_object(
+        exclusions_path,
+        label="Pilot exclusions",
+    )
+    chunk_manifest = _load_json_object(
+        chunk_manifest_path,
+        label="Chunk Manifest",
+    )
+    quality_gate = _load_json_object(
+        quality_gate_path,
+        label="Quality Gate",
+    )
+    index_manifest = _load_json_object(
+        index_manifest_path,
+        label="Index Manifest",
+    )
+    _load_json_object(
+        model_manifest_path,
+        label="Model Manifest",
+    )
+    smoke_manifest = _load_json_object(
+        smoke_manifest_path,
+        label="Smoke Manifest",
+    )
+
+    dataset_sha256 = dataset_summary["dataset_sha256"]
+    evidence_group_sha256 = dataset_summary["evidence_group_sha256"]
+    _validate_pilot_review_summary(
+        review_summary=review_summary,
+        dataset_sha256=dataset_sha256,
+        evidence_group_sha256=evidence_group_sha256,
+    )
+    groups_by_id = _load_pilot_evidence_groups(evidence_groups_path)
+    _validate_pilot_exclusions(
+        exclusions=exclusions,
+        groups_by_id=groups_by_id,
+    )
+
+    evidence_sha256 = dataset_summary["evidence_sha256"]
+    chunk_manifest_sha256 = _sha256_file(chunk_manifest_path)
+    quality_gate_sha256 = _sha256_file(quality_gate_path)
+    index_manifest_sha256 = _sha256_file(index_manifest_path)
+    model_manifest_sha256 = _sha256_file(model_manifest_path)
+    config_sha256 = _sha256_file(config_path)
+    _validate_pilot_upstream_manifests(
+        evidence_sha256=evidence_sha256,
+        chunk_manifest=chunk_manifest,
+        chunk_manifest_sha256=chunk_manifest_sha256,
+        quality_gate=quality_gate,
+        quality_gate_sha256=quality_gate_sha256,
+        index_manifest=index_manifest,
+        model_manifest_sha256=model_manifest_sha256,
+        config_sha256=config_sha256,
+        smoke_manifest=smoke_manifest,
+        index_manifest_sha256=index_manifest_sha256,
+    )
+
+    manifest = {
+        "version": "v1.5.0",
+        "status": "ready",
+        "frozen_at": datetime.now(timezone.utc).isoformat(),
+        "dataset": {
+            "path": _manifest_path(dataset_path),
+            "sha256": dataset_sha256,
+            "question_count": dataset_summary["question_count"],
+            "answerable_count": dataset_summary["answerable_count"],
+            "unanswerable_count": dataset_summary[
+                "unanswerable_count"
+            ],
+            "approved_count": dataset_summary["approved_count"],
+        },
+        "distribution": dataset_summary["quota_by_book_and_type"],
+        "review": {
+            "first_pass_count": review_summary[
+                "first_review_pass_count"
+            ],
+            "second_required_count": review_summary[
+                "second_review_required_count"
+            ],
+            "second_pass_count": review_summary[
+                "second_review_pass_count"
+            ],
+            "revision_count": review_summary["revision_count"],
+            "rejected_count": review_summary["rejected_count"],
+        },
+        "inputs": {
+            "evidence_group": _hashed_input(evidence_groups_path),
+            "review_summary": _hashed_input(review_summary_path),
+            "review_csv_sha256": _require_sha256(
+                review_summary["review_csv_sha256"],
+                label="Pilot review CSV",
+            ),
+            "exclusions": _hashed_input(exclusions_path),
+            "evidence": _hashed_input(evidence_path),
+            "chunk_manifest": _hashed_input(chunk_manifest_path),
+            "quality_gate": _hashed_input(quality_gate_path),
+            "index_manifest": _hashed_input(index_manifest_path),
+            "model_manifest": _hashed_input(model_manifest_path),
+            "config": _hashed_input(config_path),
+            "smoke_manifest": _hashed_input(smoke_manifest_path),
+        },
+        "privacy": {
+            "full_questions_committed": False,
+            "full_corpus_committed": False,
+        },
+    }
+    if manifest_path.is_file():
+        existing = _load_json_object(
+            manifest_path,
+            label="现有 Pilot Manifest",
+        )
+        existing_core = dict(existing)
+        manifest_core = dict(manifest)
+        existing_core.pop("frozen_at", None)
+        manifest_core.pop("frozen_at", None)
+        if existing.get("status") == "ready":
+            if existing_core != manifest_core:
+                raise ValueError(
+                    "现有 ready Pilot Manifest 核心输入已变化，拒绝覆盖"
+                )
+            return existing
+
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    _write_json(manifest_path, manifest)
+    return manifest
 
 
 def _flatten_clause_ids(hits: list[RetrievalHit]) -> list[str]:
