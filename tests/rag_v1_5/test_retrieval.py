@@ -3,6 +3,7 @@ import importlib.util
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import numpy as np
 
@@ -70,6 +71,47 @@ class RetrievalTests(unittest.TestCase):
             },
         )
         return chunks
+
+    def create_large_index(self, root: Path, count: int = 12):
+        template = load_chunks()[0]
+        chunks = []
+        vectors = []
+        for index in range(1, count + 1):
+            clause_id = f"jgy-chapter-25-{index:03d}"
+            chunks.append(
+                template.model_copy(
+                    update={
+                        "chunk_id": f"c4-{index:03d}",
+                        "clause_id": clause_id,
+                        "retrieval_parent_id": clause_id,
+                        "source_evidence_ids": [clause_id],
+                        "text": f"共同 测试 {index}",
+                        "context_text": f"完整父级上下文 {index}",
+                    }
+                )
+            )
+            vectors.append([float(count - index + 1), float(index)])
+        build_strategy_index(
+            chunks=chunks,
+            output_dir=root,
+            encoder=FakeEncoder(np.asarray(vectors, dtype=np.float32)),
+            quality_gate_sha256="A" * 64,
+            chunk_sha256="B" * 64,
+            model_record={
+                "model": "BAAI/bge-m3",
+                "revision": "1" * 40,
+                "local_path": "data/models/bge-m3",
+            },
+        )
+        return chunks
+
+    def retrieval_config(self) -> dict:
+        return {
+            "bm25": {"top_k": 20},
+            "dense": {"top_k": 20},
+            "rrf": {"k": 60},
+            "reranker": {"candidate_k": 40, "top_k": 5},
+        }
 
     def test_bm25_and_dense_sort_scores_with_stable_ties(self) -> None:
         retrieval = self.retrieval_module()
@@ -156,6 +198,201 @@ class RetrievalTests(unittest.TestCase):
         self.assertEqual(fused_by_id["b"].bm25_score, 2.0)
         self.assertEqual(fused_by_id["b"].dense_score, 0.9)
 
+    def test_retrieve_loaded_reports_fixed_stage_latency_without_reloading(
+        self,
+    ) -> None:
+        retrieval = self.retrieval_module()
+        latency_keys = {
+            "bm25_ms",
+            "dense_ms",
+            "rrf_ms",
+            "reranker_ms",
+            "total_ms",
+            "returned_context_chars",
+        }
+        enabled_stages = {
+            "bm25": {"bm25_ms"},
+            "dense": {"dense_ms"},
+            "hybrid": {"bm25_ms", "dense_ms", "rrf_ms"},
+            "hybrid_rerank": {
+                "bm25_ms",
+                "dense_ms",
+                "rrf_ms",
+                "reranker_ms",
+            },
+        }
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            index_dir = Path(temporary_directory)
+            self.create_index(index_dir)
+            index = retrieval.load_index(index_dir)
+            for mode in enabled_stages:
+                with self.subTest(mode=mode):
+                    encoder = FakeEncoder(
+                        np.asarray([[1.0, 0.0]], dtype=np.float32)
+                    )
+                    scorer = DynamicReranker()
+                    with patch.object(
+                        retrieval,
+                        "load_index",
+                        side_effect=AssertionError(
+                            "retrieve_loaded 不应重新加载索引"
+                        ),
+                    ):
+                        result = retrieval.retrieve_loaded(
+                            "共同",
+                            index=index,
+                            mode=mode,
+                            config=self.retrieval_config(),
+                            dense_encoder=(
+                                encoder
+                                if mode
+                                in {"dense", "hybrid", "hybrid_rerank"}
+                                else None
+                            ),
+                            reranker_scorer=(
+                                scorer
+                                if mode == "hybrid_rerank"
+                                else None
+                            ),
+                        )
+
+                    self.assertEqual(set(result.latency), latency_keys)
+                    for key in latency_keys:
+                        self.assertGreaterEqual(result.latency[key], 0)
+                    for stage in {
+                        "bm25_ms",
+                        "dense_ms",
+                        "rrf_ms",
+                        "reranker_ms",
+                    } - enabled_stages[mode]:
+                        self.assertEqual(result.latency[stage], 0.0)
+                    stage_sum = sum(
+                        result.latency[key]
+                        for key in (
+                            "bm25_ms",
+                            "dense_ms",
+                            "rrf_ms",
+                            "reranker_ms",
+                        )
+                    )
+                    self.assertGreaterEqual(
+                        result.latency["total_ms"] + 0.1,
+                        stage_sum,
+                    )
+                    self.assertEqual(
+                        result.latency["returned_context_chars"],
+                        sum(
+                            len(hit.context_text)
+                            for hit in result.hits[:5]
+                        ),
+                    )
+                    for hit in result.hits:
+                        self.assertTrue(hit.context_text)
+                        self.assertTrue(hit.clause_ids)
+                        self.assertTrue(hit.source_evidence_ids)
+                        self.assertTrue(hit.retrieval_parent_id)
+
+    def test_retrieve_loaded_matches_legacy_order_and_supports_top_10(
+        self,
+    ) -> None:
+        retrieval = self.retrieval_module()
+        config = self.retrieval_config()
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            index_dir = root / "c4"
+            self.create_large_index(index_dir)
+            index = retrieval.load_index(index_dir)
+
+            for mode in ("bm25", "dense", "hybrid", "hybrid_rerank"):
+                with self.subTest(mode=mode):
+                    legacy_encoder = FakeEncoder(
+                        np.asarray([[1.0, 0.0]], dtype=np.float32)
+                    )
+                    loaded_encoder = FakeEncoder(
+                        np.asarray([[1.0, 0.0]], dtype=np.float32)
+                    )
+                    legacy_scorer = DynamicReranker()
+                    loaded_scorer = DynamicReranker()
+                    legacy_hits = retrieval.retrieve(
+                        "共同",
+                        strategy="c4",
+                        mode=mode,
+                        indexes_dir=root,
+                        config=config,
+                        dense_encoder=(
+                            legacy_encoder
+                            if mode
+                            in {"dense", "hybrid", "hybrid_rerank"}
+                            else None
+                        ),
+                        reranker_scorer=(
+                            legacy_scorer
+                            if mode == "hybrid_rerank"
+                            else None
+                        ),
+                    )
+                    default_result = retrieval.retrieve_loaded(
+                        "共同",
+                        index=index,
+                        mode=mode,
+                        config=config,
+                        dense_encoder=(
+                            loaded_encoder
+                            if mode
+                            in {"dense", "hybrid", "hybrid_rerank"}
+                            else None
+                        ),
+                        reranker_scorer=(
+                            loaded_scorer
+                            if mode == "hybrid_rerank"
+                            else None
+                        ),
+                    )
+                    top10_result = retrieval.retrieve_loaded(
+                        "共同",
+                        index=index,
+                        mode=mode,
+                        config=config,
+                        dense_encoder=(
+                            FakeEncoder(
+                                np.asarray(
+                                    [[1.0, 0.0]],
+                                    dtype=np.float32,
+                                )
+                            )
+                            if mode
+                            in {"dense", "hybrid", "hybrid_rerank"}
+                            else None
+                        ),
+                        reranker_scorer=(
+                            DynamicReranker()
+                            if mode == "hybrid_rerank"
+                            else None
+                        ),
+                        result_top_k=10,
+                    )
+
+                    self.assertEqual(len(legacy_hits), 5)
+                    self.assertEqual(len(default_result.hits), 5)
+                    self.assertEqual(len(top10_result.hits), 10)
+                    self.assertEqual(
+                        [hit.chunk_id for hit in legacy_hits],
+                        [
+                            hit.chunk_id
+                            for hit in default_result.hits
+                        ],
+                    )
+                    self.assertEqual(
+                        [
+                            hit.chunk_id
+                            for hit in default_result.hits
+                        ],
+                        [
+                            hit.chunk_id
+                            for hit in top10_result.hits[:5]
+                        ],
+                    )
+
 
 class FakeReranker:
     def __init__(self, scores):
@@ -165,6 +402,18 @@ class FakeReranker:
     def score(self, pairs):
         self.pairs = pairs
         return self.scores
+
+
+class DynamicReranker:
+    def __init__(self):
+        self.pairs = None
+
+    def score(self, pairs):
+        self.pairs = pairs
+        return [
+            float(len(pairs) - index)
+            for index in range(len(pairs))
+        ]
 
 
 class RerankerTests(unittest.TestCase):

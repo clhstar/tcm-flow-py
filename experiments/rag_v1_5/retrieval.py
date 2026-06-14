@@ -1,6 +1,7 @@
 import hashlib
 import json
 import re
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -42,6 +43,12 @@ class LoadedIndex:
     dense: np.ndarray
     manifest: dict
     bm25: BM25Okapi
+
+
+@dataclass
+class RetrievalResult:
+    hits: list[RetrievalHit]
+    latency: dict[str, float | int]
 
 
 def _sha256_file(path: Path) -> str:
@@ -263,6 +270,99 @@ def _encode_query(
     return vectors[0]
 
 
+def retrieve_loaded(
+    query: str,
+    *,
+    index: LoadedIndex,
+    mode: RetrievalMode,
+    config: dict,
+    dense_encoder: DenseEncoder | None = None,
+    reranker_scorer: RerankerScorer | None = None,
+    result_top_k: int | None = None,
+) -> RetrievalResult:
+    total_started = time.perf_counter()
+    if not query.strip():
+        raise ValueError("查询不能为空")
+    if mode not in {"bm25", "dense", "hybrid", "hybrid_rerank"}:
+        raise ValueError(f"未知检索模式: {mode}")
+
+    output_top_k = (
+        int(config["reranker"]["top_k"])
+        if result_top_k is None
+        else int(result_top_k)
+    )
+    if output_top_k <= 0:
+        raise ValueError("result_top_k 必须大于 0")
+
+    latency: dict[str, float | int] = {
+        "bm25_ms": 0.0,
+        "dense_ms": 0.0,
+        "rrf_ms": 0.0,
+        "reranker_ms": 0.0,
+        "total_ms": 0.0,
+        "returned_context_chars": 0,
+    }
+    bm25_hits = []
+    dense_hits = []
+    if mode in {"bm25", "hybrid", "hybrid_rerank"}:
+        started = time.perf_counter()
+        bm25_hits = search_bm25(
+            index,
+            query,
+            top_k=max(int(config["bm25"]["top_k"]), output_top_k),
+        )
+        latency["bm25_ms"] = (time.perf_counter() - started) * 1000
+
+    if mode in {"dense", "hybrid", "hybrid_rerank"}:
+        if dense_encoder is None:
+            raise ValueError(f"{mode} 模式必须提供已加载 Dense Encoder")
+        started = time.perf_counter()
+        dense_hits = search_dense(
+            index,
+            _encode_query(query, dense_encoder),
+            top_k=max(int(config["dense"]["top_k"]), output_top_k),
+        )
+        latency["dense_ms"] = (time.perf_counter() - started) * 1000
+
+    if mode == "bm25":
+        hits = bm25_hits[:output_top_k]
+    elif mode == "dense":
+        hits = dense_hits[:output_top_k]
+    else:
+        started = time.perf_counter()
+        fused = reciprocal_rank_fusion(
+            {"bm25": bm25_hits, "dense": dense_hits},
+            k=int(config["rrf"]["k"]),
+        )
+        if mode == "hybrid":
+            hits = fused[:output_top_k]
+        else:
+            hits = fused[: int(config["reranker"]["candidate_k"])]
+        latency["rrf_ms"] = (time.perf_counter() - started) * 1000
+
+        if mode == "hybrid_rerank":
+            if reranker_scorer is None:
+                raise ValueError(
+                    "hybrid_rerank 模式必须提供已加载 Reranker"
+                )
+            started = time.perf_counter()
+            hits = rerank_hits(
+                query,
+                hits,
+                scorer=reranker_scorer,
+                top_k=output_top_k,
+            )
+            latency["reranker_ms"] = (
+                time.perf_counter() - started
+            ) * 1000
+
+    latency["returned_context_chars"] = sum(
+        len(hit.context_text) for hit in hits[:5]
+    )
+    latency["total_ms"] = (time.perf_counter() - total_started) * 1000
+    return RetrievalResult(hits=hits, latency=latency)
+
+
 def retrieve(
     query: str,
     *,
@@ -280,15 +380,6 @@ def retrieve(
     if mode not in {"bm25", "dense", "hybrid", "hybrid_rerank"}:
         raise ValueError(f"未知检索模式: {mode}")
     index = load_index(indexes_dir / strategy)
-    bm25_hits = []
-    dense_hits = []
-    if mode in {"bm25", "hybrid", "hybrid_rerank"}:
-        bm25_hits = search_bm25(
-            index,
-            query,
-            top_k=int(config["bm25"]["top_k"]),
-        )
-    owns_dense_encoder = False
     if mode in {"dense", "hybrid", "hybrid_rerank"}:
         if dense_encoder is None:
             local_path, _ = resolve_model_snapshot(
@@ -301,35 +392,7 @@ def retrieve(
                 local_path,
                 config["embedding"],
             )
-            owns_dense_encoder = True
-        dense_hits = search_dense(
-            index,
-            _encode_query(query, dense_encoder),
-            top_k=int(config["dense"]["top_k"]),
-        )
-    if mode == "bm25":
-        return bm25_hits
-    if mode == "dense":
-        return dense_hits
-
-    fused = reciprocal_rank_fusion(
-        {"bm25": bm25_hits, "dense": dense_hits},
-        k=int(config["rrf"]["k"]),
-    )
-    if mode == "hybrid":
-        return fused[: int(config["reranker"]["top_k"])]
-
-    candidates = fused[: int(config["reranker"]["candidate_k"])]
-    if owns_dense_encoder:
-        del dense_encoder
-        try:
-            import torch
-
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-        except ImportError:
-            pass
-    if reranker_scorer is None:
+    if mode == "hybrid_rerank" and reranker_scorer is None:
         local_path, _ = resolve_model_snapshot(
             config=config,
             role="reranker",
@@ -340,9 +403,12 @@ def retrieve(
             local_path,
             config["reranker"],
         )
-    return rerank_hits(
+    return retrieve_loaded(
         query,
-        candidates,
-        scorer=reranker_scorer,
-        top_k=int(config["reranker"]["top_k"]),
-    )
+        index=index,
+        mode=mode,
+        config=config,
+        dense_encoder=dense_encoder,
+        reranker_scorer=reranker_scorer,
+        result_top_k=None,
+    ).hits
