@@ -1,0 +1,117 @@
+{
+  "built_at": "2026-06-14T09:02:50.714772Z",
+  "chunk_manifest_sha256": "7A7EC85D3E2782F7B0BA4D173F5F6AF6C23D89E8DA9E034CCC0C3F90AAC7418E",
+  "elapsed_ms": 38766.613,
+  "embedding_model": "BAAI/bge-m3",
+  "embedding_revision": "5617a9f61b028005a4858fdac845db406aefb181",
+  "model_manifest_sha256": "5523130CBAB3DC8829644E41F747B0856A64809C211A9B2665527033E3E7CDCB",
+  "quality_gate_sha256": "D3F049B9E5856343ADE07FE054E95EABB1EDDA65EEA9737E09D89F91AF08136B",
+  "strategies": {
+    "c0": {
+      "files": {
+        "bm25_tokens": {
+          "bytes": 482513,
+          "path": "bm25_tokens.jsonl",
+          "sha256": "87C56E5657DDA321C6997E1A2BC177429CC31F14EA747868C3E20F27EED778B3"
+        },
+        "dense": {
+          "bytes": 811136,
+          "path": "dense.npy",
+          "sha256": "AA6B2212ECF4802C845C7991E9F80B7F12CADBEF3385F18613167ADA454ECE4D"
+        },
+        "rows": {
+          "bytes": 554597,
+          "path": "rows.jsonl",
+          "sha256": "2E6AD8225E5ECE5EA305EFEF3D1DFC8532E672178823637BECE2728BF8B3F5B4"
+        }
+      },
+      "manifest_sha256": "0CE2E8F20D79FD545DE8A1F57D8CCDD3DE93303B32E859D4157D604BDE068E03",
+      "row_count": 198
+    },
+    "c1": {
+      "files": {
+        "bm25_tokens": {
+          "bytes": 485874,
+          "path": "bm25_tokens.jsonl",
+          "sha256": "79AB86C52BF17286C97DEFD4295F4C031CB009D71D3ABC26217BCFAD82501024"
+        },
+        "dense": {
+          "bytes": 1695872,
+          "path": "dense.npy",
+          "sha256": "5271A4E22A4293749CD6A1710E6C7D8C6369135E0CDF71C6154FB567F9DD74FA"
+        },
+        "rows": {
+          "bytes": 627662,
+          "path": "rows.jsonl",
+          "sha256": "92F73997A233BF910213AED5A9355EF91F6B719F3F5EFD94A489940636199411"
+        }
+      },
+      "manifest_sha256": "0C28CD1D13BCAD173A1B46172B901B8B11D69797227D77654083FA63572AC695",
+      "row_count": 414
+    },
+    "c2": {
+      "files": {
+        "bm25_tokens": {
+          "bytes": 495438,
+          "path": "bm25_tokens.jsonl",
+          "sha256": "42D7B7829F10D7E76B958066DD32E6AA475C17A9CD74546980F10DA6F9222922"
+        },
+        "dense": {
+          "bytes": 3760256,
+          "path": "dense.npy",
+          "sha256": "244BD8965A096CAD3B30EB019DF97A12D434783D950E3DDB696647536B4812B9"
+        },
+        "rows": {
+          "bytes": 821928,
+          "path": "rows.jsonl",
+          "sha256": "4737A00E3AF7F50B680CDF10579FEB98B083A83D8B482A5D19B2629E7E837DC5"
+        }
+      },
+      "manifest_sha256": "1B4B041E8EF1FAB1EF0B7C1EE764EF7D92230FE17B29B4652BBF9564B02E9E8F",
+      "row_count": 918
+    },
+    "c3": {
+      "files": {
+        "bm25_tokens": {
+          "bytes": 1352890,
+          "path": "bm25_tokens.jsonl",
+          "sha256": "6B1E1EC421C7952D58DA9E854095717780F8B6CE48BB46CA8247E6FE8549F0A8"
+        },
+        "dense": {
+          "bytes": 9302144,
+          "path": "dense.npy",
+          "sha256": "653401A1A3A0FA9E90171EE253D7F3FB8AEF93F06B68DF1976C13C65DF9C1345"
+        },
+        "rows": {
+          "bytes": 2266843,
+          "path": "rows.jsonl",
+          "sha256": "75978E60EF81805B90D94ACEE4E4C620C87C7D6F3323477E0ACB315A6C0711AC"
+        }
+      },
+      "manifest_sha256": "88D65FDC9ADAD5211EDB520721025F4E0D1BB93B40D682F295F4FF786A67E7BA",
+      "row_count": 2271
+    },
+    "c4": {
+      "files": {
+        "bm25_tokens": {
+          "bytes": 1362456,
+          "path": "bm25_tokens.jsonl",
+          "sha256": "8784EE8C6D8A2C93F8BAF72476BF131F3F493E1229D156101C076F2CD3F3924A"
+        },
+        "dense": {
+          "bytes": 9482368,
+          "path": "dense.npy",
+          "sha256": "BED91BBD9F3448EB6D2100E0BD51B56D323B5484D6B800C21D4B2CFBE3B39FC6"
+        },
+        "rows": {
+          "bytes": 2558120,
+          "path": "rows.jsonl",
+          "sha256": "E80F94C71FAA91C812F2E91660FC1E202282D1C19D9D903BABC1655D7D14B090"
+        }
+      },
+      "manifest_sha256": "4DCDFA351122955ECBC6ADD7E886CB9090D1554398E3E069C5FA6252431B49E3",
+      "row_count": 2315
+    }
+  },
+  "version": "v1.5.0"
+}
