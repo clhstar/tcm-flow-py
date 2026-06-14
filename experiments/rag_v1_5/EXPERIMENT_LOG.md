@@ -295,3 +295,79 @@ C2E49F8FF37F6F93AC7CBADD298B63023C4DD2CA3C0C3C617BD7275B35564A75
 - 技术实现满足后续索引烟雾测试的输入条件。
 - 140 组正式人工抽检仍未完成，因此暂不冻结正式索引，也不开始
   40 条 evidence-first 试标集的最终制作。
+
+---
+
+## 2026-06-14：完成人工审核并冻结阻断态 Quality Gate
+
+### 目标
+
+导入 140 组人工审核结果，校验不可变列和审核字段，生成问题清单、审核摘要
+与 Quality Gate，并验证未通过门禁时真实索引不能构建。
+
+### 执行过程
+
+人工审核表由 Excel/WPS 保存为 CP936。正式导入前保留原始字节备份：
+
+```text
+data/rag_v1_5/audit/audit-140.cp936-backup-20260614-130330.csv
+```
+
+随后仅进行 CP936 到 UTF-8 BOM 的编码转换，未修改 CSV 字段值。执行命令：
+
+```powershell
+.\.venv\Scripts\python.exe -m experiments.rag_v1_5.cli review-audit
+.\.venv\Scripts\python.exe -m unittest tests.rag_v1_5.test_audit -v
+.\.venv\Scripts\python.exe -m experiments.rag_v1_5.cli build-indexes
+```
+
+### 审核结果
+
+| 指标 | 结果 |
+| --- | ---: |
+| reviewed | 140 |
+| pass | 128 |
+| fail | 12 |
+| pending | 0 |
+| boundary_error | 5 |
+| type_error | 7 |
+| parent_error | 0 |
+| text_error | 0 |
+
+审核人为 `陈力恒`，审核日期为 `2026/6/14`。问题按典籍分布为：
+
+- 《金匮要略方论》：8 条；
+- 《伤寒论》：4 条。
+
+### 冻结哈希
+
+```text
+audit-140.jsonl
+91523494434A5EB58F5ED064DA18832D8EC2116C736FFEFC91FB04BB9D89B399
+
+audit-140.csv
+63769B766893A5747F974F93335B48196BC7E62665E9DF08FB49413E62EBBFE6
+
+evidence.jsonl
+D0A703699E2947C0FA9132436C1DBDB8C3EF1F1C0DDE831CF81485FC80083B7B
+
+chunk manifest
+636A70A86306546C5C761127E2E2752F4C6E22CA29D35F9A4BFD71756960237B
+```
+
+### 验证结果
+
+- `review-audit` 成功生成 `audit-issues.jsonl`、`audit-summary.json`
+  和 `quality-gate-v1.5.0.json`；
+- Quality Gate 状态为 `blocked`；
+- 审核模块测试 `8/8` 通过；
+- `build-indexes` 以
+  `ValueError: Quality Gate 未就绪: status=blocked` 拒绝构建真实索引。
+
+### 当前结论与限制
+
+本轮人工审核已完成，但语料质量门禁未通过，因此不能进入 Smoke-10 和
+Pilot-40。12 条失败记录仍需逐条归因：审核表将同一 clause Parent 和其
+全部 Child 放在一组，并允许同一 clause 出现在不同抽样层，单纯的展示重复
+不等于解析重复。下一阶段必须先区分审核口径误判与真实 parser 边界/类型
+缺陷，再针对确认缺陷增加回归测试、重新解析、重建 C0-C4，并复审受影响项。
