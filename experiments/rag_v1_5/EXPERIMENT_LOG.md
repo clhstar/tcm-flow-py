@@ -427,3 +427,179 @@ text_error=0
 `review-audit` 仍将 Quality Gate 写为 `blocked`，审核模块测试 `8/8`
 通过。剩余 11 条失败记录对应 9 个唯一 clause，后续 parser 修复不再调整
 “又方”独立 formula 的既定结构。
+
+---
+
+## 2026-06-14：完成解析质量门禁修复并生成复审集
+
+### 目标
+
+修复人工审核确认的 9 个 clause 解析缺陷，保持“又方：犀角汤”为独立
+第二个 formula，重建 C0-C4，并仅继承结构完全未变化的旧审核结论。
+
+### 规则与实现
+
+本轮只修改离线实验代码 `experiments/rag_v1_5`，未修改线上 `app/rag`。
+主要规则为：
+
+1. formula marker 分离 `boundary_start` 和 `body_start`，下一方从真实方名
+   起点切断上一方；
+2. 区分显式方名、独立方名标题、方数标记、通用替代方和附方分节；
+3. `方二/方三` 后存在明确方名标题时只作计数元数据，不创建幽灵 formula；
+4. 支持 `上先`、`上为`、`上各` 作为 preparation 起点；
+5. `（方未见）` 生成 note，不生成 ingredients/preparation；
+6. 审核迁移按 `(book_id, sample_type, clause_id)` 匹配，且只有
+   `chapter_id/evidence_ids/original_text/structured_summary` 全部一致时继承。
+
+对应提交：
+
+```text
+0c457e6 test: 覆盖V1.5解析质量门禁缺陷
+7206fc3 fix: 修复V1.5方剂解析边界
+6abd76a feat: 增加严格人工审核迁移
+e999900 fix: 收紧方数与标题泛化边界
+e94e8fe data: 重建V1.5解析分块与审核样本
+```
+
+### 执行命令
+
+```powershell
+.\.venv\Scripts\python.exe -m unittest discover -v
+.\.venv\Scripts\python.exe -m compileall -q experiments\rag_v1_5 tests\rag_v1_5
+.\.venv\Scripts\python.exe -m experiments.rag_v1_5.cli parse-corpus
+.\.venv\Scripts\python.exe -m experiments.rag_v1_5.cli build-chunks
+.\.venv\Scripts\python.exe -m experiments.rag_v1_5.cli build-chunks
+.\.venv\Scripts\python.exe -m experiments.rag_v1_5.cli sample-audit
+.\.venv\Scripts\python.exe -m experiments.rag_v1_5.cli migrate-audit-review `
+  --previous-source data/rag_v1_5/archive/parser-repair-20260614/audit/audit-140.jsonl `
+  --previous-reviewed-csv data/rag_v1_5/archive/parser-repair-20260614/audit/audit-140.csv `
+  --new-source data/rag_v1_5/audit/audit-140.jsonl `
+  --output-csv data/rag_v1_5/audit/audit-140.csv `
+  --summary data/rag_v1_5/audit/audit-migration-summary.json
+```
+
+修复前 Evidence、Chunk、Audit 和门禁产物已归档到本地：
+
+```text
+data/rag_v1_5/archive/parser-repair-20260614/
+```
+
+### 目标 clause 验收
+
+| clause_id | 修复后结构 |
+| --- | --- |
+| `jgy-chapter-23-001` | 1 formula / 1 ingredients / 1 preparation |
+| `jgy-chapter-23-002` | 1 formula / 1 ingredients / 1 preparation |
+| `jgy-chapter-03-002` | 1 formula / 1 ingredients / 1 preparation |
+| `jgy-chapter-16-012` | 1 formula / 1 ingredients / 1 preparation |
+| `jgy-chapter-19-002` | 1 formula / 0 ingredients / 0 preparation / 1 note |
+| `shl-chapter-10-394` | 1 formula / 1 ingredients / 1 preparation / 1 note |
+| `shl-chapter-09-386` | 2 formula / 2 ingredients / 2 preparation |
+| `shl-chapter-04-208` | 2 formula / 2 ingredients / 2 preparation |
+| `shl-chapter-06-279` | 2 formula / 2 ingredients / 2 preparation |
+
+`jgy-chapter-25-040` 仍为两个 formula：
+
+```text
+饮食中毒，烦满，治之方
+犀角汤
+```
+
+全库 Child Parent 类型检查错误数为 `0`。
+
+### 修复前后全库统计
+
+| 类型 | 修复前 | 修复后 | 差值 |
+| --- | ---: | ---: | ---: |
+| clause | 918 | 918 | 0 |
+| formula | 437 | 440 | +3 |
+| ingredients | 351 | 361 | +10 |
+| preparation | 325 | 343 | +18 |
+| note | 204 | 207 | +3 |
+
+共有 `44` 个 clause 的 Evidence 表示发生变化，其中 `29` 个结构计数变化，
+`15` 个只发生 formula 边界文本变化。范围扩大来自同一确定性规则命中的
+其他真实实例；调试中已排除“用前方”引用误建 formula 和标题跨入下一方正文
+两类范围外变化。
+
+### 测试与确定性结果
+
+- 完整单元测试：`109/109` 通过；
+- Python 编译检查通过；
+- Evidence Graph Parent 校验通过；
+- C0-C4 连续两次构建的 JSONL SHA256 完全一致。
+
+```text
+evidence.jsonl
+9DBD2ED476F4AD7B89D628CACF6A2F963987C77276F8CFFC8E8FE1BE29F7FF4B
+
+c0.jsonl
+2E6AD8225E5ECE5EA305EFEF3D1DFC8532E672178823637BECE2728BF8B3F5B4
+
+c1.jsonl
+92F73997A233BF910213AED5A9355EF91F6B719F3F5EFD94A489940636199411
+
+c2.jsonl
+4737A00E3AF7F50B680CDF10579FEB98B083A83D8B482A5D19B2629E7E837DC5
+
+c3.jsonl
+75978E60EF81805B90D94ACEE4E4C620C87C7D6F3323477E0ACB315A6C0711AC
+
+c4.jsonl
+E80F94C71FAA91C812F2E91660FC1E202282D1C19D9D903BABC1655D7D14B090
+```
+
+C3 从 `2237` 增加到 `2271`，C4 从 `2281` 增加到 `2315`；C0、C1、C2
+哈希不变，说明 clause 原文与篇章级输入未变化，变化集中在结构化 Child。
+
+### 审核迁移结果
+
+新 audit-140 仍按固定种子 `20260612` 生成。迁移结果：
+
+```text
+total=140
+inherited=126
+reset/pending=14
+structure_changed=12
+missing_new_sample=2
+ambiguous=0
+```
+
+待人工复审的 14 条为：
+
+```text
+audit-jin_gui_yao_lue-clause-003
+audit-jin_gui_yao_lue-clause-028
+audit-jin_gui_yao_lue-formula-003
+audit-jin_gui_yao_lue-formula-016
+audit-jin_gui_yao_lue-formula-019
+audit-jin_gui_yao_lue-note-or-boundary-010
+audit-jin_gui_yao_lue-note-or-boundary-014
+audit-shang_han_lun-clause-027
+audit-shang_han_lun-formula-010
+audit-shang_han_lun-formula-011
+audit-shang_han_lun-formula-012
+audit-shang_han_lun-formula-015
+audit-shang_han_lun-formula-016
+audit-shang_han_lun-formula-017
+```
+
+迁移后 CSV 中这 14 行的审核字段均为空，其他 126 行保留原审核结论。
+
+```text
+audit-140.jsonl
+CDBE575495BF1D68CE14978F649F4788967ACA507229A228BD0A47CB2931FA1C
+
+audit-140.csv
+2B7B7685C7C6E213441AACA969F9924D1C9A7EC7DF3BDB128336C1D92A7FDE7D
+
+audit-migration-summary.json
+546C68B5603A906542BCB1D05D29D67444BFB4CE0C44BD60FED53B74B1FBE46F
+```
+
+### 当前结论与下一步
+
+解析修复、真实语料重建、Chunk 确定性验证和审核迁移已完成。
+当前没有执行 `review-audit`，Quality Gate 尚未基于新 Evidence 和新审核表
+重新冻结，状态仍应视为 `blocked`。下一步只复审 CSV 中 `status=pending`
+的 14 行；全部完成后再导入审核并判断能否进入真实索引和 Smoke-10。
