@@ -16,6 +16,42 @@ from experiments.rag_v1_5.pipeline import (
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
 
+def parse_single_clause(
+    clause_text: str,
+    *,
+    book_id: str = "jin_gui_yao_lue",
+):
+    book_title = (
+        "金匮要略方论"
+        if book_id == "jin_gui_yao_lue"
+        else "伤寒论"
+    )
+    text = (
+        f"<篇名>{book_title}\n"
+        "<目录>测试卷\n"
+        "<篇名>测试篇\n"
+        f"属性：1．{clause_text}\n"
+    )
+    temporary_directory = tempfile.TemporaryDirectory()
+    input_path = Path(temporary_directory.name) / "sample.txt"
+    input_path.write_text(text, encoding="utf-8")
+    result = parse_corpus_file(
+        input_path=input_path,
+        book_id=book_id,
+        book_title=book_title,
+        source_hash="A" * 64,
+    )
+    temporary_directory.cleanup()
+    return result
+
+
+def units_by_type(result) -> dict[str, list]:
+    grouped: dict[str, list] = {}
+    for unit in result.evidence_units:
+        grouped.setdefault(unit.content_type, []).append(unit)
+    return grouped
+
+
 class AncientBookParserTests(unittest.TestCase):
     def test_parses_chapters_clauses_and_stable_ids(self):
         result = parse_corpus_file(
@@ -258,6 +294,192 @@ class AncientBookParserTests(unittest.TestCase):
                 "jgy-chapter-01-001-formula-01",
                 "jgy-chapter-01-001-formula-02",
             ],
+        )
+
+    def test_parses_unmarked_formula_headings_and_count_marker_formula(self):
+        cases = (
+            (
+                "退五脏虚热，四时加减柴胡饮子方。\n"
+                "冬三月加∶柴胡（八分） 白术（八分）\n"
+                "上各 咀，分为三帖，一帖以水三升，煮取二升。",
+                "jin_gui_yao_lue",
+                "四时加减柴胡饮子方",
+            ),
+            (
+                "长服诃黎勒丸方（疑非仲景方。）\n"
+                "诃黎勒 陈皮 浓朴（各三两）\n"
+                "上三味，末之，炼蜜丸，如梧子大。",
+                "jin_gui_yao_lue",
+                "长服诃黎勒丸方",
+            ),
+            (
+                "伤寒瘥以后更发热，小柴胡汤主之；"
+                "脉浮者，以汗解之。方三。\n"
+                "柴胡（八两） 人参（二两） 黄芩（二两）\n"
+                "上七味，以水一斗二升，煮取六升。",
+                "shang_han_lun",
+                "小柴胡汤",
+            ),
+        )
+
+        for clause_text, book_id, formula_name in cases:
+            with self.subTest(formula_name=formula_name):
+                grouped = units_by_type(
+                    parse_single_clause(clause_text, book_id=book_id)
+                )
+                self.assertEqual(len(grouped.get("formula", [])), 1)
+                self.assertEqual(len(grouped.get("ingredients", [])), 1)
+                self.assertEqual(len(grouped.get("preparation", [])), 1)
+                self.assertEqual(
+                    grouped["formula"][0].normalized_text.splitlines()[0],
+                    formula_name,
+                )
+
+    def test_formula_count_and_colon_markers_do_not_cross_boundaries(self):
+        cases = (
+            (
+                "霍乱，头痛、发热、身疼痛、热多欲饮水者，"
+                "五苓散主之；寒多不用水者，理中丸主之。方二。\n"
+                "五苓散方∶\n"
+                "猪苓（去皮） 白术 茯苓（各十八铢）\n"
+                "上五味，为散，白饮和服方寸匕。\n"
+                "理中丸方∶\n"
+                "人参 干姜 甘草（炙） 白术（各三两）\n"
+                "上四味，捣筛，蜜和为丸。",
+                ("五苓散", "理中丸"),
+            ),
+            (
+                "本太阳病，医反下之，因尔腹满时痛者，"
+                "桂枝加芍药汤主之；大实痛者，桂枝加大黄汤主之。"
+                "方三。\n"
+                "桂枝加芍药汤方∶\n"
+                "桂枝（三两） 芍药（六两）\n"
+                "上二味，以水七升，煮取三升。\n"
+                "桂枝加大黄汤方∶\n"
+                "桂枝（三两） 大黄（二两）\n"
+                "上二味，以水七升，煮取三升。",
+                ("桂枝加芍药汤", "桂枝加大黄汤"),
+            ),
+        )
+
+        for clause_text, expected_names in cases:
+            with self.subTest(expected_names=expected_names):
+                grouped = units_by_type(
+                    parse_single_clause(
+                        clause_text,
+                        book_id="shang_han_lun",
+                    )
+                )
+                formulas = grouped.get("formula", [])
+                ingredients = grouped.get("ingredients", [])
+                preparations = grouped.get("preparation", [])
+                self.assertEqual(
+                    tuple(
+                        formula.normalized_text.splitlines()[0]
+                        for formula in formulas
+                    ),
+                    expected_names,
+                )
+                self.assertEqual(len(ingredients), 2)
+                self.assertEqual(len(preparations), 2)
+                for index in range(len(expected_names) - 1):
+                    next_name = expected_names[index + 1]
+                    self.assertNotIn(next_name, formulas[index].original_text)
+                    self.assertNotIn(next_name, ingredients[index].original_text)
+                    self.assertNotIn(
+                        next_name,
+                        preparations[index].original_text,
+                    )
+                self.assertFalse(
+                    any(
+                        formula.normalized_text.splitlines()[0]
+                        in {"方二", "方三"}
+                        for formula in formulas
+                    )
+                )
+
+    def test_formula_count_marker_can_start_direct_ingredients(self):
+        clause_text = (
+            "阳明病，大承气汤主之；若腹大满不通者，"
+            "可与小承气汤。大承气汤。方二。\n"
+            "大黄（酒洗，四两） 浓朴（炙，半斤）\n"
+            "上二味，以水一斗，煮取二升。\n"
+            "小承气汤方∶\n"
+            "大黄（酒洗，四两） 浓朴（炙，二两）\n"
+            "上二味，以水四升，煮取一升。"
+        )
+
+        grouped = units_by_type(
+            parse_single_clause(clause_text, book_id="shang_han_lun")
+        )
+        formulas = grouped.get("formula", [])
+
+        self.assertEqual(
+            [
+                formula.normalized_text.splitlines()[0]
+                for formula in formulas
+            ],
+            ["大承气汤", "小承气汤"],
+        )
+        self.assertEqual(len(grouped.get("ingredients", [])), 2)
+        self.assertEqual(len(grouped.get("preparation", [])), 2)
+        self.assertNotIn("小承气汤", formulas[0].original_text)
+
+    def test_recognizes_additional_preparation_starts(self):
+        cases = (
+            (
+                "\\x百合知母汤方\\x\n"
+                "百合（七枚，擘） 知母（三两，切）\n"
+                "上先以水洗百合，渍一宿。",
+                "上先",
+            ),
+            (
+                "\\x桂枝救逆汤方\\x\n"
+                "桂枝（三两） 甘草（二两）\n"
+                "上为末，以水一斗二升，先煮蜀漆。",
+                "上为",
+            ),
+            (
+                "退五脏虚热，四时加减柴胡饮子方。\n"
+                "柴胡（八分） 白术（八分）\n"
+                "上各 咀，分为三帖。",
+                "上各",
+            ),
+        )
+
+        for clause_text, preparation_start in cases:
+            with self.subTest(preparation_start=preparation_start):
+                grouped = units_by_type(parse_single_clause(clause_text))
+                ingredients = grouped.get("ingredients", [])
+                preparations = grouped.get("preparation", [])
+                self.assertEqual(len(ingredients), 1)
+                self.assertEqual(len(preparations), 1)
+                self.assertNotIn(
+                    preparation_start,
+                    ingredients[0].original_text,
+                )
+                self.assertTrue(
+                    preparations[0].original_text.startswith(
+                        preparation_start
+                    )
+                )
+
+    def test_formula_not_seen_is_note_only_formula_body(self):
+        grouped = units_by_type(
+            parse_single_clause(
+                "病患常以手指臂肿动，藜芦甘草汤主之。\n"
+                "\\x藜芦甘草汤\\x（方未见）"
+            )
+        )
+
+        self.assertEqual(len(grouped.get("formula", [])), 1)
+        self.assertEqual(grouped.get("ingredients", []), [])
+        self.assertEqual(grouped.get("preparation", []), [])
+        self.assertEqual(len(grouped.get("note", [])), 1)
+        self.assertEqual(grouped["note"][0].normalized_text, "方未见")
+        self.assertEqual(
+            grouped["note"][0].parent_id,
+            grouped["formula"][0].clause_id,
         )
 
     def test_parses_prepared_manifest_into_combined_outputs(self):
