@@ -128,6 +128,44 @@ $matrixDir = 'data/rag_v1_5/formal/runs/test/<matrix_id>'
 `docs/experiments/v1.5-formal-retrieval-results.md`。任何
 `data/rag_v1_5/formal` 文件都不得加入 Git。
 
+## Formal-400 回答层实验
+
+回答层只读复用已冻结的 Formal dev/test 检索结果，不重新执行检索。运行前
+确保根目录 `.env` 已配置 `OPENAI_MODEL`、`OPENAI_BASE_URL` 和
+`OPENAI_API_KEY`。
+
+```powershell
+.\.venv\Scripts\python.exe -m experiments.rag_v1_5.cli freeze-formal-answer-prereg
+.\.venv\Scripts\python.exe -m experiments.rag_v1_5.cli run-formal-answer-dev
+.\.venv\Scripts\python.exe -m experiments.rag_v1_5.cli freeze-formal-answer-dev
+.\.venv\Scripts\python.exe -m experiments.rag_v1_5.cli run-formal-answer-test
+```
+
+正式 test 只能 fresh 运行一次。只有进程意外中断时才允许使用同一目录恢复：
+
+```powershell
+.\.venv\Scripts\python.exe -m experiments.rag_v1_5.cli run-formal-answer-test `
+  --resume data/rag_v1_5/formal/answer/test/<run_id>
+```
+
+完成后计算自动指标、生成双轮盲审表，并在人工审核与分歧裁决完成后冻结
+隐私安全结果清单：
+
+```powershell
+$answerRun = 'data/rag_v1_5/formal/answer/test/<run_id>'
+
+.\.venv\Scripts\python.exe -m experiments.rag_v1_5.cli summarize-formal-answer-test `
+  --run-dir $answerRun
+.\.venv\Scripts\python.exe -m experiments.rag_v1_5.cli prepare-formal-answer-review `
+  --run-dir $answerRun
+.\.venv\Scripts\python.exe -m experiments.rag_v1_5.cli import-formal-answer-review
+.\.venv\Scripts\python.exe -m experiments.rag_v1_5.cli freeze-formal-answer-runs `
+  --run-dir $answerRun
+```
+
+逐题答案、证据正文、盲法 key 和审核 CSV 全部保留在
+`data/rag_v1_5/formal/answer`，不得加入 Git。
+
 ## C0-C4 Chunk 实验
 
 五种策略读取同一份 `data/rag_v1_5/processed/evidence.jsonl`：

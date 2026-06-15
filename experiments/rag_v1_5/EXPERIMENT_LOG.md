@@ -1671,3 +1671,175 @@ formal_report_written=true
 answer_level_evaluation_completed=false
 next_stage=B0/B4/P answer-level evaluation
 ```
+
+## 2026-06-16：Formal-400 回答层预注册、dev 冻结与一次性 test
+
+按
+`docs/superpowers/plans/2026-06-16-tcm-flow-v1.5-formal-400-answer-level.md`
+开始回答层实验。回答层只读复用已冻结的 Formal dev/test 检索结果，没有重新
+执行检索，也没有修改 `formal-400.jsonl`、Chunk、索引或检索矩阵。
+
+实际执行命令：
+
+```powershell
+.\.venv\Scripts\python.exe -m experiments.rag_v1_5.cli freeze-formal-answer-prereg
+.\.venv\Scripts\python.exe -m experiments.rag_v1_5.cli run-formal-answer-dev
+.\.venv\Scripts\python.exe -m experiments.rag_v1_5.cli freeze-formal-answer-dev
+.\.venv\Scripts\python.exe -m experiments.rag_v1_5.cli run-formal-answer-test
+.\.venv\Scripts\python.exe -m experiments.rag_v1_5.cli summarize-formal-answer-test `
+  --run-dir data/rag_v1_5/formal/answer/test/formal_answer_test-20260615T170244Z-531C9329
+.\.venv\Scripts\python.exe -m experiments.rag_v1_5.cli prepare-formal-answer-review `
+  --run-dir data/rag_v1_5/formal/answer/test/formal_answer_test-20260615T170244Z-531C9329
+```
+
+冻结配置与模型身份：
+
+```text
+model=deepseek-chat
+base_url_origin=api.deepseek.com
+temperature=0.2
+max_tokens=512
+structured_output_method=json_mode
+repeats=3
+execution.max_workers=8
+config_sha256=
+8833AC69551D700C8FFC71131E764B520177B2EC187FE14113BA72A4929606AC
+answer_prereg_sha256=
+531C9329DAE9C65F14C9249B2321D3C19CBF43D4BA219D8B85E51C33ABC8AC68
+B0_prompt_sha256=
+725563DCBBA1F496E99F998F69F0B15E6F1790B9C19A239980E70F21368EDE1F
+evidence_prompt_sha256=
+073906B4D211AD65C974925FCDC0751BFF483E7324270BA60B6C5EA55E99D0B0
+```
+
+初始顺序 dev 尝试
+`formal_answer_dev-20260615T163822Z-855E21F7` 产生 390 条成功记录和
+3 次输出契约错误。根因是模型返回 `abstain=true`，但拒答正文没有逐字使用
+冻结句。增加拒答规范化回归测试后，考虑到 2400 次顺序调用吞吐不足，在 dev
+阶段将执行并发度正式写入配置并重新冻结预注册。该初始目录随旧预注册哈希作废，
+没有用于阈值、test 或指标。
+
+最终 dev：
+
+```text
+run_id=formal_answer_dev-20260615T165310Z-531C9329
+question_count=200
+method_count=4
+repeats=3
+expected_runs=2400
+completed_count=2400
+error_attempt_count=0
+error_count=0
+status=completed
+B4_threshold=0.49445365768071203
+B4_dev_balanced_accuracy=1.0
+P_threshold=0.5779718446113501
+P_dev_balanced_accuracy=1.0
+matrix-summary.json SHA256=
+04262F09CB8E3588851B38187C5BC0D4ACE743097BA54FF40878AD5D14F190A7
+dev-freeze.json SHA256=
+B2506D6EE1C7745622584A154C02F44B403984DC08D74ABF0C35CBACDA160113
+```
+
+最终 test 仅 fresh 运行一次，未发生 resume：
+
+```text
+run_id=formal_answer_test-20260615T170244Z-531C9329
+question_count=200
+method_count=4
+repeats=3
+expected_runs=2400
+completed_count=2400
+error_attempt_count=0
+error_count=0
+status=completed
+matrix-summary.json SHA256=
+0A57D51119A18828B69854F0D3D1083E8E53073483DDD8AFB12A7F094DAC2365
+per-answer.jsonl SHA256=
+77FAE658D085B7DB46A36985C00E49C28F583DC651DA704FD80C399DD0E9777D
+```
+
+完成后再次执行不带 `--resume` 的 `run-formal-answer-test`，命令按预期以
+`formal_test 已完成，禁止第二次 fresh run` 拒绝，没有创建第二套正式结果。
+
+## 2026-06-16：Formal 回答层自动指标与盲审包
+
+自动指标文件：
+
+```text
+automatic-metrics.json SHA256=
+D1E509378941395B0F6E0427549F4D129BC4C4892E612E7480497D0379B19DDC
+per-question-metrics.jsonl SHA256=
+34D766A820F943E7DDA97F25FBB2DEF907357A22F725F8C5A821D6ED605DA957
+paired-bootstrap.json SHA256=
+D52479D6DF70BEFB537EFDC3C05AF377D5D892441FC0697E762847F823575A51
+bootstrap_seed=20260616
+bootstrap_resamples=10000
+resample_unit=question_id
+```
+
+每个方法 600 次运行的自动指标：
+
+| 方法 | 字符 F1 | Citation P | Citation R | 拒答准确率 | 无证据错误回答率 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| B0 | 0.420807 | N/A | N/A | 0.943333 | 0.000000 |
+| B4 | 0.477440 | 0.870660 | 0.914583 | 0.940000 | 0.000000 |
+| P | 0.482056 | 0.882986 | 0.933333 | 0.946667 | 0.000000 |
+| P-no-parent | 0.503803 | 0.951806 | 0.971875 | 0.983333 | 0.000000 |
+
+预注册配对比较：
+
+```text
+B4-B0 char_f1 delta=0.0566329887
+B4-B0 char_f1 95% CI=[0.0344611445, 0.0780406031]
+P-B4 char_f1 delta=0.0046157953
+P-B4 char_f1 95% CI=[-0.0178741233, 0.0271784243]
+P-(P-no-parent) char_f1 delta=-0.0217476418
+P-(P-no-parent) char_f1 95% CI=[-0.0414723493, -0.0026249542]
+P-(P-no-parent) citation_recall delta=-0.0385416667
+P-(P-no-parent) citation_recall 95% CI=[-0.0729166667, -0.0052083333]
+P-(P-no-parent) refusal_correct delta=-0.0366666667
+P-(P-no-parent) refusal_correct 95% CI=[-0.0633333333, -0.0133333333]
+```
+
+自动字符串指标只能说明输出与参考答案的字面重合，Citation 指标只能说明引用
+覆盖 gold clause；二者都不能直接称为医学正确性或幻觉率。当前自动结果显示 B4
+相对 B0 有稳定的字符 F1 提升，P 相对 B4 没有稳定提升，且 Parent context 在
+本次自动指标上弱于相同排序的 Child context。该现象需要结合人工
+`evidence_support`、`citation_correct` 和 `hallucination` 审核后解释。
+
+已按固定种子生成本地盲审包：
+
+```text
+main_review_rows=360
+parent_ablation_rows=160
+total_review_rows=520
+second_review_rows=52
+formal-answer-review.csv SHA256=
+493B6A3B559AC6395F618C4300013FBCAEA24099E7CB2C46B61DA378DB1AEED2
+formal-answer-second-review.csv SHA256=
+FCE6D857D2DDE6E1C258CD1B4A7FD7C69C35F3C922F8A968B61041EFE314EA1E
+formal-answer-review-source.json SHA256=
+135AF83E931FF5EC999639A1CBE1C01830BEE3EE01C2647EBEF352CCA7627159
+formal-answer-blind-key.json SHA256=
+43849E53AE364EC5D263526FB83969077975927896B394C7182E41200CF7EE46
+```
+
+当前门禁状态：
+
+```text
+answer_prereg_status=ready
+answer_dev_frozen=true
+answer_test_completed=true
+automatic_metrics_completed=true
+answer_review_prepared=true
+answer_review_completed=false
+answer_level_evaluation_completed=false
+formal_answer_report_written=false
+next_stage=complete blinded human answer review
+```
+
+盲审 CSV、盲法 key、问题、参考答案、证据正文和生成答案均位于被 Git 忽略的
+`data/rag_v1_5/formal/answer`。在首审、52 行独立二审和分歧裁决完成前，不冻结
+`formal-answer-runs-v1.5.0.json`，不撰写最终回答层报告，也不进入
+TCM-QG 外部验证。
