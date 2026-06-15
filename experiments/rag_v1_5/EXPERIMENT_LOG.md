@@ -1592,3 +1592,82 @@ answer_level_evaluation_completed=false
 下一阶段需要单独预注册 B0/B4/P 回答层实验，在 `formal_dev` 冻结 Prompt、
 生成参数和无答案阈值后，一次性评估 `formal_test` 的引用准确率、支持率、拒答
 准确率和幻觉率。本次未开始回答层实验。
+
+## 2026-06-15：Formal-400 最终验证与隐私审计
+
+报告提交后执行全量验证：
+
+```powershell
+.\.venv\Scripts\python.exe -m unittest discover -s tests -p "test*.py"
+.\.venv\Scripts\python.exe -m compileall -q app experiments tests
+.\.venv\Scripts\python.exe -m pip check
+.\.venv\Scripts\python.exe -m experiments.rag_v1_5.cli retrieval-doctor --formal
+git diff --check
+```
+
+实际结果：
+
+```text
+unittest=197 tests, OK
+unittest_runtime_seconds=11.216
+compileall=passed
+pip_check=No broken requirements found
+python=3.10.6
+torch=2.7.0+cu128
+cuda_available=true
+gpu=NVIDIA GeForce RTX 2070
+chunk_strategy_count=6
+chunk_manifest_status=valid
+index_strategy_count=7
+index_manifest_status=valid
+embedding_snapshot=valid
+reranker_snapshot=valid
+quality_gate_status=ready
+git_diff_check=passed
+```
+
+最终数据与运行契约复核：
+
+```text
+formal_question_count=400
+formal_answerable_count=320
+formal_unanswerable_count=80
+formal_dev_count=200
+formal_test_count=200
+formal_approved_count=400
+formal_second_review_pass=40
+prior_overlap_count=0
+cross_split_overlap_count=0
+formal_matrix_completed=14
+formal_total_question_runs=2800
+formal_failed_config_count=0
+runtime_errors=0
+top5_traceability_rate=1.0
+parent_recovery_rate=1.0
+bootstrap_resamples=10000
+formal_runs_manifest_status=ready
+formal_runs_manifest_sha256=
+37497A8A897A915C47403767BFF019BB5C653F4764676C55A7700CAA8722C17E
+formal_report_sha256=
+4E538DE071326F5572161D047688E67998D318F24E48A943D2FF27D4F8B38EE4
+```
+
+隐私复核：
+
+```text
+formal_manifest_contains_raw_private_content=false
+formal_runs_contains_question_text=false
+formal_runs_contains_hit_text=false
+formal_runs_contains_manual_comments=false
+private_data_committed=false
+```
+
+最终阶段：
+
+```text
+formal_dataset_status=ready
+formal_retrieval_completed=true
+formal_report_written=true
+answer_level_evaluation_completed=false
+next_stage=B0/B4/P answer-level evaluation
+```
