@@ -41,6 +41,7 @@ PilotBookScope = Literal[
     "jin_gui_yao_lue",
     "both",
 ]
+FormalAnswerMethod = Literal["B0", "B4", "P", "P-no-parent"]
 
 
 def normalize_sha256(value: str) -> str:
@@ -210,6 +211,42 @@ class PilotQuestion(BaseModel):
         if self.review_status == "approved" and not self.reference_answer.strip():
             raise ValueError("approved 问题必须填写参考答案或无答案")
         return self
+
+
+class FormalAnswerOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    answer: str = Field(min_length=1)
+    abstain: bool
+    citations: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_abstention(self) -> "FormalAnswerOutput":
+        if self.abstain and self.citations:
+            raise ValueError("拒答时 citations 必须为空")
+        if not self.abstain and any(
+            not citation.startswith("E") for citation in self.citations
+        ):
+            raise ValueError("citation 必须使用 E1、E2 格式")
+        return self
+
+
+class FormalAnswerRunRecord(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    question_id: str = Field(min_length=1)
+    split: FormalSplit
+    method: FormalAnswerMethod
+    repeat_index: int = Field(ge=0, le=2)
+    answer: str = Field(min_length=1)
+    abstain: bool
+    citations: list[str]
+    retrieval_gate_abstain: bool
+    evidence_ids: list[str]
+    latency_ms: float = Field(ge=0)
+    input_tokens: int = Field(ge=0)
+    output_tokens: int = Field(ge=0)
+    model_name: str = Field(min_length=1)
 
 
 class ParseAnomaly(BaseModel):

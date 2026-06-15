@@ -1,0 +1,50 @@
+version: v1.5.0
+seed: 20260616
+
+model:
+  env_model_key: OPENAI_MODEL
+  env_base_url_key: OPENAI_BASE_URL
+  temperature: 0.2
+  max_tokens: 512
+  timeout_seconds: 120
+  max_retries: 2
+  structured_output_method: json_mode
+
+generation:
+  repeats: 3
+  context_top_k: 5
+  answer_methods: [B0, B4, P, P-no-parent]
+  evidence_labels: [E1, E2, E3, E4, E5]
+
+retrieval_sources:
+  B4: b4-c0-hybrid-rerank
+  P: p-c4-hybrid-rerank
+  P-no-parent: p-no-parent
+
+no_answer:
+  score_field: reranker_score
+  objective: balanced_accuracy
+  tie_break: higher_threshold
+  fallback_when_score_missing: model_only
+
+evaluation:
+  automatic_metrics:
+    - exact_match
+    - char_f1
+    - citation_precision
+    - citation_recall
+    - refusal_accuracy
+    - unsupported_answer_rate
+    - latency_ms
+    - input_tokens
+    - output_tokens
+  bootstrap_seed: 20260616
+  bootstrap_resamples: 10000
+  confidence_level: 0.95
+
+human_review:
+  answerable_questions: 80
+  unanswerable_questions: 40
+  canonical_repeat_index: 0
+  second_review_rate: 0.10
+  sample_seed: 20260616
