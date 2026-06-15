@@ -28,7 +28,14 @@ QuestionType = Literal[
     "multi_evidence",
     "unanswerable",
 ]
-PilotSplit = Literal["smoke", "pilot", "formal"]
+FormalSplit = Literal["formal_dev", "formal_test"]
+PilotSplit = Literal[
+    "smoke",
+    "pilot",
+    "formal",
+    "formal_dev",
+    "formal_test",
+]
 PilotBookScope = Literal[
     "shang_han_lun",
     "jin_gui_yao_lue",
@@ -131,6 +138,20 @@ class PilotEvidenceGroup(BaseModel):
 
     group_id: str = Field(min_length=1)
     split: Literal["pilot"]
+    book_scope: Literal["shang_han_lun", "jin_gui_yao_lue"]
+    question_type: QuestionType
+    anchor_evidence_ids: list[str]
+    anchor_clause_ids: list[str]
+    selection_seed: int
+    selection_reason: str = Field(min_length=1)
+    absence_queries: list[str] = Field(default_factory=list)
+
+
+class FormalEvidenceGroup(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    group_id: str = Field(min_length=1)
+    split: FormalSplit
     book_scope: Literal["shang_han_lun", "jin_gui_yao_lue"]
     question_type: QuestionType
     anchor_evidence_ids: list[str]

@@ -29,6 +29,7 @@ from experiments.rag_v1_5.dataset import (
     sample_pilot_evidence_groups,
     validate_dataset,
 )
+from experiments.rag_v1_5.formal_dataset import validate_formal_dataset
 from experiments.rag_v1_5.indexing import (
     BgeM3DenseEncoder,
     build_indexes,
@@ -130,6 +131,18 @@ DEFAULT_SMOKE_MANIFEST_PATH = Path(
     "experiments/rag_v1_5/manifests/smoke-10-v1.5.0.json"
 )
 DEFAULT_PILOT_RUNS_DIR = Path("data/rag_v1_5/runs/pilot")
+DEFAULT_FORMAL_EVALUATION_DIR = Path(
+    "data/rag_v1_5/formal/evaluation"
+)
+DEFAULT_FORMAL_DRAFT_PATH = (
+    DEFAULT_FORMAL_EVALUATION_DIR / "formal-400-draft.jsonl"
+)
+DEFAULT_FORMAL_EVIDENCE_GROUPS_PATH = (
+    DEFAULT_FORMAL_EVALUATION_DIR / "formal-evidence-groups.jsonl"
+)
+DEFAULT_FORMAL_EXCLUSIONS_PATH = (
+    DEFAULT_FORMAL_EVALUATION_DIR / "formal-exclusions.json"
+)
 DIRECT_DEPENDENCIES = (
     "pydantic",
     "PyYAML",
@@ -691,6 +704,40 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
     )
 
+    validate_formal_parser = subparsers.add_parser(
+        "validate-formal-dataset",
+        help="校验 Formal-400 固定配额、隔离和 Evidence 契约",
+    )
+    validate_formal_parser.add_argument(
+        "--dataset",
+        type=Path,
+        default=DEFAULT_FORMAL_DRAFT_PATH,
+    )
+    validate_formal_parser.add_argument(
+        "--evidence",
+        type=Path,
+        default=DEFAULT_EVIDENCE_PATH,
+    )
+    validate_formal_parser.add_argument(
+        "--evidence-groups",
+        type=Path,
+        default=DEFAULT_FORMAL_EVIDENCE_GROUPS_PATH,
+    )
+    validate_formal_parser.add_argument(
+        "--exclusions",
+        type=Path,
+        default=DEFAULT_FORMAL_EXCLUSIONS_PATH,
+    )
+    validate_formal_parser.add_argument(
+        "--prior-dataset",
+        action="append",
+        type=Path,
+        default=[
+            DEFAULT_SMOKE_DATASET_PATH,
+            DEFAULT_PILOT_DATASET_PATH,
+        ],
+    )
+
     pilot_evidence_parser = subparsers.add_parser(
         "sample-pilot-evidence",
         help="按固定配额选择 Pilot-40 Evidence Group",
@@ -1071,6 +1118,14 @@ def main(
             evidence_path=args.evidence,
             profile=args.profile,
             evidence_groups_path=args.evidence_groups,
+        )
+    elif args.command == "validate-formal-dataset":
+        manifest = validate_formal_dataset(
+            dataset_path=args.dataset,
+            evidence_path=args.evidence,
+            evidence_groups_path=args.evidence_groups,
+            exclusions_path=args.exclusions,
+            prior_dataset_paths=tuple(args.prior_dataset),
         )
     elif args.command == "sample-pilot-evidence":
         manifest = sample_pilot_evidence_groups(
