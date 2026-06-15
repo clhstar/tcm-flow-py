@@ -2030,3 +2030,204 @@ def validate_formal_dataset(
         "evidence_group_sha256": _sha256_file(evidence_groups_path),
         "exclusions_sha256": _sha256_file(exclusions_path),
     }
+
+
+def _validate_formal_review_summary(
+    *,
+    review_summary: dict,
+    dataset_sha256: str,
+    evidence_group_sha256: str,
+) -> None:
+    required_counts = {
+        "question_count": 400,
+        "first_review_pass_count": 400,
+        "first_review_pending_count": 0,
+        "first_review_fail_count": 0,
+        "second_review_required_count": 40,
+        "second_review_pass_count": 40,
+        "second_review_pending_count": 0,
+        "second_review_fail_count": 0,
+        "rejected_count": 0,
+    }
+    if review_summary.get("status") != "ready":
+        raise ValueError("Formal review summary 必须为 ready")
+    mismatches = {
+        key: review_summary.get(key)
+        for key, expected in required_counts.items()
+        if review_summary.get(key) != expected
+    }
+    if mismatches:
+        raise ValueError(
+            f"Formal review summary 审核门禁未通过: {mismatches}"
+        )
+    revision_count = review_summary.get("revision_count")
+    if not isinstance(revision_count, int) or revision_count < 0:
+        raise ValueError("Formal review summary 缺少 revision_count")
+    if review_summary.get("output_dataset_sha256") != dataset_sha256:
+        raise ValueError("Formal review summary 的 dataset 哈希不一致")
+    if (
+        review_summary.get("evidence_group_sha256")
+        != evidence_group_sha256
+    ):
+        raise ValueError(
+            "Formal review summary 的 Evidence Group 哈希不一致"
+        )
+    review_csv_sha256 = review_summary.get("review_csv_sha256")
+    if (
+        not isinstance(review_csv_sha256, str)
+        or re.fullmatch(r"[0-9A-Fa-f]{64}", review_csv_sha256) is None
+    ):
+        raise ValueError("Formal review CSV 缺少合法 SHA256")
+
+
+def freeze_formal_manifest(
+    *,
+    dataset_path: Path,
+    evidence_groups_path: Path,
+    review_summary_path: Path,
+    exclusions_path: Path,
+    prereg_manifest_path: Path,
+    pilot_manifest_path: Path,
+    smoke_manifest_path: Path,
+    evidence_path: Path,
+    output_path: Path,
+    prior_dataset_paths: tuple[Path, ...] = (),
+) -> dict:
+    dataset_summary = validate_formal_dataset(
+        dataset_path=dataset_path,
+        evidence_path=evidence_path,
+        evidence_groups_path=evidence_groups_path,
+        exclusions_path=exclusions_path,
+        prior_dataset_paths=prior_dataset_paths,
+    )
+    if dataset_summary["approved_count"] != 400:
+        raise ValueError("Formal-400 必须全部审核为 approved")
+
+    review_summary = _load_json_object(review_summary_path)
+    prereg_manifest = _load_json_object(prereg_manifest_path)
+    pilot_manifest = _load_json_object(pilot_manifest_path)
+    smoke_manifest = _load_json_object(smoke_manifest_path)
+    _validate_formal_review_summary(
+        review_summary=review_summary,
+        dataset_sha256=dataset_summary["dataset_sha256"],
+        evidence_group_sha256=dataset_summary[
+            "evidence_group_sha256"
+        ],
+    )
+
+    if prereg_manifest.get("status") != "ready":
+        raise ValueError("Formal 预注册 Manifest 必须为 ready")
+    if pilot_manifest.get("status") != "ready":
+        raise ValueError("Pilot Manifest 必须为 ready")
+    if smoke_manifest.get("status") != "passed":
+        raise ValueError("Smoke Manifest 必须为 passed")
+
+    prereg_dataset = prereg_manifest.get("dataset", {})
+    expected_dataset = {
+        "question_count": 400,
+        "answerable_count": 320,
+        "unanswerable_count": 80,
+        "dev_count": 200,
+        "test_count": 200,
+    }
+    prereg_mismatches = {
+        key: prereg_dataset.get(key)
+        for key, expected in expected_dataset.items()
+        if prereg_dataset.get(key) != expected
+    }
+    if prereg_mismatches:
+        raise ValueError(
+            f"Formal 数据集与预注册配额不一致: {prereg_mismatches}"
+        )
+
+    prereg_inputs = prereg_manifest.get("inputs", {})
+    expected_hashes = {
+        "evidence_groups": _sha256_file(evidence_groups_path),
+        "exclusions": _sha256_file(exclusions_path),
+        "pilot_manifest": _sha256_file(pilot_manifest_path),
+    }
+    hash_mismatches = {
+        key: prereg_inputs.get(key, {}).get("sha256")
+        for key, expected in expected_hashes.items()
+        if prereg_inputs.get(key, {}).get("sha256") != expected
+    }
+    if hash_mismatches:
+        raise ValueError(
+            f"Formal 预注册输入哈希链不一致: {hash_mismatches}"
+        )
+
+    manifest = {
+        "version": "v1.5.0",
+        "status": "ready",
+        "frozen_at": datetime.now(timezone.utc).isoformat(),
+        "dataset": {
+            "path": _manifest_path(dataset_path),
+            "sha256": dataset_summary["dataset_sha256"],
+            "question_count": dataset_summary["question_count"],
+            "answerable_count": dataset_summary["answerable_count"],
+            "unanswerable_count": dataset_summary[
+                "unanswerable_count"
+            ],
+            "approved_count": dataset_summary["approved_count"],
+            "split_counts": dataset_summary["split_counts"],
+            "book_counts": dataset_summary["book_counts"],
+            "answerable_anchor_clause_count": dataset_summary[
+                "answerable_anchor_clause_count"
+            ],
+            "prior_overlap_count": dataset_summary[
+                "prior_overlap_count"
+            ],
+            "cross_split_clause_overlap_count": dataset_summary[
+                "cross_split_clause_overlap_count"
+            ],
+        },
+        "distribution": dataset_summary[
+            "quota_by_book_split_type"
+        ],
+        "review": {
+            "first_pass_count": review_summary[
+                "first_review_pass_count"
+            ],
+            "second_required_count": review_summary[
+                "second_review_required_count"
+            ],
+            "second_pass_count": review_summary[
+                "second_review_pass_count"
+            ],
+            "revision_count": review_summary["revision_count"],
+            "rejected_count": review_summary["rejected_count"],
+        },
+        "inputs": {
+            "evidence_groups": _hashed_input(evidence_groups_path),
+            "review_summary": _hashed_input(review_summary_path),
+            "review_csv_sha256": review_summary[
+                "review_csv_sha256"
+            ].upper(),
+            "exclusions": _hashed_input(exclusions_path),
+            "prereg_manifest": _hashed_input(prereg_manifest_path),
+            "pilot_manifest": _hashed_input(pilot_manifest_path),
+            "smoke_manifest": _hashed_input(smoke_manifest_path),
+            "evidence": _hashed_input(evidence_path),
+        },
+        "privacy": {
+            "ids_and_hashes_only": True,
+            "raw_private_content_included": False,
+            "full_questions_committed": False,
+            "full_corpus_committed": False,
+        },
+    }
+    if output_path.is_file():
+        existing = _load_json_object(output_path)
+        existing_core = dict(existing)
+        manifest_core = dict(manifest)
+        existing_core.pop("frozen_at", None)
+        manifest_core.pop("frozen_at", None)
+        if existing.get("status") == "ready":
+            if existing_core != manifest_core:
+                raise ValueError(
+                    "现有 ready Formal Manifest 核心输入已变化，拒绝覆盖"
+                )
+            return existing
+
+    _write_json(output_path, manifest)
+    return manifest

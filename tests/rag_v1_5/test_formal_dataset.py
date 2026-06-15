@@ -654,6 +654,26 @@ class FormalDatasetCliTests(unittest.TestCase):
             ),
         )
 
+    def test_freeze_formal_dataset_cli_contract(self) -> None:
+        from experiments.rag_v1_5.cli import build_parser
+
+        args = build_parser().parse_args(["freeze-formal-dataset"])
+
+        self.assertEqual(args.command, "freeze-formal-dataset")
+        self.assertEqual(
+            args.dataset,
+            Path(
+                "data/rag_v1_5/formal/evaluation/formal-400.jsonl"
+            ),
+        )
+        self.assertEqual(
+            args.output,
+            Path(
+                "experiments/rag_v1_5/manifests/"
+                "formal-400-v1.5.0.json"
+            ),
+        )
+
 
 class FormalEvidenceSamplingTests(unittest.TestCase):
     def run_sampling(
@@ -1561,6 +1581,208 @@ class FormalAuthoringWorkflowTests(unittest.TestCase):
                                 root / "formal-400-draft.jsonl"
                             ),
                         )
+
+
+class FormalManifestFreezeTests(unittest.TestCase):
+    def prepare_freeze_files(self, root: Path) -> dict[str, Path]:
+        questions, groups, evidence = make_formal_artifacts()
+        dataset_path = root / "formal-400.jsonl"
+        groups_path = root / "formal-evidence-groups.jsonl"
+        evidence_path = root / "evidence.jsonl"
+        exclusions_path = root / "formal-exclusions.json"
+        review_summary_path = root / "formal-review-summary.json"
+        prereg_path = root / "formal-prereg-v1.5.0.json"
+        pilot_manifest_path = root / "pilot-40-v1.5.0.json"
+        smoke_manifest_path = root / "smoke-10-v1.5.0.json"
+        manifest_path = root / "formal-400-v1.5.0.json"
+        prior_smoke_path = root / "smoke-10.jsonl"
+        prior_pilot_path = root / "pilot-40.jsonl"
+
+        write_jsonl(dataset_path, questions)
+        write_jsonl(groups_path, groups)
+        write_jsonl(evidence_path, evidence)
+        write_jsonl(prior_smoke_path, [])
+        write_jsonl(prior_pilot_path, [])
+        exclusions_path.write_text(
+            json.dumps(
+                {
+                    "smoke_group_ids": [],
+                    "smoke_evidence_ids": [],
+                    "smoke_clause_ids": [],
+                    "pilot_group_ids": [],
+                    "pilot_anchor_evidence_ids": [],
+                    "pilot_anchor_clause_ids": [],
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        dataset_sha256 = hashlib.sha256(
+            dataset_path.read_bytes()
+        ).hexdigest().upper()
+        groups_sha256 = hashlib.sha256(
+            groups_path.read_bytes()
+        ).hexdigest().upper()
+        exclusions_sha256 = hashlib.sha256(
+            exclusions_path.read_bytes()
+        ).hexdigest().upper()
+        review_summary_path.write_text(
+            json.dumps(
+                {
+                    "status": "ready",
+                    "question_count": 400,
+                    "first_review_pass_count": 400,
+                    "first_review_pending_count": 0,
+                    "first_review_fail_count": 0,
+                    "second_review_required_count": 40,
+                    "second_review_pass_count": 40,
+                    "second_review_pending_count": 0,
+                    "second_review_fail_count": 0,
+                    "revision_count": 0,
+                    "rejected_count": 0,
+                    "output_dataset_sha256": dataset_sha256,
+                    "evidence_group_sha256": groups_sha256,
+                    "review_csv_sha256": "A" * 64,
+                }
+            ),
+            encoding="utf-8",
+        )
+        pilot_manifest_path.write_text(
+            json.dumps({"version": "v1.5.0", "status": "ready"}),
+            encoding="utf-8",
+        )
+        smoke_manifest_path.write_text(
+            json.dumps({"version": "v1.5.0", "status": "passed"}),
+            encoding="utf-8",
+        )
+        pilot_sha256 = hashlib.sha256(
+            pilot_manifest_path.read_bytes()
+        ).hexdigest().upper()
+        prereg_path.write_text(
+            json.dumps(
+                {
+                    "version": "v1.5.0",
+                    "status": "ready",
+                    "dataset": {
+                        "question_count": 400,
+                        "answerable_count": 320,
+                        "unanswerable_count": 80,
+                        "dev_count": 200,
+                        "test_count": 200,
+                    },
+                    "inputs": {
+                        "evidence_groups": {
+                            "sha256": groups_sha256,
+                        },
+                        "exclusions": {
+                            "sha256": exclusions_sha256,
+                        },
+                        "pilot_manifest": {
+                            "sha256": pilot_sha256,
+                        },
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        return {
+            "dataset_path": dataset_path,
+            "evidence_groups_path": groups_path,
+            "review_summary_path": review_summary_path,
+            "exclusions_path": exclusions_path,
+            "prereg_manifest_path": prereg_path,
+            "pilot_manifest_path": pilot_manifest_path,
+            "smoke_manifest_path": smoke_manifest_path,
+            "evidence_path": evidence_path,
+            "output_path": manifest_path,
+            "prior_dataset_paths": (
+                prior_smoke_path,
+                prior_pilot_path,
+            ),
+        }
+
+    def test_freezes_private_safe_formal_manifest_idempotently(self) -> None:
+        from experiments.rag_v1_5.formal_dataset import (
+            freeze_formal_manifest,
+        )
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            paths = self.prepare_freeze_files(Path(temporary_directory))
+            first = freeze_formal_manifest(**paths)
+            second = freeze_formal_manifest(**paths)
+            serialized = json.dumps(first, ensure_ascii=False)
+
+        self.assertEqual(first["status"], "ready")
+        self.assertEqual(first["dataset"]["question_count"], 400)
+        self.assertEqual(first["dataset"]["answerable_count"], 320)
+        self.assertEqual(first["dataset"]["unanswerable_count"], 80)
+        self.assertEqual(first["dataset"]["approved_count"], 400)
+        self.assertEqual(
+            first["dataset"]["split_counts"],
+            {"formal_dev": 200, "formal_test": 200},
+        )
+        self.assertEqual(first["review"]["first_pass_count"], 400)
+        self.assertEqual(first["review"]["second_pass_count"], 40)
+        self.assertNotIn("reference_answer", serialized)
+        self.assertNotIn("support_spans", serialized)
+        self.assertNotIn("first_comment", serialized)
+        self.assertNotIn("shang_han_lun formal_dev", serialized)
+        first_without_time = dict(first)
+        second_without_time = dict(second)
+        first_without_time.pop("frozen_at")
+        second_without_time.pop("frozen_at")
+        self.assertEqual(first_without_time, second_without_time)
+
+    def test_rejects_review_or_prereg_hash_drift(self) -> None:
+        from experiments.rag_v1_5.formal_dataset import (
+            freeze_formal_manifest,
+        )
+
+        for case in ("review", "prereg", "ready_manifest"):
+            with self.subTest(case=case):
+                with tempfile.TemporaryDirectory() as temporary_directory:
+                    paths = self.prepare_freeze_files(
+                        Path(temporary_directory)
+                    )
+                    if case == "review":
+                        summary = json.loads(
+                            paths["review_summary_path"].read_text(
+                                encoding="utf-8"
+                            )
+                        )
+                        summary["second_review_pass_count"] = 39
+                        paths["review_summary_path"].write_text(
+                            json.dumps(summary),
+                            encoding="utf-8",
+                        )
+                    elif case == "prereg":
+                        prereg = json.loads(
+                            paths["prereg_manifest_path"].read_text(
+                                encoding="utf-8"
+                            )
+                        )
+                        prereg["inputs"]["evidence_groups"]["sha256"] = (
+                            "B" * 64
+                        )
+                        paths["prereg_manifest_path"].write_text(
+                            json.dumps(prereg),
+                            encoding="utf-8",
+                        )
+                    else:
+                        freeze_formal_manifest(**paths)
+                        smoke = json.loads(
+                            paths["smoke_manifest_path"].read_text(
+                                encoding="utf-8"
+                            )
+                        )
+                        smoke["changed"] = True
+                        paths["smoke_manifest_path"].write_text(
+                            json.dumps(smoke),
+                            encoding="utf-8",
+                        )
+
+                    with self.assertRaises(ValueError):
+                        freeze_formal_manifest(**paths)
 
 
 if __name__ == "__main__":

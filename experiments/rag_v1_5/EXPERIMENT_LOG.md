@@ -1282,3 +1282,91 @@ draft-formal-authoring 重跑 preserved_count=400
 prepare-formal-review 重跑 inherited_review_count=400
 authoring/review SHA256 均未变化
 ```
+
+## 2026-06-15：Formal-400 人工审核关闭与数据集冻结
+
+用户完成并关闭 `formal-review.csv` 后，首次导入发现 40 条抽样二审记录均已填写：
+
+```text
+second_decision=correct
+second_reviewer=陈力恒
+second_reviewed_at=2026/6/15 14:55
+```
+
+但相应 `second_status` 仍为 `pending`。保留原文件备份后，仅对这 40 条同时满足
+`second_review_required=true`、`decision=correct`、审核人和审核时间非空的记录执行机械性
+状态修正为 `pass`，未修改题目、答案、gold、support span 或人工评论。
+
+执行：
+
+```powershell
+.\.venv\Scripts\python.exe -m experiments.rag_v1_5.cli import-formal-review
+.\.venv\Scripts\python.exe -m experiments.rag_v1_5.cli freeze-formal-dataset
+```
+
+实际审核门禁：
+
+```text
+review_status=ready
+question_count=400
+first_review_pass_count=400
+first_review_pending_count=0
+first_review_fail_count=0
+second_review_required_count=40
+second_review_pass_count=40
+second_review_pending_count=0
+second_review_fail_count=0
+revision_count=0
+rejected_count=0
+```
+
+冻结数据契约：
+
+```text
+formal_dataset_status=ready
+question_count=400
+answerable_count=320
+unanswerable_count=80
+approved_count=400
+formal_dev=200
+formal_test=200
+shang_han_lun=200
+jin_gui_yao_lue=200
+prior_overlap_count=0
+cross_split_clause_overlap_count=0
+```
+
+SHA256：
+
+```text
+formal-review.csv=
+0A6D62B0F24B336315A02B79F5B12CF7AC1B3F4035A05440C4A707999950049D
+
+formal-400.jsonl=
+1C344CB271B24D14366AA0389AE192FDA99388D51724E56260D50497D7902230
+
+formal-evidence-groups.jsonl=
+AEC716E0555B665F949FB77F74F2FB92F0854ADAEFB790C9F57CA9F91CC8F1A7
+
+formal-400-v1.5.0.json=
+937CA42841D98D398DC00BF659418EE4F0B783C9B5323A9AA630D29189BE78DE
+```
+
+冻结 Manifest 仅包含计数、ID 路径和哈希，不包含题目全文、参考答案、support span、
+Evidence 原文或人工审核评论。
+
+验证：
+
+```powershell
+.\.venv\Scripts\python.exe -m unittest `
+  tests.rag_v1_5.test_formal_dataset `
+  tests.rag_v1_5.test_formal_review
+```
+
+结果为 `28 tests, OK`。当前阶段：
+
+```text
+formal_dataset_frozen=true
+formal_retrieval_completed=false
+answer_level_evaluation_completed=false
+```

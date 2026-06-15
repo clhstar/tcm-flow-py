@@ -31,6 +31,7 @@ from experiments.rag_v1_5.dataset import (
 )
 from experiments.rag_v1_5.formal_dataset import (
     draft_formal_authoring_csv,
+    freeze_formal_manifest,
     freeze_formal_preregistration,
     import_formal_authoring_csv,
     prepare_formal_authoring_csv,
@@ -174,6 +175,9 @@ DEFAULT_FORMAL_REVIEW_SUMMARY_PATH = (
 )
 DEFAULT_FORMAL_DATASET_PATH = (
     DEFAULT_FORMAL_EVALUATION_DIR / "formal-400.jsonl"
+)
+DEFAULT_FORMAL_MANIFEST_PATH = Path(
+    "experiments/rag_v1_5/manifests/formal-400-v1.5.0.json"
 )
 DIRECT_DEPENDENCIES = (
     "pydantic",
@@ -970,6 +974,65 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_FORMAL_REVIEW_SUMMARY_PATH,
     )
 
+    freeze_formal_parser = subparsers.add_parser(
+        "freeze-formal-dataset",
+        help="校验并冻结 Formal-400 Manifest 与输入哈希链",
+    )
+    freeze_formal_parser.add_argument(
+        "--dataset",
+        type=Path,
+        default=DEFAULT_FORMAL_DATASET_PATH,
+    )
+    freeze_formal_parser.add_argument(
+        "--evidence-groups",
+        type=Path,
+        default=DEFAULT_FORMAL_EVIDENCE_GROUPS_PATH,
+    )
+    freeze_formal_parser.add_argument(
+        "--review-summary",
+        type=Path,
+        default=DEFAULT_FORMAL_REVIEW_SUMMARY_PATH,
+    )
+    freeze_formal_parser.add_argument(
+        "--exclusions",
+        type=Path,
+        default=DEFAULT_FORMAL_EXCLUSIONS_PATH,
+    )
+    freeze_formal_parser.add_argument(
+        "--prereg-manifest",
+        type=Path,
+        default=DEFAULT_FORMAL_PREREG_PATH,
+    )
+    freeze_formal_parser.add_argument(
+        "--pilot-manifest",
+        type=Path,
+        default=DEFAULT_PILOT_MANIFEST_PATH,
+    )
+    freeze_formal_parser.add_argument(
+        "--smoke-manifest",
+        type=Path,
+        default=DEFAULT_SMOKE_MANIFEST_PATH,
+    )
+    freeze_formal_parser.add_argument(
+        "--evidence",
+        type=Path,
+        default=DEFAULT_EVIDENCE_PATH,
+    )
+    freeze_formal_parser.add_argument(
+        "--output",
+        type=Path,
+        default=DEFAULT_FORMAL_MANIFEST_PATH,
+    )
+    freeze_formal_parser.add_argument(
+        "--prior-dataset",
+        action="append",
+        type=Path,
+        default=[
+            DEFAULT_SMOKE_DATASET_PATH,
+            DEFAULT_PILOT_DATASET_PATH,
+        ],
+    )
+
     pilot_evidence_parser = subparsers.add_parser(
         "sample-pilot-evidence",
         help="按固定配额选择 Pilot-40 Evidence Group",
@@ -1412,6 +1475,19 @@ def main(
             reviewed_csv_path=args.reviewed_csv,
             output_dataset_path=args.output,
             summary_path=args.summary,
+        )
+    elif args.command == "freeze-formal-dataset":
+        manifest = freeze_formal_manifest(
+            dataset_path=args.dataset,
+            evidence_groups_path=args.evidence_groups,
+            review_summary_path=args.review_summary,
+            exclusions_path=args.exclusions,
+            prereg_manifest_path=args.prereg_manifest,
+            pilot_manifest_path=args.pilot_manifest,
+            smoke_manifest_path=args.smoke_manifest,
+            evidence_path=args.evidence,
+            output_path=args.output,
+            prior_dataset_paths=tuple(args.prior_dataset),
         )
     elif args.command == "sample-pilot-evidence":
         manifest = sample_pilot_evidence_groups(
