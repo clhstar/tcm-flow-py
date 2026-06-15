@@ -1476,3 +1476,75 @@ overlap_ratio_at_least_0.25=62
 formal_dev_gate=passed_with_scope_limitation
 formal_test_has_not_run=true
 ```
+
+## 2026-06-15：Formal-400 正式测试集一次性运行与冻结
+
+在 HEAD `eafdc94ff95d3d8ffa9318d477262a70a431eb82` 上确认无未提交实验
+代码后，一次性运行 `formal_test` 的 14 配置矩阵。运行前工作树仅存在三份既有未跟踪
+计划文档；未根据测试集结果修改问题、gold、配置、阈值、模型或矩阵。
+
+运行事实：
+
+```text
+start_at=2026-06-15T18:26:26+08:00
+completed_at=2026-06-15T18:39:38+08:00
+resume=false
+matrix_id=formal_test-20260615T102626Z-1C344CB2-D832EF32
+config_count=14
+completed_config_count=14
+failed_config_count=0
+total_question_runs=2800
+runtime_error_attempt_count=0
+minimum_top5_traceability_rate=1.0
+minimum_parent_recovery_rate=1.0
+```
+
+输入哈希与 Dev 完全一致：
+
+```text
+formal_dataset_sha256=
+1C344CB271B24D14366AA0389AE192FDA99388D51724E56260D50497D7902230
+formal_manifest_sha256=
+937CA42841D98D398DC00BF659418EE4F0B783C9B5323A9AA630D29189BE78DE
+prereg_manifest_sha256=
+5DFF217581C574B67E776302A97857D14FE88886B5F7DBD9DB92F9D33F33A1E6
+config_sha256=
+D832EF32BCCFAAEDEB62BB2D3E4767246311A82CC21213CE4A5C5CB8AC975B1F
+chunk_manifest_sha256=
+C24E09FE7BA864602D1860C54500BEB66AC96338597229BC7D6FA398DF13D83D
+index_manifest_sha256=
+CA026E14CDF426E4A1484ED84E5EC32B46CCD2C7A6B9E5EFF0FC3AD7A3A1F572
+model_manifest_sha256=
+5523130CBAB3DC8829644E41F747B0856A64809C211A9B2665527033E3E7CDCB
+```
+
+统计推断：
+
+```text
+bootstrap_seed=20260614
+bootstrap_resamples=10000
+confidence_level=0.95
+paired=true
+strata=book_scope + question_type
+formal-statistics.json SHA256=
+3B5F314E4FA99AE6D0E470CB7A1C9801FCECD124A2D9342A735057B6FC19915F
+```
+
+冻结：
+
+```text
+formal_runs_manifest_status=ready
+formal-runs-v1.5.0.json SHA256=
+37497A8A897A915C47403767BFF019BB5C653F4764676C55A7700CAA8722C17E
+independent_hash_check_count=73
+independent_hash_match_count=73
+independent_hash_mismatch_count=0
+contains_question_text=false
+contains_reference_answer=false
+contains_hit_text=false
+contains_support_spans=false
+contains_manual_comments=false
+```
+
+运行未发生进程中断、resume、CUDA OOM 或 RuntimeError。正式结果的解释继续受 Dev
+阶段记录的“片段锚定合成题库”边界约束。

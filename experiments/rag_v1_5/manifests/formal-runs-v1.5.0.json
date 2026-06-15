@@ -1,0 +1,1282 @@
+{
+  "completed_config_count": 14,
+  "config_count": 14,
+  "configs": [
+    {
+      "completed_count": 200,
+      "config_id": "b1-c0-bm25",
+      "context_policy": "parent",
+      "core_metrics": {
+        "hit_at_5": 0.99375,
+        "mrr_at_10": 0.80375,
+        "ndcg_at_10": 0.8207986351856207,
+        "recall_at_1": 0.596875,
+        "recall_at_10": 0.99375,
+        "recall_at_5": 0.971875
+      },
+      "error_count": 0,
+      "files": {
+        "errors.jsonl": {
+          "path": "b1-c0-bm25/errors.jsonl",
+          "sha256": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855"
+        },
+        "latency.json": {
+          "path": "b1-c0-bm25/latency.json",
+          "sha256": "8A7761AFAEE171B5662225529E8B77EF81AA39594F84CDEEC57CD31869A3A3B6"
+        },
+        "metrics.json": {
+          "path": "b1-c0-bm25/metrics.json",
+          "sha256": "FED6A5B498D4D933E05A920651EAF71D83C6F92EDBD9F5B1F4048E70A6138410"
+        },
+        "per-question.jsonl": {
+          "path": "b1-c0-bm25/per-question.jsonl",
+          "sha256": "5C07AB0EECB2726BB05E4E83699DA0B0240C9BE284DEF89B437AAF2124A07388"
+        },
+        "run-config.json": {
+          "path": "b1-c0-bm25/run-config.json",
+          "sha256": "A725099A87DAB809CEFDB6761BD0A658714E22748C9F2E64F0A0B30C00B42104"
+        }
+      },
+      "index_size_bytes": 1849394,
+      "latency": {
+        "bm25_ms": {
+          "count": 200,
+          "max": 2.1050000214017928,
+          "mean": 1.178914500924293,
+          "median": 1.1956000234931707,
+          "p95": 1.7362999496981502
+        },
+        "dense_ms": {
+          "count": 200,
+          "max": 0.0,
+          "mean": 0.0,
+          "median": 0.0,
+          "p95": 0.0
+        },
+        "reranker_ms": {
+          "count": 200,
+          "max": 0.0,
+          "mean": 0.0,
+          "median": 0.0,
+          "p95": 0.0
+        },
+        "returned_context_chars": {
+          "count": 200,
+          "max": 2363.0,
+          "mean": 2112.15,
+          "median": 2105.5,
+          "p95": 2317.0
+        },
+        "rrf_ms": {
+          "count": 200,
+          "max": 0.0,
+          "mean": 0.0,
+          "median": 0.0,
+          "p95": 0.0
+        },
+        "total_ms": {
+          "count": 200,
+          "max": 2.111799956765026,
+          "mean": 1.182495996763464,
+          "median": 1.1992999934591353,
+          "p95": 1.7407999839633703
+        }
+      },
+      "metadata_policy": "with_titles",
+      "mode": "bm25",
+      "paper_role": "B1",
+      "parent_recovery_rate": null,
+      "status": "completed",
+      "strategy": "c0",
+      "top5_traceability_rate": 1.0
+    },
+    {
+      "completed_count": 200,
+      "config_id": "b2-c0-dense",
+      "context_policy": "parent",
+      "core_metrics": {
+        "hit_at_5": 0.8625,
+        "mrr_at_10": 0.7561507936507936,
+        "ndcg_at_10": 0.7521211039545592,
+        "recall_at_1": 0.609375,
+        "recall_at_10": 0.9,
+        "recall_at_5": 0.8375
+      },
+      "error_count": 0,
+      "files": {
+        "errors.jsonl": {
+          "path": "b2-c0-dense/errors.jsonl",
+          "sha256": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855"
+        },
+        "latency.json": {
+          "path": "b2-c0-dense/latency.json",
+          "sha256": "C80243A24151B1C056CEE140DC331D3666752C91BCD3EA22314826CD2BEE814B"
+        },
+        "metrics.json": {
+          "path": "b2-c0-dense/metrics.json",
+          "sha256": "827524E001DD991D3CF7A2EBCA6927EB3B8D52AEF958F0A70C9ED7AEA97E9DF1"
+        },
+        "per-question.jsonl": {
+          "path": "b2-c0-dense/per-question.jsonl",
+          "sha256": "5C1DFD4FA863395E525F2E6987AACFE1FB7F9D7C9A5213B2E1334BA061F3E992"
+        },
+        "run-config.json": {
+          "path": "b2-c0-dense/run-config.json",
+          "sha256": "A0899E13074B040B92E1465D104055368466051F6CC3A202EC8EBDF1E9081F89"
+        }
+      },
+      "index_size_bytes": 1849394,
+      "latency": {
+        "bm25_ms": {
+          "count": 200,
+          "max": 0.0,
+          "mean": 0.0,
+          "median": 0.0,
+          "p95": 0.0
+        },
+        "dense_ms": {
+          "count": 200,
+          "max": 69.86240000696853,
+          "mean": 21.40150300314417,
+          "median": 20.562949997838587,
+          "p95": 25.228299957234412
+        },
+        "reranker_ms": {
+          "count": 200,
+          "max": 0.0,
+          "mean": 0.0,
+          "median": 0.0,
+          "p95": 0.0
+        },
+        "returned_context_chars": {
+          "count": 200,
+          "max": 2411.0,
+          "mean": 2074.14,
+          "median": 2101.5,
+          "p95": 2359.0
+        },
+        "rrf_ms": {
+          "count": 200,
+          "max": 0.0,
+          "mean": 0.0,
+          "median": 0.0,
+          "p95": 0.0
+        },
+        "total_ms": {
+          "count": 200,
+          "max": 69.86899999901652,
+          "mean": 21.40806250012247,
+          "median": 20.567950006807223,
+          "p95": 25.234200002159923
+        }
+      },
+      "metadata_policy": "with_titles",
+      "mode": "dense",
+      "paper_role": "B2",
+      "parent_recovery_rate": null,
+      "status": "completed",
+      "strategy": "c0",
+      "top5_traceability_rate": 1.0
+    },
+    {
+      "completed_count": 200,
+      "config_id": "b3-c0-hybrid",
+      "context_policy": "parent",
+      "core_metrics": {
+        "hit_at_5": 0.95625,
+        "mrr_at_10": 0.9070808531746032,
+        "ndcg_at_10": 0.888222286998797,
+        "recall_at_1": 0.79375,
+        "recall_at_10": 0.99375,
+        "recall_at_5": 0.94375
+      },
+      "error_count": 0,
+      "files": {
+        "errors.jsonl": {
+          "path": "b3-c0-hybrid/errors.jsonl",
+          "sha256": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855"
+        },
+        "latency.json": {
+          "path": "b3-c0-hybrid/latency.json",
+          "sha256": "61AABD674490637F000E671E71980496001FA31B5E18B2EFA68ABC26F80D5106"
+        },
+        "metrics.json": {
+          "path": "b3-c0-hybrid/metrics.json",
+          "sha256": "DCB84F44D48608F5763003DBF5CC37285C0489CEFD77561154A4327D6053E8BA"
+        },
+        "per-question.jsonl": {
+          "path": "b3-c0-hybrid/per-question.jsonl",
+          "sha256": "F8B486284C912CE160F5C27DEE21A69C2229D1739C520196ECD3B6045E4C1895"
+        },
+        "run-config.json": {
+          "path": "b3-c0-hybrid/run-config.json",
+          "sha256": "932FD40A202EDD422D0E7AFAF73452EFAFCB8A3C5B5FF787DCCD6D2686CDA987"
+        }
+      },
+      "index_size_bytes": 1849394,
+      "latency": {
+        "bm25_ms": {
+          "count": 200,
+          "max": 4.111699992790818,
+          "mean": 1.5654954995261505,
+          "median": 1.5859499981161207,
+          "p95": 2.261199988424778
+        },
+        "dense_ms": {
+          "count": 200,
+          "max": 27.93869999004528,
+          "mean": 20.112207000493072,
+          "median": 19.866749993525445,
+          "p95": 23.00350001314655
+        },
+        "reranker_ms": {
+          "count": 200,
+          "max": 0.0,
+          "mean": 0.0,
+          "median": 0.0,
+          "p95": 0.0
+        },
+        "returned_context_chars": {
+          "count": 200,
+          "max": 2392.0,
+          "mean": 2104.625,
+          "median": 2141.5,
+          "p95": 2325.0
+        },
+        "rrf_ms": {
+          "count": 200,
+          "max": 0.7462999783456326,
+          "mean": 0.14711449737660587,
+          "median": 0.1411999692209065,
+          "p95": 0.17519999528303742
+        },
+        "total_ms": {
+          "count": 200,
+          "max": 30.308099987450987,
+          "mean": 21.830555999767967,
+          "median": 21.60095001454465,
+          "p95": 24.94410000508651
+        }
+      },
+      "metadata_policy": "with_titles",
+      "mode": "hybrid",
+      "paper_role": "B3",
+      "parent_recovery_rate": null,
+      "status": "completed",
+      "strategy": "c0",
+      "top5_traceability_rate": 1.0
+    },
+    {
+      "completed_count": 200,
+      "config_id": "b4-c0-hybrid-rerank",
+      "context_policy": "parent",
+      "core_metrics": {
+        "hit_at_5": 0.99375,
+        "mrr_at_10": 0.9416666666666667,
+        "ndcg_at_10": 0.9196461619599674,
+        "recall_at_1": 0.81875,
+        "recall_at_10": 1.0,
+        "recall_at_5": 0.990625
+      },
+      "error_count": 0,
+      "files": {
+        "errors.jsonl": {
+          "path": "b4-c0-hybrid-rerank/errors.jsonl",
+          "sha256": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855"
+        },
+        "latency.json": {
+          "path": "b4-c0-hybrid-rerank/latency.json",
+          "sha256": "45D7DF8765EB9E464E12413C81A2EEEBD693E8F8728CF937AD18F6DC99F59D8B"
+        },
+        "metrics.json": {
+          "path": "b4-c0-hybrid-rerank/metrics.json",
+          "sha256": "B2320BAF41F572C2F8B049619CC8326E87F2029AB970ECDBA0E7CE535ED03804"
+        },
+        "per-question.jsonl": {
+          "path": "b4-c0-hybrid-rerank/per-question.jsonl",
+          "sha256": "528A18AA7D5A7212938B00965A2E8140006FC8D6A0E6C6466B1859753B4B1F82"
+        },
+        "run-config.json": {
+          "path": "b4-c0-hybrid-rerank/run-config.json",
+          "sha256": "B7609E053B2B2BCF77439510CE8184A7395FE8E2593B278965E94C8C6BB36F91"
+        }
+      },
+      "index_size_bytes": 1849394,
+      "latency": {
+        "bm25_ms": {
+          "count": 200,
+          "max": 3.352199972141534,
+          "mean": 1.5552214969648048,
+          "median": 1.5439999697264284,
+          "p95": 2.1894999663345516
+        },
+        "dense_ms": {
+          "count": 200,
+          "max": 26.641700009349734,
+          "mean": 21.147521501407027,
+          "median": 21.00780000910163,
+          "p95": 23.690100002568215
+        },
+        "reranker_ms": {
+          "count": 200,
+          "max": 742.5424999673851,
+          "mean": 663.5736390008242,
+          "median": 668.9042499929201,
+          "p95": 725.1501000137068
+        },
+        "returned_context_chars": {
+          "count": 200,
+          "max": 2447.0,
+          "mean": 2141.58,
+          "median": 2168.5,
+          "p95": 2388.0
+        },
+        "rrf_ms": {
+          "count": 200,
+          "max": 0.29659998835995793,
+          "mean": 0.15396099857753143,
+          "median": 0.15020000864751637,
+          "p95": 0.1868000254034996
+        },
+        "total_ms": {
+          "count": 200,
+          "max": 764.5100000081584,
+          "mean": 686.4372385002207,
+          "median": 692.0394500193652,
+          "p95": 746.7950999853201
+        }
+      },
+      "metadata_policy": "with_titles",
+      "mode": "hybrid_rerank",
+      "paper_role": "B4/C0",
+      "parent_recovery_rate": null,
+      "status": "completed",
+      "strategy": "c0",
+      "top5_traceability_rate": 1.0
+    },
+    {
+      "completed_count": 200,
+      "config_id": "c1-hybrid-rerank",
+      "context_policy": "parent",
+      "core_metrics": {
+        "hit_at_5": 0.99375,
+        "mrr_at_10": 0.9330208333333333,
+        "ndcg_at_10": 0.9290154271251128,
+        "recall_at_1": 0.7875,
+        "recall_at_10": 0.996875,
+        "recall_at_5": 0.9875
+      },
+      "error_count": 0,
+      "files": {
+        "errors.jsonl": {
+          "path": "c1-hybrid-rerank/errors.jsonl",
+          "sha256": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855"
+        },
+        "latency.json": {
+          "path": "c1-hybrid-rerank/latency.json",
+          "sha256": "E1F7E81967FC521B6183170EA0BAE28B9CF41A19F51CFAC9E5DBEE6BE9DB2AB6"
+        },
+        "metrics.json": {
+          "path": "c1-hybrid-rerank/metrics.json",
+          "sha256": "1D87C59AC1C3BD758E118EC6ACF104D8BD889D679E3ECAFCBF16B91BB31A94E6"
+        },
+        "per-question.jsonl": {
+          "path": "c1-hybrid-rerank/per-question.jsonl",
+          "sha256": "FC54BDC73680B3CD208FE1E6C1D76934FD59190F8B93ACECE50AA4CC415F4E76"
+        },
+        "run-config.json": {
+          "path": "c1-hybrid-rerank/run-config.json",
+          "sha256": "7DC82EB3B323BA79F84EDEE72BCEE8A17D3761EAFA8CEB004D440B1A400D2532"
+        }
+      },
+      "index_size_bytes": 2810557,
+      "latency": {
+        "bm25_ms": {
+          "count": 200,
+          "max": 4.252499958965927,
+          "mean": 2.4349580000853166,
+          "median": 2.5058499886654317,
+          "p95": 3.508599998895079
+        },
+        "dense_ms": {
+          "count": 200,
+          "max": 27.11209998233244,
+          "mean": 20.820018998347223,
+          "median": 20.585549995303154,
+          "p95": 22.845499974209815
+        },
+        "reranker_ms": {
+          "count": 200,
+          "max": 530.2353000151925,
+          "mean": 447.63588549831184,
+          "median": 446.3147000351455,
+          "p95": 497.46839998988435
+        },
+        "returned_context_chars": {
+          "count": 200,
+          "max": 1204.0,
+          "mean": 988.485,
+          "median": 1008.5,
+          "p95": 1156.0
+        },
+        "rrf_ms": {
+          "count": 200,
+          "max": 0.28279999969527125,
+          "mean": 0.1522714999737218,
+          "median": 0.14834999456070364,
+          "p95": 0.17640000442042947
+        },
+        "total_ms": {
+          "count": 200,
+          "max": 555.0424000248313,
+          "mean": 471.05004350014497,
+          "median": 469.5472499879543,
+          "p95": 521.4443000149913
+        }
+      },
+      "metadata_policy": "with_titles",
+      "mode": "hybrid_rerank",
+      "paper_role": "C1",
+      "parent_recovery_rate": null,
+      "status": "completed",
+      "strategy": "c1",
+      "top5_traceability_rate": 1.0
+    },
+    {
+      "completed_count": 200,
+      "config_id": "c2-hybrid-rerank",
+      "context_policy": "parent",
+      "core_metrics": {
+        "hit_at_5": 1.0,
+        "mrr_at_10": 0.9557291666666666,
+        "ndcg_at_10": 0.9646437204399266,
+        "recall_at_1": 0.80625,
+        "recall_at_10": 1.0,
+        "recall_at_5": 1.0
+      },
+      "error_count": 0,
+      "files": {
+        "errors.jsonl": {
+          "path": "c2-hybrid-rerank/errors.jsonl",
+          "sha256": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855"
+        },
+        "latency.json": {
+          "path": "c2-hybrid-rerank/latency.json",
+          "sha256": "71989CCAF610BA6EF41476BEE9B5E69157465B31FC6F8F93B53206B967279772"
+        },
+        "metrics.json": {
+          "path": "c2-hybrid-rerank/metrics.json",
+          "sha256": "C58FCF2EE927DDA6CF9CE163B0A0A89E845FC54783AC5E9DB5165DCDF460DD4F"
+        },
+        "per-question.jsonl": {
+          "path": "c2-hybrid-rerank/per-question.jsonl",
+          "sha256": "6040D5B314E77BFA27645229B00FCE754FDF3D34D6979853E7E6E392DD96DEA0"
+        },
+        "run-config.json": {
+          "path": "c2-hybrid-rerank/run-config.json",
+          "sha256": "7430EAE82A3682BDF3D445C3A93F0865378D436F2B5DF88FACF741E80DA8A6EF"
+        }
+      },
+      "index_size_bytes": 5078771,
+      "latency": {
+        "bm25_ms": {
+          "count": 200,
+          "max": 7.0865000016056,
+          "mean": 4.063784002210014,
+          "median": 4.125699982978404,
+          "p95": 5.931399995461106
+        },
+        "dense_ms": {
+          "count": 200,
+          "max": 27.838799986056983,
+          "mean": 21.164422002329957,
+          "median": 21.00224999594502,
+          "p95": 23.42880005016923
+        },
+        "reranker_ms": {
+          "count": 200,
+          "max": 535.9020000323653,
+          "mean": 365.19451349886367,
+          "median": 352.5394000171218,
+          "p95": 507.38610001280904
+        },
+        "returned_context_chars": {
+          "count": 200,
+          "max": 1620.0,
+          "mean": 474.62,
+          "median": 409.0,
+          "p95": 1029.0
+        },
+        "rrf_ms": {
+          "count": 200,
+          "max": 0.24820002727210522,
+          "mean": 0.1528860002872534,
+          "median": 0.15064998297020793,
+          "p95": 0.16639998648315668
+        },
+        "total_ms": {
+          "count": 200,
+          "max": 562.2995999874547,
+          "mean": 390.58250349975424,
+          "median": 375.71784999454394,
+          "p95": 533.737400022801
+        }
+      },
+      "metadata_policy": "with_titles",
+      "mode": "hybrid_rerank",
+      "paper_role": "C2",
+      "parent_recovery_rate": null,
+      "status": "completed",
+      "strategy": "c2",
+      "top5_traceability_rate": 1.0
+    },
+    {
+      "completed_count": 200,
+      "config_id": "c3-hybrid-rerank",
+      "context_policy": "parent",
+      "core_metrics": {
+        "hit_at_5": 1.0,
+        "mrr_at_10": 0.9752083333333333,
+        "ndcg_at_10": 0.9739333897610294,
+        "recall_at_1": 0.834375,
+        "recall_at_10": 0.996875,
+        "recall_at_5": 0.996875
+      },
+      "error_count": 0,
+      "files": {
+        "errors.jsonl": {
+          "path": "c3-hybrid-rerank/errors.jsonl",
+          "sha256": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855"
+        },
+        "latency.json": {
+          "path": "c3-hybrid-rerank/latency.json",
+          "sha256": "A0000211043801E3B7F4C1CAAAFAA38D2CECEA3BA144AA7B43EE4076C47A17BE"
+        },
+        "metrics.json": {
+          "path": "c3-hybrid-rerank/metrics.json",
+          "sha256": "24025199792850E86DB09EB3229173958E0E296B8300F733D8E7D2C541672384"
+        },
+        "per-question.jsonl": {
+          "path": "c3-hybrid-rerank/per-question.jsonl",
+          "sha256": "F3D595A63FDE08A65CB2B6BC9D8001C57FD8E612D78C53D54EAEA3E29A9571E2"
+        },
+        "run-config.json": {
+          "path": "c3-hybrid-rerank/run-config.json",
+          "sha256": "C5B2E466A1487B3062AECB55B9A347F8CCE7A57B542E0A42A802DC5564B940D2"
+        }
+      },
+      "index_size_bytes": 12923030,
+      "latency": {
+        "bm25_ms": {
+          "count": 200,
+          "max": 20.590699976310134,
+          "mean": 10.526103501906618,
+          "median": 10.76229999307543,
+          "p95": 15.12140000704676
+        },
+        "dense_ms": {
+          "count": 200,
+          "max": 30.967700004111975,
+          "mean": 22.137648500793148,
+          "median": 21.90324998809956,
+          "p95": 24.493400007486343
+        },
+        "reranker_ms": {
+          "count": 200,
+          "max": 460.1033999933861,
+          "mean": 318.65879049990326,
+          "median": 317.61135000851937,
+          "p95": 408.6498999968171
+        },
+        "returned_context_chars": {
+          "count": 200,
+          "max": 1186.0,
+          "mean": 515.35,
+          "median": 498.5,
+          "p95": 880.0
+        },
+        "rrf_ms": {
+          "count": 200,
+          "max": 0.2830000012181699,
+          "mean": 0.15654099901439622,
+          "median": 0.15189999248832464,
+          "p95": 0.19779999274760485
+        },
+        "total_ms": {
+          "count": 200,
+          "max": 494.82660001376644,
+          "mean": 351.4867479974055,
+          "median": 349.8746500117704,
+          "p95": 441.2472000112757
+        }
+      },
+      "metadata_policy": "with_titles",
+      "mode": "hybrid_rerank",
+      "paper_role": "C3",
+      "parent_recovery_rate": null,
+      "status": "completed",
+      "strategy": "c3",
+      "top5_traceability_rate": 1.0
+    },
+    {
+      "completed_count": 200,
+      "config_id": "p-c4-hybrid-rerank",
+      "context_policy": "parent",
+      "core_metrics": {
+        "hit_at_5": 1.0,
+        "mrr_at_10": 0.9720833333333333,
+        "ndcg_at_10": 0.9720173047836373,
+        "recall_at_1": 0.83125,
+        "recall_at_10": 0.996875,
+        "recall_at_5": 0.996875
+      },
+      "error_count": 0,
+      "files": {
+        "errors.jsonl": {
+          "path": "p-c4-hybrid-rerank/errors.jsonl",
+          "sha256": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855"
+        },
+        "latency.json": {
+          "path": "p-c4-hybrid-rerank/latency.json",
+          "sha256": "7A2C91E672734E686E1C92395D278540115BA465BDC8DE0971BF2E3F676FAD4C"
+        },
+        "metrics.json": {
+          "path": "p-c4-hybrid-rerank/metrics.json",
+          "sha256": "F240E2FE43C62BD1CC6C12FF2F2EFDB3EE9FA0B0D9F4F4D417E84E83E93C114C"
+        },
+        "per-question.jsonl": {
+          "path": "p-c4-hybrid-rerank/per-question.jsonl",
+          "sha256": "065D403CB5A0713A039BA202D99EF66D4D92E8850F9F07D5F99A82F5CF5AA0EB"
+        },
+        "run-config.json": {
+          "path": "p-c4-hybrid-rerank/run-config.json",
+          "sha256": "47956C7D86FC0DF86DE6932A88338D2866217F11D2D06BCB5154FF1A4CB4CDDE"
+        }
+      },
+      "index_size_bytes": 13404097,
+      "latency": {
+        "bm25_ms": {
+          "count": 200,
+          "max": 18.769400019664317,
+          "mean": 11.181883496174123,
+          "median": 11.506500013638288,
+          "p95": 16.425899986643344
+        },
+        "dense_ms": {
+          "count": 200,
+          "max": 34.10260000964627,
+          "mean": 22.578506999998353,
+          "median": 22.138350002933294,
+          "p95": 26.63319994462654
+        },
+        "reranker_ms": {
+          "count": 200,
+          "max": 438.1909999647178,
+          "mean": 314.2670850013383,
+          "median": 315.70214999374,
+          "p95": 386.7270000046119
+        },
+        "returned_context_chars": {
+          "count": 200,
+          "max": 1630.0,
+          "mean": 517.09,
+          "median": 460.5,
+          "p95": 1122.0
+        },
+        "rrf_ms": {
+          "count": 200,
+          "max": 0.5106999888084829,
+          "mean": 0.16197749588172883,
+          "median": 0.152749998960644,
+          "p95": 0.22039999021217227
+        },
+        "total_ms": {
+          "count": 200,
+          "max": 474.6156000182964,
+          "mean": 348.19709149887785,
+          "median": 353.1267999787815,
+          "p95": 420.75239995028824
+        }
+      },
+      "metadata_policy": "with_titles",
+      "mode": "hybrid_rerank",
+      "paper_role": "P/C4",
+      "parent_recovery_rate": 1.0,
+      "status": "completed",
+      "strategy": "c4",
+      "top5_traceability_rate": 1.0
+    },
+    {
+      "completed_count": 200,
+      "config_id": "p-no-parent",
+      "context_policy": "child",
+      "core_metrics": {
+        "hit_at_5": 1.0,
+        "mrr_at_10": 0.9720833333333333,
+        "ndcg_at_10": 0.9720173047836373,
+        "recall_at_1": 0.83125,
+        "recall_at_10": 0.996875,
+        "recall_at_5": 0.996875
+      },
+      "error_count": 0,
+      "files": {
+        "errors.jsonl": {
+          "path": "p-no-parent/errors.jsonl",
+          "sha256": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855"
+        },
+        "latency.json": {
+          "path": "p-no-parent/latency.json",
+          "sha256": "2C91A1BA73DA60289CE60B3D063DC082C040C0BC9D07352DE7D8FFC6727B3818"
+        },
+        "metrics.json": {
+          "path": "p-no-parent/metrics.json",
+          "sha256": "E21A251846B3F3F21DE6E1EF637814DB257B9E1C3E5F12CAFA55D4E1086C8093"
+        },
+        "per-question.jsonl": {
+          "path": "p-no-parent/per-question.jsonl",
+          "sha256": "F329B68502F2D9F655EECB9581958798D30F80463CCDC874B48E8B7A867D4AD9"
+        },
+        "run-config.json": {
+          "path": "p-no-parent/run-config.json",
+          "sha256": "AE2AA15CEF9A8996C1AE1D90F7C779A0A18E9D4E500A88221F9952BCD4DE3C2E"
+        }
+      },
+      "index_size_bytes": 13404097,
+      "latency": {
+        "bm25_ms": {
+          "count": 200,
+          "max": 19.447099999524653,
+          "mean": 11.073589998413809,
+          "median": 11.457100015832111,
+          "p95": 16.056599968578666
+        },
+        "dense_ms": {
+          "count": 200,
+          "max": 30.24539997568354,
+          "mean": 22.267583499487955,
+          "median": 21.968400018522516,
+          "p95": 24.832699971739203
+        },
+        "reranker_ms": {
+          "count": 200,
+          "max": 436.7839000187814,
+          "mean": 310.7953794996138,
+          "median": 309.1464000171982,
+          "p95": 384.59199998760596
+        },
+        "returned_context_chars": {
+          "count": 200,
+          "max": 1053.0,
+          "mean": 502.42,
+          "median": 494.0,
+          "p95": 853.0
+        },
+        "rrf_ms": {
+          "count": 200,
+          "max": 0.4119000514037907,
+          "mean": 0.16004349978175014,
+          "median": 0.15254999743774533,
+          "p95": 0.2196000423282385
+        },
+        "total_ms": {
+          "count": 200,
+          "max": 469.57239997573197,
+          "mean": 344.3188900005771,
+          "median": 344.5506499847397,
+          "p95": 421.5414999634959
+        }
+      },
+      "metadata_policy": "with_titles",
+      "mode": "hybrid_rerank",
+      "paper_role": "P-Parent",
+      "parent_recovery_rate": null,
+      "status": "completed",
+      "strategy": "c4",
+      "top5_traceability_rate": 1.0
+    },
+    {
+      "completed_count": 200,
+      "config_id": "p-no-structure",
+      "context_policy": "parent",
+      "core_metrics": {
+        "hit_at_5": 1.0,
+        "mrr_at_10": 0.9697916666666666,
+        "ndcg_at_10": 0.9569526586283261,
+        "recall_at_1": 0.84375,
+        "recall_at_10": 1.0,
+        "recall_at_5": 0.9875
+      },
+      "error_count": 0,
+      "files": {
+        "errors.jsonl": {
+          "path": "p-no-structure/errors.jsonl",
+          "sha256": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855"
+        },
+        "latency.json": {
+          "path": "p-no-structure/latency.json",
+          "sha256": "919E4C5E9D9FCE5CE36508AD019A345D951F789405D3ECD263D6B559769DDEBD"
+        },
+        "metrics.json": {
+          "path": "p-no-structure/metrics.json",
+          "sha256": "6789B10BE30BE67B8C94D855445FBACF2CE121FE0FA10C768D3DF579EFC561D9"
+        },
+        "per-question.jsonl": {
+          "path": "p-no-structure/per-question.jsonl",
+          "sha256": "2BBB579517428B693EE26D71B1EC1BEFE8F05FC0DC984CA7763BD77152485AF7"
+        },
+        "run-config.json": {
+          "path": "p-no-structure/run-config.json",
+          "sha256": "049C1E2FEF6E8A5F2055A5300FD6DC0D933BC1924D7BE643E9A0653B7CCC9920"
+        }
+      },
+      "index_size_bytes": 6766781,
+      "latency": {
+        "bm25_ms": {
+          "count": 200,
+          "max": 11.950400017667562,
+          "mean": 4.32789550133748,
+          "median": 4.374099982669577,
+          "p95": 6.3937000231817365
+        },
+        "dense_ms": {
+          "count": 200,
+          "max": 31.960499996785074,
+          "mean": 21.996824000088964,
+          "median": 21.473050001077354,
+          "p95": 26.689300022553653
+        },
+        "reranker_ms": {
+          "count": 200,
+          "max": 584.4132999773137,
+          "mean": 467.7645875007147,
+          "median": 468.8964000088163,
+          "p95": 524.5192000293173
+        },
+        "returned_context_chars": {
+          "count": 200,
+          "max": 4980.0,
+          "mean": 4570.635,
+          "median": 4667.0,
+          "p95": 4934.0
+        },
+        "rrf_ms": {
+          "count": 200,
+          "max": 0.7862999918870628,
+          "mean": 0.16017850022763014,
+          "median": 0.15030003851279616,
+          "p95": 0.22870005341246724
+        },
+        "total_ms": {
+          "count": 200,
+          "max": 611.4274000283331,
+          "mean": 494.2566619999707,
+          "median": 495.24324998492375,
+          "p95": 554.7672999673523
+        }
+      },
+      "metadata_policy": "with_titles",
+      "mode": "hybrid_rerank",
+      "paper_role": "P-Structure",
+      "parent_recovery_rate": 1.0,
+      "status": "completed",
+      "strategy": "c5",
+      "top5_traceability_rate": 1.0
+    },
+    {
+      "completed_count": 200,
+      "config_id": "p-no-bm25",
+      "context_policy": "parent",
+      "core_metrics": {
+        "hit_at_5": 0.99375,
+        "mrr_at_10": 0.9668749999999999,
+        "ndcg_at_10": 0.9630191049999881,
+        "recall_at_1": 0.825,
+        "recall_at_10": 0.984375,
+        "recall_at_5": 0.984375
+      },
+      "error_count": 0,
+      "files": {
+        "errors.jsonl": {
+          "path": "p-no-bm25/errors.jsonl",
+          "sha256": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855"
+        },
+        "latency.json": {
+          "path": "p-no-bm25/latency.json",
+          "sha256": "648646F6EF6562E88A1B9FBFF390CD76896FD2EA4812530DC72743AB46EFE2EA"
+        },
+        "metrics.json": {
+          "path": "p-no-bm25/metrics.json",
+          "sha256": "FF97BB7FDF80D8AF6EAC0FD7D4049F18CC37173B8AFED8A56DB595E9F9B40A23"
+        },
+        "per-question.jsonl": {
+          "path": "p-no-bm25/per-question.jsonl",
+          "sha256": "4EF938E86D01966B45806F5E7530194779A529EB9F7924B146B3DD2272773747"
+        },
+        "run-config.json": {
+          "path": "p-no-bm25/run-config.json",
+          "sha256": "57298AE762F9C6222D47E782D96B372E402FD23FA9D34EEC5B6D552E6B3D0629"
+        }
+      },
+      "index_size_bytes": 13404097,
+      "latency": {
+        "bm25_ms": {
+          "count": 200,
+          "max": 0.0,
+          "mean": 0.0,
+          "median": 0.0,
+          "p95": 0.0
+        },
+        "dense_ms": {
+          "count": 200,
+          "max": 27.340699976775795,
+          "mean": 22.152868500561453,
+          "median": 21.975899988319725,
+          "p95": 24.33370001381263
+        },
+        "reranker_ms": {
+          "count": 200,
+          "max": 257.425100018736,
+          "mean": 168.78922950098058,
+          "median": 170.68244999973103,
+          "p95": 221.26569994725287
+        },
+        "returned_context_chars": {
+          "count": 200,
+          "max": 2016.0,
+          "mean": 527.255,
+          "median": 424.0,
+          "p95": 1267.0
+        },
+        "rrf_ms": {
+          "count": 200,
+          "max": 0.0,
+          "mean": 0.0,
+          "median": 0.0,
+          "p95": 0.0
+        },
+        "total_ms": {
+          "count": 200,
+          "max": 280.32409999286756,
+          "mean": 190.94938900117995,
+          "median": 192.98155000433326,
+          "p95": 245.92549999943003
+        }
+      },
+      "metadata_policy": "with_titles",
+      "mode": "dense_rerank",
+      "paper_role": "P-BM25",
+      "parent_recovery_rate": 1.0,
+      "status": "completed",
+      "strategy": "c4",
+      "top5_traceability_rate": 1.0
+    },
+    {
+      "completed_count": 200,
+      "config_id": "p-no-dense",
+      "context_policy": "parent",
+      "core_metrics": {
+        "hit_at_5": 1.0,
+        "mrr_at_10": 0.9802083333333333,
+        "ndcg_at_10": 0.9743239938238156,
+        "recall_at_1": 0.84375,
+        "recall_at_10": 0.990625,
+        "recall_at_5": 0.990625
+      },
+      "error_count": 0,
+      "files": {
+        "errors.jsonl": {
+          "path": "p-no-dense/errors.jsonl",
+          "sha256": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855"
+        },
+        "latency.json": {
+          "path": "p-no-dense/latency.json",
+          "sha256": "19EA33049B8FBC2FCA6774E59E2B69F80F2791387484B455E542A155D4D3C243"
+        },
+        "metrics.json": {
+          "path": "p-no-dense/metrics.json",
+          "sha256": "C1EE0EDA6237371FFAE4DF49504F4F93440652A1A6F23EC3E997179AC7F86F3A"
+        },
+        "per-question.jsonl": {
+          "path": "p-no-dense/per-question.jsonl",
+          "sha256": "75A9CD8BB78B88FA357A74E13F7A367FFBD37B4B85AB6C7B7DC942C87B13B289"
+        },
+        "run-config.json": {
+          "path": "p-no-dense/run-config.json",
+          "sha256": "04C1F76CD5A70CBDE696DB40388A774B89AAAA922ACBD2A3A8F4D1C20968AB83"
+        }
+      },
+      "index_size_bytes": 13404097,
+      "latency": {
+        "bm25_ms": {
+          "count": 200,
+          "max": 17.592199961654842,
+          "mean": 10.918471998884343,
+          "median": 11.316000018268824,
+          "p95": 16.188799985684454
+        },
+        "dense_ms": {
+          "count": 200,
+          "max": 0.0,
+          "mean": 0.0,
+          "median": 0.0,
+          "p95": 0.0
+        },
+        "reranker_ms": {
+          "count": 200,
+          "max": 273.71300000231713,
+          "mean": 200.0386909986264,
+          "median": 203.4181999915745,
+          "p95": 253.10730002820492
+        },
+        "returned_context_chars": {
+          "count": 200,
+          "max": 2045.0,
+          "mean": 579.655,
+          "median": 563.0,
+          "p95": 1089.0
+        },
+        "rrf_ms": {
+          "count": 200,
+          "max": 0.0,
+          "mean": 0.0,
+          "median": 0.0,
+          "p95": 0.0
+        },
+        "total_ms": {
+          "count": 200,
+          "max": 285.9745000023395,
+          "mean": 210.96420750312973,
+          "median": 214.51324998633936,
+          "p95": 265.38100000470877
+        }
+      },
+      "metadata_policy": "with_titles",
+      "mode": "bm25_rerank",
+      "paper_role": "P-Dense",
+      "parent_recovery_rate": 1.0,
+      "status": "completed",
+      "strategy": "c4",
+      "top5_traceability_rate": 1.0
+    },
+    {
+      "completed_count": 200,
+      "config_id": "p-no-reranker",
+      "context_policy": "parent",
+      "core_metrics": {
+        "hit_at_5": 1.0,
+        "mrr_at_10": 0.9921875,
+        "ndcg_at_10": 0.978957131100389,
+        "recall_at_1": 0.865625,
+        "recall_at_10": 0.990625,
+        "recall_at_5": 0.984375
+      },
+      "error_count": 0,
+      "files": {
+        "errors.jsonl": {
+          "path": "p-no-reranker/errors.jsonl",
+          "sha256": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855"
+        },
+        "latency.json": {
+          "path": "p-no-reranker/latency.json",
+          "sha256": "43B65DF13E3B97A7321CEA41C053CE1B99D30E4D39A1219C9FA18E82F2C14691"
+        },
+        "metrics.json": {
+          "path": "p-no-reranker/metrics.json",
+          "sha256": "6E7BBB5513A8022A19465EAF50A8CB55B650936CE480E645B25A5F8A28A55099"
+        },
+        "per-question.jsonl": {
+          "path": "p-no-reranker/per-question.jsonl",
+          "sha256": "00646D0FC307C06EC3610F59F5686CBEA00431E68EF2D6EF385860BE1F092E61"
+        },
+        "run-config.json": {
+          "path": "p-no-reranker/run-config.json",
+          "sha256": "27C54A62DDC39CBAB0553F96FB20E1C8F725C06383BB7EE506DB892A0DD4A3F7"
+        }
+      },
+      "index_size_bytes": 13404097,
+      "latency": {
+        "bm25_ms": {
+          "count": 200,
+          "max": 15.868599992245436,
+          "mean": 10.572511001373641,
+          "median": 11.02469998295419,
+          "p95": 15.294199984055012
+        },
+        "dense_ms": {
+          "count": 200,
+          "max": 31.243500008713454,
+          "mean": 21.926854497287422,
+          "median": 21.82089997222647,
+          "p95": 23.184399993624538
+        },
+        "reranker_ms": {
+          "count": 200,
+          "max": 0.0,
+          "mean": 0.0,
+          "median": 0.0,
+          "p95": 0.0
+        },
+        "returned_context_chars": {
+          "count": 200,
+          "max": 1491.0,
+          "mean": 537.33,
+          "median": 472.0,
+          "p95": 1229.0
+        },
+        "rrf_ms": {
+          "count": 200,
+          "max": 0.25290000485256314,
+          "mean": 0.15468849858734757,
+          "median": 0.15210002311505377,
+          "p95": 0.1734999823383987
+        },
+        "total_ms": {
+          "count": 200,
+          "max": 44.432299968320876,
+          "mean": 32.66025050310418,
+          "median": 33.427950023906305,
+          "p95": 37.28439996484667
+        }
+      },
+      "metadata_policy": "with_titles",
+      "mode": "hybrid",
+      "paper_role": "P-Reranker",
+      "parent_recovery_rate": 1.0,
+      "status": "completed",
+      "strategy": "c4",
+      "top5_traceability_rate": 1.0
+    },
+    {
+      "completed_count": 200,
+      "config_id": "p-no-title",
+      "context_policy": "parent",
+      "core_metrics": {
+        "hit_at_5": 1.0,
+        "mrr_at_10": 0.9546875,
+        "ndcg_at_10": 0.9577872762317641,
+        "recall_at_1": 0.803125,
+        "recall_at_10": 0.99375,
+        "recall_at_5": 0.99375
+      },
+      "error_count": 0,
+      "files": {
+        "errors.jsonl": {
+          "path": "p-no-title/errors.jsonl",
+          "sha256": "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855"
+        },
+        "latency.json": {
+          "path": "p-no-title/latency.json",
+          "sha256": "C91D7135E8E22574CB5E30330090AF5E45F08CD0F2614B2A9E9CCA4FE5DC687F"
+        },
+        "metrics.json": {
+          "path": "p-no-title/metrics.json",
+          "sha256": "1E87146FBD65EE9C2F5AA81E93C3DC6E6861BD9A69122BF3999F61E4739B2916"
+        },
+        "per-question.jsonl": {
+          "path": "p-no-title/per-question.jsonl",
+          "sha256": "BFBD0F200B5AB423A7D9E9AF1E4A1AC687422618DD017C2C85F7EE352C8BADCA"
+        },
+        "run-config.json": {
+          "path": "p-no-title/run-config.json",
+          "sha256": "D22A1E2724C8784959947A751127AC75FCEC5B2E5DC95DC30A3B8E23A2C0EAD9"
+        }
+      },
+      "index_size_bytes": 12864371,
+      "latency": {
+        "bm25_ms": {
+          "count": 200,
+          "max": 19.29660001769662,
+          "mean": 10.656505002407357,
+          "median": 11.03135000448674,
+          "p95": 15.276400023140013
+        },
+        "dense_ms": {
+          "count": 200,
+          "max": 27.15650002937764,
+          "mean": 22.19869199907407,
+          "median": 22.04040001379326,
+          "p95": 24.795199977234006
+        },
+        "reranker_ms": {
+          "count": 200,
+          "max": 403.07399997254834,
+          "mean": 281.79788349807495,
+          "median": 278.461950016208,
+          "p95": 355.38879997329786
+        },
+        "returned_context_chars": {
+          "count": 200,
+          "max": 1681.0,
+          "mean": 502.065,
+          "median": 461.5,
+          "p95": 1068.0
+        },
+        "rrf_ms": {
+          "count": 200,
+          "max": 0.2723000361584127,
+          "mean": 0.15480900241527706,
+          "median": 0.152449996676296,
+          "p95": 0.17150002531707287
+        },
+        "total_ms": {
+          "count": 200,
+          "max": 439.8613999946974,
+          "mean": 314.8150845017517,
+          "median": 311.25764999887906,
+          "p95": 390.1418000459671
+        }
+      },
+      "metadata_policy": "without_titles",
+      "mode": "hybrid_rerank",
+      "paper_role": "P-Title",
+      "parent_recovery_rate": 1.0,
+      "status": "completed",
+      "strategy": "c4",
+      "top5_traceability_rate": 1.0
+    }
+  ],
+  "failed_config_count": 0,
+  "frozen_at": "2026-06-15T10:43:30.587678+00:00",
+  "input_hashes": {
+    "chunk_manifest_sha256": "C24E09FE7BA864602D1860C54500BEB66AC96338597229BC7D6FA398DF13D83D",
+    "config_sha256": "D832EF32BCCFAAEDEB62BB2D3E4767246311A82CC21213CE4A5C5CB8AC975B1F",
+    "dataset_sha256": "1C344CB271B24D14366AA0389AE192FDA99388D51724E56260D50497D7902230",
+    "formal_manifest_sha256": "937CA42841D98D398DC00BF659418EE4F0B783C9B5323A9AA630D29189BE78DE",
+    "index_manifest_sha256": "CA026E14CDF426E4A1484ED84E5EC32B46CCD2C7A6B9E5EFF0FC3AD7A3A1F572",
+    "model_manifest_sha256": "5523130CBAB3DC8829644E41F747B0856A64809C211A9B2665527033E3E7CDCB",
+    "prereg_manifest_sha256": "5DFF217581C574B67E776302A97857D14FE88886B5F7DBD9DB92F9D33F33A1E6",
+    "strategy_manifest_sha256": {
+      "c0": "24AEE91BBEFCF187F2B59326B237388ECBC63C846C9A5C312FA245436A525EAC",
+      "c1": "2007A1346B0D72010FA2E64D27CEF863B5CFC03DA3F00A8D73A497342E91FDB7",
+      "c2": "A9BBF7D01392496B8A56BD91A4D44EA9BEAAE26D1F34F33C86249DC25DBC8A92",
+      "c3": "020E12D98959ED8B616FD76DB93090DE8C649187E0DCEA342103A4F340B4CB84",
+      "c4": "6C00A47BD2D481F204448FE30F618A5CBC0F61272C3827E2266BF9A9F2BAE323",
+      "c4-no-title": "B906488042817084374F2FF96B206F368FDB50AECD947F6E44B41F6A1FC4B4AA",
+      "c5": "C410F17E381A22DDCD3144EF0B4D6E80D72C122061C39B9C22045178A7893114"
+    }
+  },
+  "matrix_files": {
+    "matrix-config.json": {
+      "sha256": "DB2AF2CD76C79F048DF5D6B80888726475790EAB2AEAAD424D12120ABDE66CA7"
+    },
+    "matrix-summary.json": {
+      "sha256": "9B45301E429BF29B0969E5E7F1DB57192308AD320BF97A5552CD233DD359056B"
+    }
+  },
+  "matrix_id": "formal_test-20260615T102626Z-1C344CB2-D832EF32",
+  "privacy": {
+    "contains_hit_text": false,
+    "contains_manual_comments": false,
+    "contains_question_text": false,
+    "full_results_committed": false
+  },
+  "run_dir": "G:/work/tcm-flow/data/rag_v1_5/formal/runs/test/formal_test-20260615T102626Z-1C344CB2-D832EF32",
+  "split": "formal_test",
+  "statistics": {
+    "path": "formal-statistics.json",
+    "sha256": "3B5F314E4FA99AE6D0E470CB7A1C9801FCECD124A2D9342A735057B6FC19915F"
+  },
+  "status": "ready",
+  "total_question_runs": 2800,
+  "version": "v1.5.0"
+}
