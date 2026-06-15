@@ -1,4 +1,5 @@
 import json
+import hashlib
 import tempfile
 import unittest
 from copy import deepcopy
@@ -148,6 +149,80 @@ def make_formal_artifacts() -> tuple[list[dict], list[dict], list[dict]]:
     return questions, groups, evidence
 
 
+def make_formal_sampling_evidence() -> list[dict]:
+    records = []
+    for book_index, book in enumerate(BOOKS, start=1):
+        for clause_index in range(1, 241):
+            chapter_number = ((clause_index - 1) // 30) + 1
+            clause_id = f"{book}-sample-{clause_index:03d}"
+            base = {
+                "book_id": book,
+                "book_title": f"测试书籍 {book_index}",
+                "volume": "",
+                "chapter_id": f"{book}-chapter-{chapter_number:02d}",
+                "chapter_title": f"测试篇章 {chapter_number}",
+                "clause_id": clause_id,
+                "clause_number": clause_index,
+                "parent_id": clause_id,
+                "notes": [],
+                "source_file": f"{book}.txt",
+                "source_hash": f"{book_index}" * 64,
+                "corpus_version": "v1.5.0",
+            }
+            clause_text = f"{book} 第 {clause_index} 条稳定抽样原文"
+            records.append(
+                {
+                    **base,
+                    "evidence_id": clause_id,
+                    "content_type": "clause",
+                    "original_text": clause_text,
+                    "normalized_text": clause_text,
+                }
+            )
+            if clause_index <= 60:
+                formula_id = f"{clause_id}-formula-01"
+                records.extend(
+                    [
+                        {
+                            **base,
+                            "evidence_id": formula_id,
+                            "content_type": "formula",
+                            "parent_id": clause_id,
+                            "original_text": f"测试方剂 {clause_index}",
+                            "normalized_text": f"测试方剂 {clause_index}",
+                        },
+                        {
+                            **base,
+                            "evidence_id": f"{formula_id}-ingredients",
+                            "content_type": "ingredients",
+                            "parent_id": formula_id,
+                            "original_text": "测试药物甲、测试药物乙",
+                            "normalized_text": "测试药物甲、测试药物乙",
+                        },
+                        {
+                            **base,
+                            "evidence_id": f"{formula_id}-preparation",
+                            "content_type": "preparation",
+                            "parent_id": formula_id,
+                            "original_text": "测试煎服方法",
+                            "normalized_text": "测试煎服方法",
+                        },
+                    ]
+                )
+            if 61 <= clause_index <= 110:
+                records.append(
+                    {
+                        **base,
+                        "evidence_id": f"{clause_id}-note-01",
+                        "content_type": "note",
+                        "parent_id": clause_id,
+                        "original_text": f"测试校注 {clause_index}",
+                        "normalized_text": f"测试校注 {clause_index}",
+                    }
+                )
+    return records
+
+
 class FormalDatasetValidationTests(unittest.TestCase):
     def validate(
         self,
@@ -218,6 +293,7 @@ class FormalDatasetValidationTests(unittest.TestCase):
         self.assertEqual(summary["prior_overlap_count"], 0)
         self.assertEqual(summary["cross_split_clause_overlap_count"], 0)
         self.assertEqual(summary["duplicate_question_count"], 0)
+        self.assertEqual(summary["answerable_anchor_clause_count"], 400)
         self.assertEqual(summary["status"], "ready")
 
     def test_rejects_duplicate_question_id_group_id_and_text(self) -> None:
@@ -485,6 +561,224 @@ class FormalDatasetCliTests(unittest.TestCase):
 
         self.assertEqual(args.command, "validate-formal-dataset")
         self.assertEqual(len(args.prior_dataset), 2)
+
+    def test_sample_formal_evidence_cli_contract(self) -> None:
+        from experiments.rag_v1_5.cli import build_parser
+
+        args = build_parser().parse_args(["sample-formal-evidence"])
+
+        self.assertEqual(args.command, "sample-formal-evidence")
+        self.assertEqual(args.seed, 20260614)
+        self.assertEqual(
+            args.output,
+            Path(
+                "data/rag_v1_5/formal/evaluation/"
+                "formal-evidence-groups.jsonl"
+            ),
+        )
+
+
+class FormalEvidenceSamplingTests(unittest.TestCase):
+    def run_sampling(
+        self,
+        root: Path,
+        evidence_records: list[dict],
+        *,
+        suffix: str,
+    ) -> tuple[dict, Path, Path, Path]:
+        from experiments.rag_v1_5.formal_dataset import (
+            sample_formal_evidence_groups,
+        )
+
+        evidence_path = root / f"evidence-{suffix}.jsonl"
+        smoke_path = root / "smoke-10.jsonl"
+        pilot_path = root / "pilot-40.jsonl"
+        pilot_exclusions_path = root / "pilot-exclusions.json"
+        output_path = root / f"groups-{suffix}.jsonl"
+        exclusions_path = root / f"exclusions-{suffix}.json"
+        report_path = root / f"report-{suffix}.json"
+        write_jsonl(evidence_path, evidence_records)
+
+        prior_clause = min(
+            evidence_records,
+            key=lambda record: record["evidence_id"],
+        )
+        prior_question = {
+            "question_id": "prior-001",
+            "question": "历史测试问题？",
+            "question_type": "single_clause_fact",
+            "book_scope": prior_clause["book_id"],
+            "answerable": True,
+            "reference_answer": prior_clause["normalized_text"],
+            "gold_evidence_ids": [prior_clause["evidence_id"]],
+            "gold_clause_ids": [prior_clause["clause_id"]],
+            "graded_relevance": {prior_clause["clause_id"]: 2},
+            "support_spans": [prior_clause["normalized_text"]],
+            "review_status": "approved",
+            "split": "smoke",
+            "evidence_group_id": None,
+            "question_version": 1,
+        }
+        write_jsonl(smoke_path, [prior_question])
+        write_jsonl(pilot_path, [])
+        pilot_exclusions_path.write_text(
+            json.dumps(
+                {
+                    "future_formal_excluded_evidence_ids": [
+                        prior_clause["evidence_id"]
+                    ],
+                    "future_formal_excluded_clause_ids": [
+                        prior_clause["clause_id"]
+                    ],
+                    "pilot_group_ids": [],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        summary = sample_formal_evidence_groups(
+            evidence_path=evidence_path,
+            smoke_dataset_path=smoke_path,
+            pilot_dataset_path=pilot_path,
+            pilot_exclusions_path=pilot_exclusions_path,
+            output_path=output_path,
+            exclusions_path=exclusions_path,
+            candidate_report_path=report_path,
+            seed=20260614,
+        )
+        return summary, output_path, exclusions_path, report_path
+
+    def test_sampling_is_deterministic_and_meets_fixed_contract(
+        self,
+    ) -> None:
+        evidence_records = make_formal_sampling_evidence()
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            first = self.run_sampling(
+                root,
+                evidence_records,
+                suffix="first",
+            )
+            second = self.run_sampling(
+                root,
+                list(reversed(evidence_records)),
+                suffix="second",
+            )
+            first_summary, first_groups, first_exclusions, first_report = (
+                first
+            )
+            _, second_groups, second_exclusions, second_report = second
+
+            for first_path, second_path in (
+                (first_groups, second_groups),
+                (first_exclusions, second_exclusions),
+                (first_report, second_report),
+            ):
+                self.assertEqual(
+                    hashlib.sha256(first_path.read_bytes()).hexdigest(),
+                    hashlib.sha256(second_path.read_bytes()).hexdigest(),
+                )
+
+            groups = [
+                json.loads(line)
+                for line in first_groups.read_text(
+                    encoding="utf-8"
+                ).splitlines()
+            ]
+            exclusions = json.loads(
+                first_exclusions.read_text(encoding="utf-8")
+            )
+
+        self.assertEqual(first_summary["status"], "ready")
+        self.assertEqual(first_summary["group_count"], 400)
+        self.assertEqual(first_summary["answerable_group_count"], 320)
+        self.assertEqual(first_summary["unanswerable_group_count"], 80)
+        answerable_groups = [
+            group
+            for group in groups
+            if group["question_type"] != "unanswerable"
+        ]
+        anchor_clause_ids = [
+            clause_id
+            for group in answerable_groups
+            for clause_id in group["anchor_clause_ids"]
+        ]
+        self.assertEqual(len(anchor_clause_ids), 400)
+        self.assertEqual(len(set(anchor_clause_ids)), 400)
+        dev_clauses = {
+            clause_id
+            for group in answerable_groups
+            if group["split"] == "formal_dev"
+            for clause_id in group["anchor_clause_ids"]
+        }
+        test_clauses = {
+            clause_id
+            for group in answerable_groups
+            if group["split"] == "formal_test"
+            for clause_id in group["anchor_clause_ids"]
+        }
+        self.assertFalse(dev_clauses & test_clauses)
+        self.assertNotIn(
+            min(
+                make_formal_sampling_evidence(),
+                key=lambda record: record["evidence_id"],
+            )["clause_id"],
+            anchor_clause_ids,
+        )
+        self.assertEqual(
+            exclusions["prior_clause_ids"],
+            [
+                min(
+                    make_formal_sampling_evidence(),
+                    key=lambda record: record["evidence_id"],
+                )["clause_id"]
+            ],
+        )
+        for group in groups:
+            if group["question_type"] == "unanswerable":
+                self.assertEqual(len(group["absence_queries"]), 2)
+
+    def test_candidate_audit_blocks_insufficient_formula_stratum(
+        self,
+    ) -> None:
+        from experiments.rag_v1_5.formal_dataset import (
+            audit_formal_candidates,
+        )
+
+        evidence_records = [
+            record
+            for record in make_formal_sampling_evidence()
+            if not (
+                record["book_id"] == "jin_gui_yao_lue"
+                and record["content_type"]
+                in {"formula", "ingredients", "preparation"}
+            )
+        ]
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            evidence_path = root / "evidence.jsonl"
+            exclusions_path = root / "pilot-exclusions.json"
+            write_jsonl(evidence_path, evidence_records)
+            exclusions_path.write_text(
+                json.dumps(
+                    {
+                        "future_formal_excluded_evidence_ids": [],
+                        "future_formal_excluded_clause_ids": [],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            report = audit_formal_candidates(
+                evidence_path=evidence_path,
+                prior_exclusions_path=exclusions_path,
+            )
+
+        self.assertEqual(report["status"], "blocked")
+        self.assertIn(
+            "jin_gui_yao_lue/formal_dev/"
+            "formula_composition_or_use",
+            report["blocked_strata"],
+        )
 
 
 if __name__ == "__main__":

@@ -29,7 +29,10 @@ from experiments.rag_v1_5.dataset import (
     sample_pilot_evidence_groups,
     validate_dataset,
 )
-from experiments.rag_v1_5.formal_dataset import validate_formal_dataset
+from experiments.rag_v1_5.formal_dataset import (
+    sample_formal_evidence_groups,
+    validate_formal_dataset,
+)
 from experiments.rag_v1_5.indexing import (
     BgeM3DenseEncoder,
     build_indexes,
@@ -142,6 +145,9 @@ DEFAULT_FORMAL_EVIDENCE_GROUPS_PATH = (
 )
 DEFAULT_FORMAL_EXCLUSIONS_PATH = (
     DEFAULT_FORMAL_EVALUATION_DIR / "formal-exclusions.json"
+)
+DEFAULT_FORMAL_CANDIDATE_REPORT_PATH = (
+    DEFAULT_FORMAL_EVALUATION_DIR / "formal-candidate-report.json"
 )
 DIRECT_DEPENDENCIES = (
     "pydantic",
@@ -738,6 +744,51 @@ def build_parser() -> argparse.ArgumentParser:
         ],
     )
 
+    sample_formal_parser = subparsers.add_parser(
+        "sample-formal-evidence",
+        help="按固定配额确定性选择 Formal-400 Evidence Group",
+    )
+    sample_formal_parser.add_argument(
+        "--evidence",
+        type=Path,
+        default=DEFAULT_EVIDENCE_PATH,
+    )
+    sample_formal_parser.add_argument(
+        "--smoke-dataset",
+        type=Path,
+        default=DEFAULT_SMOKE_DATASET_PATH,
+    )
+    sample_formal_parser.add_argument(
+        "--pilot-dataset",
+        type=Path,
+        default=DEFAULT_PILOT_DATASET_PATH,
+    )
+    sample_formal_parser.add_argument(
+        "--pilot-exclusions",
+        type=Path,
+        default=DEFAULT_PILOT_EXCLUSIONS_PATH,
+    )
+    sample_formal_parser.add_argument(
+        "--output",
+        type=Path,
+        default=DEFAULT_FORMAL_EVIDENCE_GROUPS_PATH,
+    )
+    sample_formal_parser.add_argument(
+        "--exclusions",
+        type=Path,
+        default=DEFAULT_FORMAL_EXCLUSIONS_PATH,
+    )
+    sample_formal_parser.add_argument(
+        "--candidate-report",
+        type=Path,
+        default=DEFAULT_FORMAL_CANDIDATE_REPORT_PATH,
+    )
+    sample_formal_parser.add_argument(
+        "--seed",
+        type=int,
+        default=20260614,
+    )
+
     pilot_evidence_parser = subparsers.add_parser(
         "sample-pilot-evidence",
         help="按固定配额选择 Pilot-40 Evidence Group",
@@ -1126,6 +1177,17 @@ def main(
             evidence_groups_path=args.evidence_groups,
             exclusions_path=args.exclusions,
             prior_dataset_paths=tuple(args.prior_dataset),
+        )
+    elif args.command == "sample-formal-evidence":
+        manifest = sample_formal_evidence_groups(
+            evidence_path=args.evidence,
+            smoke_dataset_path=args.smoke_dataset,
+            pilot_dataset_path=args.pilot_dataset,
+            pilot_exclusions_path=args.pilot_exclusions,
+            output_path=args.output,
+            exclusions_path=args.exclusions,
+            candidate_report_path=args.candidate_report,
+            seed=args.seed,
         )
     elif args.command == "sample-pilot-evidence":
         manifest = sample_pilot_evidence_groups(
