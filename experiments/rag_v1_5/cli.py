@@ -41,6 +41,9 @@ from experiments.rag_v1_5.formal_dataset import (
     sample_formal_evidence_groups,
     validate_formal_dataset,
 )
+from experiments.rag_v1_5.formal_answer import (
+    freeze_formal_answer_prereg,
+)
 from experiments.rag_v1_5.formal_review import (
     import_formal_review,
     prepare_formal_review,
@@ -204,6 +207,21 @@ DEFAULT_FORMAL_TEST_RUNS_DIR = Path(
 )
 DEFAULT_FORMAL_RUNS_MANIFEST_PATH = Path(
     "experiments/rag_v1_5/manifests/formal-runs-v1.5.0.json"
+)
+DEFAULT_FORMAL_ANSWER_CONFIG_PATH = Path(
+    "experiments/rag_v1_5/configs/formal-answer.yaml"
+)
+DEFAULT_FORMAL_ANSWER_PREREG_PATH = Path(
+    "experiments/rag_v1_5/manifests/"
+    "formal-answer-prereg-v1.5.0.json"
+)
+DEFAULT_FORMAL_DEV_MATRIX_DIR = Path(
+    "data/rag_v1_5/formal/runs/dev/"
+    "formal_dev-20260615T100221Z-1C344CB2-D832EF32"
+)
+DEFAULT_FORMAL_TEST_MATRIX_DIR = Path(
+    "data/rag_v1_5/formal/runs/test/"
+    "formal_test-20260615T102626Z-1C344CB2-D832EF32"
 )
 DIRECT_DEPENDENCIES = (
     "pydantic",
@@ -1347,6 +1365,41 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_FORMAL_RUNS_MANIFEST_PATH,
     )
 
+    freeze_formal_answer_prereg_parser = subparsers.add_parser(
+        "freeze-formal-answer-prereg",
+        help="冻结 Formal 回答层预注册与输入哈希",
+    )
+    freeze_formal_answer_prereg_parser.add_argument(
+        "--config",
+        type=Path,
+        default=DEFAULT_FORMAL_ANSWER_CONFIG_PATH,
+    )
+    freeze_formal_answer_prereg_parser.add_argument(
+        "--formal-manifest",
+        type=Path,
+        default=DEFAULT_FORMAL_MANIFEST_PATH,
+    )
+    freeze_formal_answer_prereg_parser.add_argument(
+        "--formal-runs-manifest",
+        type=Path,
+        default=DEFAULT_FORMAL_RUNS_MANIFEST_PATH,
+    )
+    freeze_formal_answer_prereg_parser.add_argument(
+        "--dev-run-dir",
+        type=Path,
+        default=DEFAULT_FORMAL_DEV_MATRIX_DIR,
+    )
+    freeze_formal_answer_prereg_parser.add_argument(
+        "--test-run-dir",
+        type=Path,
+        default=DEFAULT_FORMAL_TEST_MATRIX_DIR,
+    )
+    freeze_formal_answer_prereg_parser.add_argument(
+        "--output",
+        type=Path,
+        default=DEFAULT_FORMAL_ANSWER_PREREG_PATH,
+    )
+
     pilot_evidence_parser = subparsers.add_parser(
         "sample-pilot-evidence",
         help="按固定配额选择 Pilot-40 Evidence Group",
@@ -1894,6 +1947,15 @@ def main(
             run_dir=args.run_dir,
             formal_manifest_path=args.formal_manifest,
             prereg_manifest_path=args.prereg_manifest,
+            output_path=args.output,
+        )
+    elif args.command == "freeze-formal-answer-prereg":
+        manifest = freeze_formal_answer_prereg(
+            config_path=args.config,
+            formal_manifest_path=args.formal_manifest,
+            formal_runs_manifest_path=args.formal_runs_manifest,
+            dev_run_dir=args.dev_run_dir,
+            test_run_dir=args.test_run_dir,
             output_path=args.output,
         )
     elif args.command == "sample-pilot-evidence":

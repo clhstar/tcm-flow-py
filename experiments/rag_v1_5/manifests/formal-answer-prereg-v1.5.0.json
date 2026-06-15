@@ -1,0 +1,24 @@
+{
+  "inputs": {
+    "config_sha256": "0D6FB701D121DC7EA4E832B22A809B47D2E395C8F56F27AFEA3BABCB453AE95A",
+    "dev_matrix_config_sha256": "382E25AB89F6866DC2F99772F25568D16E2D70C2F805876AB8D77ABDDB0A50CC",
+    "formal_manifest_sha256": "937CA42841D98D398DC00BF659418EE4F0B783C9B5323A9AA630D29189BE78DE",
+    "formal_runs_manifest_sha256": "37497A8A897A915C47403767BFF019BB5C653F4764676C55A7700CAA8722C17E",
+    "test_matrix_config_sha256": "DB2AF2CD76C79F048DF5D6B80888726475790EAB2AEAAD424D12120ABDE66CA7"
+  },
+  "methods": [
+    "B0",
+    "B4",
+    "P",
+    "P-no-parent"
+  ],
+  "model": {
+    "base_url_origin": "api.deepseek.com",
+    "name": "deepseek-chat"
+  },
+  "repeats": 3,
+  "stage": "formal_answer_preregistered",
+  "status": "ready",
+  "test_policy": "single_frozen_matrix",
+  "version": "v1.5.0"
+}
