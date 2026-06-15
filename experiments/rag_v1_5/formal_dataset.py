@@ -1168,6 +1168,11 @@ def _build_formal_authoring_rows(
     groups: list[FormalEvidenceGroup],
     evidence_by_id: dict[str, EvidenceUnit],
 ) -> list[dict[str, str]]:
+    clause_text_by_id = {
+        evidence.clause_id: evidence.normalized_text
+        for evidence in evidence_by_id.values()
+        if evidence.content_type == "clause"
+    }
     rows = []
     for group in sorted(
         groups,
@@ -1186,17 +1191,25 @@ def _build_formal_authoring_rows(
                     f"{group.group_id} 找不到 anchor Evidence: "
                     f"{evidence_id}"
                 )
-            context.append(
-                {
-                    "evidence_id": evidence.evidence_id,
-                    "clause_id": evidence.clause_id,
-                    "content_type": evidence.content_type,
-                    "book_title": evidence.book_title,
-                    "chapter_title": evidence.chapter_title,
-                    "clause_number": evidence.clause_number,
-                    "normalized_text": evidence.normalized_text,
-                }
-            )
+            context_item = {
+                "evidence_id": evidence.evidence_id,
+                "clause_id": evidence.clause_id,
+                "content_type": evidence.content_type,
+                "book_title": evidence.book_title,
+                "chapter_title": evidence.chapter_title,
+                "clause_number": evidence.clause_number,
+                "normalized_text": evidence.normalized_text,
+            }
+            if evidence.content_type != "clause":
+                parent_clause_text = clause_text_by_id.get(
+                    evidence.clause_id
+                )
+                if not parent_clause_text:
+                    raise ValueError(
+                        f"{evidence.evidence_id} 缺少父条文上下文"
+                    )
+                context_item["parent_clause_text"] = parent_clause_text
+            context.append(context_item)
         row = {
             "question_id": _formal_question_id(group),
             "group_id": group.group_id,
@@ -1307,6 +1320,231 @@ def prepare_formal_authoring_csv(
         "row_count": len(rows),
         "editable_field_count": len(FORMAL_AUTHORING_EDITABLE_FIELDS),
         "output_sha256": _sha256_file(output_csv_path),
+    }
+
+
+def _formal_book_title(row: dict[str, str]) -> str:
+    context = json.loads(row["evidence_context"])
+    if context:
+        return context[0]["book_title"]
+    return {
+        "shang_han_lun": "伤寒论",
+        "jin_gui_yao_lue": "金匮要略方论",
+    }[row["book_scope"]]
+
+
+def _formal_location(context: list[dict]) -> tuple[str, str]:
+    first = context[0]
+    chapter_title = first["chapter_title"] or "未题篇名"
+    clause_numbers = []
+    for item in context:
+        clause_number = str(item["clause_number"])
+        if clause_number not in clause_numbers:
+            clause_numbers.append(clause_number)
+    return chapter_title, "、".join(clause_numbers)
+
+
+def _formal_support_spans(context: list[dict]) -> list[str]:
+    spans = []
+    for item in context:
+        span = item["normalized_text"].strip()
+        if span and span not in spans:
+            spans.append(span)
+    return spans
+
+
+def _formal_excerpt(text: str, limit: int = 60) -> str:
+    if len(text) <= limit:
+        return text
+    half = (limit - 1) // 2
+    return f"{text[:half]}…{text[-half:]}"
+
+
+def _formal_prompt_excerpt(text: str, limit: int = 32) -> str:
+    normalized = re.sub(r"\s+", " ", text).strip()
+    if len(normalized) <= limit:
+        return normalized
+    part = max(4, (limit - 2) // 3)
+    middle_start = max(0, (len(normalized) - part) // 2)
+    return (
+        f"{normalized[:part]}…"
+        f"{normalized[middle_start:middle_start + part]}…"
+        f"{normalized[-part:]}"
+    )
+
+
+def _formal_formula_names(context: list[dict]) -> list[str]:
+    names = []
+    for item in context:
+        if item["content_type"] != "formula":
+            continue
+        first_line = item["normalized_text"].splitlines()[0].strip()
+        name = re.sub(r"方$", "", first_line)
+        if name and name not in names:
+            names.append(name)
+    return names
+
+
+def _draft_formal_row(row: dict[str, str]) -> None:
+    context = json.loads(row["evidence_context"])
+    book_title = _formal_book_title(row)
+    question_type = row["question_type"]
+
+    if question_type == "unanswerable":
+        absence_queries = json.loads(row["absence_queries"])
+        topic = absence_queries[0]
+        row["question"] = (
+            f"在本次《{book_title}》语料范围内，"
+            f"是否记载了“{topic}”相关内容？"
+        )
+        row["reference_answer"] = (
+            f"本次《{book_title}》语料范围内未发现"
+            f"“{topic}”相关记载。"
+        )
+        row["support_spans"] = "[]"
+        return
+
+    support_spans = _formal_support_spans(context)
+    chapter_title, clause_numbers = _formal_location(context)
+    if question_type == "single_clause_fact":
+        excerpt = _formal_prompt_excerpt(support_spans[0])
+        row["question"] = (
+            f"《{book_title}》中“{excerpt}”一条"
+            "主要说明了什么辨治内容？"
+        )
+        row["reference_answer"] = support_spans[0]
+    elif question_type == "formula_composition_or_use":
+        formula_names = _formal_formula_names(context)
+        formula_label = "与".join(formula_names)
+        if formula_label:
+            parent_text = next(
+                (
+                    item.get("parent_clause_text")
+                    for item in context
+                    if item["content_type"] == "formula"
+                    and item.get("parent_clause_text")
+                ),
+                "",
+            )
+            context_label = (
+                f"在“{_formal_prompt_excerpt(parent_text, limit=24)}”"
+                "相关条文中，"
+                if parent_text
+                else ""
+            )
+        else:
+            formula_label = (
+                f"原文“{support_spans[0]}”"
+                "所载之方"
+            )
+            context_label = ""
+        row["question"] = (
+            f"《{book_title}》中，{context_label}{formula_label}"
+            "由哪些药物组成，"
+            "原文如何制备或服用？"
+        )
+        row["reference_answer"] = "\n".join(support_spans)
+    elif question_type == "source_location":
+        excerpt = _formal_excerpt(support_spans[0])
+        parent_excerpt = _formal_prompt_excerpt(
+            context[0].get(
+                "parent_clause_text",
+                context[0]["normalized_text"],
+            ),
+            limit=28,
+        )
+        row["question"] = (
+            f"《{book_title}》中，在“{parent_excerpt}”相关条文后"
+            f"附有“{excerpt}”，该校注位于哪一篇、哪一条？"
+        )
+        row["reference_answer"] = (
+            f"位于《{book_title}》{chapter_title}第"
+            f"{clause_numbers}条。"
+        )
+    elif question_type == "multi_evidence":
+        excerpts = [
+            _formal_prompt_excerpt(span, limit=24)
+            for span in support_spans
+        ]
+        quoted_excerpts = "与".join(
+            f"“{excerpt}”" for excerpt in excerpts
+        )
+        row["question"] = (
+            f"《{book_title}》中，{quoted_excerpts}两条"
+            "分别记载了什么，辨治重点有何不同？"
+        )
+        answers = []
+        for item, span in zip(context, support_spans):
+            answers.append(f"第{item['clause_number']}条：{span}")
+        row["reference_answer"] = "\n".join(answers)
+    else:
+        raise ValueError(f"未知 Formal question_type: {question_type}")
+    row["support_spans"] = _json_cell(support_spans)
+
+
+def draft_formal_authoring_csv(
+    *,
+    authoring_csv_path: Path,
+    evidence_groups_path: Path,
+    evidence_path: Path,
+) -> dict:
+    prepare_formal_authoring_csv(
+        evidence_groups_path=evidence_groups_path,
+        evidence_path=evidence_path,
+        output_csv_path=authoring_csv_path,
+    )
+    rows = _read_authoring_csv(authoring_csv_path)
+    drafted_count = 0
+    preserved_count = 0
+    for row in rows:
+        question = row["question"].strip()
+        reference_answer = row["reference_answer"].strip()
+        support_spans = json.loads(row["support_spans"])
+        has_content = bool(question or reference_answer or support_spans)
+        is_complete = bool(question and reference_answer)
+        if has_content and not is_complete:
+            raise ValueError(
+                f"{row['question_id']} 编题字段处于半填写状态"
+            )
+        if is_complete:
+            preserved_count += 1
+            continue
+        _draft_formal_row(row)
+        drafted_count += 1
+
+    normalized_questions = [
+        _normalize_question_text(row["question"])
+        for row in rows
+    ]
+    if len(normalized_questions) != len(set(normalized_questions)):
+        raise ValueError("AI 草拟后的 Formal 问题文本存在重复")
+
+    with authoring_csv_path.open(
+        "w",
+        encoding="utf-8-sig",
+        newline="",
+    ) as file_handle:
+        writer = csv.DictWriter(
+            file_handle,
+            fieldnames=FORMAL_AUTHORING_FIELDS,
+            lineterminator="\n",
+        )
+        writer.writeheader()
+        writer.writerows(rows)
+
+    answerable_count = sum(
+        row["question_type"] != "unanswerable"
+        for row in rows
+    )
+    return {
+        "status": "drafted_for_human_review",
+        "row_count": len(rows),
+        "drafted_count": drafted_count + preserved_count,
+        "newly_drafted_count": drafted_count,
+        "preserved_count": preserved_count,
+        "answerable_count": answerable_count,
+        "unanswerable_count": len(rows) - answerable_count,
+        "output_sha256": _sha256_file(authoring_csv_path),
     }
 
 

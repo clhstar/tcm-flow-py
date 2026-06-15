@@ -52,6 +52,7 @@ def make_evidence(
     clause_id: str,
     book: str,
     text: str,
+    clause_number: int = 1,
 ) -> dict:
     return {
         "evidence_id": evidence_id,
@@ -63,7 +64,7 @@ def make_evidence(
         "chapter_id": f"{book}-chapter",
         "chapter_title": "测试篇章",
         "clause_id": clause_id,
-        "clause_number": 1,
+        "clause_number": clause_number,
         "content_type": "clause",
         "parent_id": clause_id,
         "original_text": text,
@@ -113,6 +114,7 @@ def make_formal_artifacts() -> tuple[list[dict], list[dict], list[dict]]:
                                     clause_id=clause_id,
                                     book=book,
                                     text=text,
+                                    clause_number=clause_number,
                                 )
                             )
                             anchor_evidence_ids.append(evidence_id)
@@ -130,7 +132,10 @@ def make_formal_artifacts() -> tuple[list[dict], list[dict], list[dict]]:
                             "selection_seed": 20260614,
                             "selection_reason": "固定配额测试",
                             "absence_queries": (
-                                ["缺失查询一", "缺失查询二"]
+                                [
+                                    f"{split} 缺失查询 {cell_index}",
+                                    f"{split} 缺失查询 {cell_index} 相关",
+                                ]
                                 if not answerable
                                 else []
                             ),
@@ -620,12 +625,22 @@ class FormalDatasetCliTests(unittest.TestCase):
         prepare_args = build_parser().parse_args(
             ["prepare-formal-authoring"]
         )
+        draft_args = build_parser().parse_args(
+            ["draft-formal-authoring"]
+        )
         import_args = build_parser().parse_args(
             ["import-formal-authoring"]
         )
 
         self.assertEqual(
             prepare_args.output,
+            Path(
+                "data/rag_v1_5/formal/evaluation/"
+                "formal-authoring.csv"
+            ),
+        )
+        self.assertEqual(
+            draft_args.authoring_csv,
             Path(
                 "data/rag_v1_5/formal/evaluation/"
                 "formal-authoring.csv"
@@ -1303,6 +1318,204 @@ class FormalAuthoringWorkflowTests(unittest.TestCase):
         self.assertTrue(
             all(record["review_status"] == "draft" for record in records)
         )
+
+    def test_draft_formal_authoring_csv_is_complete_and_importable(
+        self,
+    ) -> None:
+        from experiments.rag_v1_5.formal_dataset import (
+            draft_formal_authoring_csv,
+            import_formal_authoring_csv,
+        )
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            groups_path, evidence_path, authoring_path, _ = (
+                self.prepare_authoring_files(root)
+            )
+
+            first = draft_formal_authoring_csv(
+                authoring_csv_path=authoring_path,
+                evidence_groups_path=groups_path,
+                evidence_path=evidence_path,
+            )
+            first_bytes = authoring_path.read_bytes()
+            second = draft_formal_authoring_csv(
+                authoring_csv_path=authoring_path,
+                evidence_groups_path=groups_path,
+                evidence_path=evidence_path,
+            )
+            rows = self.read_rows(authoring_path)
+
+            self.assertEqual(authoring_path.read_bytes(), first_bytes)
+            self.assertEqual(first["row_count"], 400)
+            self.assertEqual(first["drafted_count"], 400)
+            self.assertEqual(first["newly_drafted_count"], 400)
+            self.assertEqual(second["newly_drafted_count"], 0)
+            self.assertEqual(second["preserved_count"], 400)
+            self.assertEqual(first["answerable_count"], 320)
+            self.assertEqual(first["unanswerable_count"], 80)
+            self.assertEqual(
+                len({row["question"] for row in rows}),
+                400,
+            )
+            self.assertTrue(
+                all(row["question"] for row in rows)
+            )
+            self.assertTrue(
+                all(row["reference_answer"] for row in rows)
+            )
+
+            answerable_rows = [
+                row
+                for row in rows
+                if row["question_type"] != "unanswerable"
+            ]
+            unanswerable_rows = [
+                row
+                for row in rows
+                if row["question_type"] == "unanswerable"
+            ]
+            self.assertTrue(
+                all(
+                    json.loads(row["support_spans"])
+                    for row in answerable_rows
+                )
+            )
+            self.assertTrue(
+                all(
+                    json.loads(row["support_spans"]) == []
+                    for row in unanswerable_rows
+                )
+            )
+            self.assertTrue(
+                all(
+                    json.loads(row["gold_evidence_ids"]) == []
+                    for row in unanswerable_rows
+                )
+            )
+
+            output_path = root / "formal-400-draft.jsonl"
+            imported = import_formal_authoring_csv(
+                authoring_csv_path=authoring_path,
+                evidence_groups_path=groups_path,
+                evidence_path=evidence_path,
+                output_dataset_path=output_path,
+            )
+
+        self.assertEqual(imported["status"], "draft")
+        self.assertEqual(imported["question_count"], 400)
+
+    def test_draft_templates_avoid_location_leakage_and_disambiguate_notes(
+        self,
+    ) -> None:
+        from experiments.rag_v1_5.formal_dataset import (
+            _build_formal_authoring_rows,
+            _draft_formal_row,
+        )
+        from experiments.rag_v1_5.schema import (
+            EvidenceUnit,
+            FormalEvidenceGroup,
+        )
+
+        clause_a = make_evidence(
+            evidence_id="shl-chapter-02-052",
+            clause_id="shl-chapter-02-052",
+            book="shang_han_lun",
+            text="脉浮而数者，可发汗，宜麻黄汤。方十八。",
+            clause_number=52,
+        )
+        clause_b = make_evidence(
+            evidence_id="shl-chapter-08-354",
+            clause_id="shl-chapter-08-354",
+            book="shang_han_lun",
+            text="大汗，若大下利而厥冷者，四逆汤主之。方六。",
+            clause_number=354,
+        )
+        note_a = deepcopy(clause_a)
+        note_a.update(
+            {
+                "evidence_id": "shl-chapter-02-052-note-01",
+                "content_type": "note",
+                "normalized_text": "用前第五方。",
+                "original_text": "用前第五方。",
+            }
+        )
+        note_b = deepcopy(clause_b)
+        note_b.update(
+            {
+                "evidence_id": "shl-chapter-08-354-note-01",
+                "content_type": "note",
+                "normalized_text": "用前第五方。",
+                "original_text": "用前第五方。",
+            }
+        )
+        groups = [
+            FormalEvidenceGroup(
+                group_id=(
+                    "formal-shang_han_lun-formal_dev-"
+                    "source_location-01"
+                ),
+                split="formal_dev",
+                book_scope="shang_han_lun",
+                question_type="source_location",
+                anchor_evidence_ids=[note_a["evidence_id"]],
+                anchor_clause_ids=[note_a["clause_id"]],
+                selection_seed=20260614,
+                selection_reason="测试重复校注",
+                absence_queries=[],
+            ),
+            FormalEvidenceGroup(
+                group_id=(
+                    "formal-shang_han_lun-formal_test-"
+                    "source_location-01"
+                ),
+                split="formal_test",
+                book_scope="shang_han_lun",
+                question_type="source_location",
+                anchor_evidence_ids=[note_b["evidence_id"]],
+                anchor_clause_ids=[note_b["clause_id"]],
+                selection_seed=20260614,
+                selection_reason="测试重复校注",
+                absence_queries=[],
+            ),
+        ]
+        evidence = [
+            EvidenceUnit.model_validate(record)
+            for record in (clause_a, clause_b, note_a, note_b)
+        ]
+        rows = _build_formal_authoring_rows(
+            groups=groups,
+            evidence_by_id={item.evidence_id: item for item in evidence},
+        )
+
+        for row in rows:
+            _draft_formal_row(row)
+
+        self.assertNotEqual(rows[0]["question"], rows[1]["question"])
+        self.assertIn("脉浮而数者", rows[0]["question"])
+        self.assertIn("大汗，若大下利", rows[1]["question"])
+        self.assertNotIn("第52条", rows[0]["question"])
+        self.assertNotIn("第354条", rows[1]["question"])
+        self.assertIn("第52条", rows[0]["reference_answer"])
+        self.assertIn("第354条", rows[1]["reference_answer"])
+
+    def test_draft_support_spans_preserve_exact_evidence_whitespace(
+        self,
+    ) -> None:
+        from experiments.rag_v1_5.formal_dataset import (
+            _formal_support_spans,
+        )
+
+        evidence_text = (
+            "大承气汤\n"
+            "大黄（酒洗，四两） 芒硝（三合）\n"
+            "上二味，以水煎服。"
+        )
+        spans = _formal_support_spans(
+            [{"normalized_text": evidence_text}]
+        )
+
+        self.assertEqual(spans, [evidence_text])
 
     def test_import_rejects_immutable_duplicate_and_clinical_edits(
         self,

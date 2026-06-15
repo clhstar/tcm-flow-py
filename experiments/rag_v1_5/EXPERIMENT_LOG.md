@@ -1126,3 +1126,159 @@ formal_retrieval_completed=false
 计划明确要求 400 题人工编写和后续 `400 + 40` 双轮人工审核。当前没有把
 规则模板或自动生成内容冒充人工题集，因此在题目正文和参考答案填写完成前，
 不得生成 `formal-400-draft.jsonl`，也不得继续正式检索矩阵。
+
+## 2026-06-15：Formal-400 AI 辅助草拟与人工审核门禁
+
+### 本地试题资料审计
+
+用户在 `data/rag_v1_5/qa/` 提供 6 份仅本地 Word 试题资料。原文件保持
+不变，旧 `.doc` 通过 Word 只读模式提取，`.docx` 通过 `python-docx`
+提取；派生 UTF-8 文本和 `qa-source-audit.json` 均留在私有 `data/`
+目录，不提交仓库。
+
+观察结果：
+
+```text
+伤寒论资料=4 份
+金匮要略资料=2 份
+编号题目行（粗统计）=2508
+明确“正确答案”标记=100
+原文/条文问法标记=154
+方剂问法标记=325
+病机/辨证问法标记=897
+```
+
+`(完整版)伤寒论试题` 的 `.doc` 与 `.docx` 派生文本 12 字符 shingle
+Jaccard 为 `0.999`，按重复资料处理。上述材料仅用于校准题型、措辞和
+难度，不直接复制为 Formal 问题，也不把其选择题答案作为 gold。
+Formal gold 仍只来自冻结的本地 Evidence Group。
+
+### AI 辅助候选问题
+
+经用户明确同意，新增可复现的 `draft-formal-authoring` 命令生成候选
+问题。草拟器：
+
+```text
+只填充空白编题行
+保留已有完整人工编辑
+拒绝半填写状态
+不在问题中泄漏内部 ID 或具体条号
+为重复校注加入父条文语境
+为重复方名加入父条文语境
+support span 保留 Evidence 原始空白和换行
+```
+
+执行：
+
+```powershell
+.\.venv\Scripts\python.exe -m experiments.rag_v1_5.cli draft-formal-authoring
+.\.venv\Scripts\python.exe -m experiments.rag_v1_5.cli import-formal-authoring
+.\.venv\Scripts\python.exe -m experiments.rag_v1_5.cli validate-formal-dataset `
+  --dataset data/rag_v1_5/formal/evaluation/formal-400-draft.jsonl
+```
+
+实际结果：
+
+```text
+question_count=400
+answerable_count=320
+unanswerable_count=80
+formal_dev=200
+formal_test=200
+shang_han_lun=200
+jin_gui_yao_lue=200
+duplicate_question_count=0
+prior_overlap_count=0
+cross_split_clause_overlap_count=0
+numeric_clause_leak_count=0
+internal_id_leak_count=0
+approved_count=0
+```
+
+哈希：
+
+```text
+formal-authoring.csv SHA256=
+323AC4B50672CE4305FA9254BF5506323AC095A39A5356F477775B52E2475BC9
+
+formal-400-draft.jsonl SHA256=
+B38BFD41C070FD5E528A9FACC6895A947802D0EFFDB8725DBD8AAC6FB49039C0
+```
+
+内容抽查发现部分长条文提示语仍偏机械，且原语料存在少量疑似缺字文本。
+这些问题不得自动补写或自动判定通过，必须在人工审核中标记、回到编题表
+修订并增加 `question_version`。
+
+### Formal 双轮审核门禁
+
+新增 `formal_review.py` 和 CLI：
+
+```powershell
+.\.venv\Scripts\python.exe -m experiments.rag_v1_5.cli prepare-formal-review
+.\.venv\Scripts\python.exe -m experiments.rag_v1_5.cli import-formal-review
+```
+
+审核规则：
+
+```text
+first review required=400
+second review required=40
+second review strata=每个 book × split × type 固定抽 2 题
+second review seed=20260614
+内容哈希变化后旧审核结论自动失效
+未满足 Ready 条件时不生成 formal-400.jsonl
+```
+
+当前实际输出：
+
+```text
+formal-review.csv SHA256=
+131FB26E84A5ECAF28498765C234C82E007F7DDA3696DF303E24C8A1D016400B
+
+review_status=blocked
+first_review_pass_count=0
+first_review_pending_count=400
+first_review_fail_count=0
+second_review_pass_count=0
+second_review_pending_count=40
+second_review_fail_count=0
+formal-400.jsonl exists=false
+```
+
+自动化验证：
+
+```powershell
+.\.venv\Scripts\python.exe -m unittest `
+  tests.rag_v1_5.test_formal_dataset `
+  tests.rag_v1_5.test_formal_review
+```
+
+结果为 `24 tests, OK`。当前阶段只能表述为：
+
+```text
+formal_draft_status=ready_for_human_review
+formal_review_status=blocked_pending_human_review
+formal_dataset_frozen=false
+formal_retrieval_completed=false
+```
+
+阶段性全量验证：
+
+```powershell
+.\.venv\Scripts\python.exe -m unittest discover -s tests -p "test*.py"
+.\.venv\Scripts\python.exe -m compileall -q app experiments tests
+.\.venv\Scripts\python.exe -m pip check
+git diff --check
+```
+
+实际结果：
+
+```text
+unittest=180 tests, OK
+compileall=exit 0
+pip check=No broken requirements found
+git diff --check=无空白错误
+draft-formal-authoring 重跑 preserved_count=400
+prepare-formal-review 重跑 inherited_review_count=400
+authoring/review SHA256 均未变化
+```

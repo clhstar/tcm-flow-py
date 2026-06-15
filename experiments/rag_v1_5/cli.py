@@ -30,11 +30,16 @@ from experiments.rag_v1_5.dataset import (
     validate_dataset,
 )
 from experiments.rag_v1_5.formal_dataset import (
+    draft_formal_authoring_csv,
     freeze_formal_preregistration,
     import_formal_authoring_csv,
     prepare_formal_authoring_csv,
     sample_formal_evidence_groups,
     validate_formal_dataset,
+)
+from experiments.rag_v1_5.formal_review import (
+    import_formal_review,
+    prepare_formal_review,
 )
 from experiments.rag_v1_5.indexing import (
     BgeM3DenseEncoder,
@@ -160,6 +165,15 @@ DEFAULT_FORMAL_PREREG_PATH = Path(
 )
 DEFAULT_FORMAL_AUTHORING_PATH = (
     DEFAULT_FORMAL_EVALUATION_DIR / "formal-authoring.csv"
+)
+DEFAULT_FORMAL_REVIEW_PATH = (
+    DEFAULT_FORMAL_EVALUATION_DIR / "formal-review.csv"
+)
+DEFAULT_FORMAL_REVIEW_SUMMARY_PATH = (
+    DEFAULT_FORMAL_EVALUATION_DIR / "formal-review-summary.json"
+)
+DEFAULT_FORMAL_DATASET_PATH = (
+    DEFAULT_FORMAL_EVALUATION_DIR / "formal-400.jsonl"
 )
 DIRECT_DEPENDENCIES = (
     "pydantic",
@@ -856,6 +870,26 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_FORMAL_AUTHORING_PATH,
     )
 
+    draft_formal_authoring_parser = subparsers.add_parser(
+        "draft-formal-authoring",
+        help="以可复现模板草拟 Formal-400 问题并保留人工编辑",
+    )
+    draft_formal_authoring_parser.add_argument(
+        "--authoring-csv",
+        type=Path,
+        default=DEFAULT_FORMAL_AUTHORING_PATH,
+    )
+    draft_formal_authoring_parser.add_argument(
+        "--evidence-groups",
+        type=Path,
+        default=DEFAULT_FORMAL_EVIDENCE_GROUPS_PATH,
+    )
+    draft_formal_authoring_parser.add_argument(
+        "--evidence",
+        type=Path,
+        default=DEFAULT_EVIDENCE_PATH,
+    )
+
     import_formal_authoring_parser = subparsers.add_parser(
         "import-formal-authoring",
         help="导入并校验 Formal-400 编题工作表",
@@ -879,6 +913,61 @@ def build_parser() -> argparse.ArgumentParser:
         "--output",
         type=Path,
         default=DEFAULT_FORMAL_DRAFT_PATH,
+    )
+
+    prepare_formal_review_parser = subparsers.add_parser(
+        "prepare-formal-review",
+        help="导出 Formal-400 双轮人工审核 CSV",
+    )
+    prepare_formal_review_parser.add_argument(
+        "--dataset",
+        type=Path,
+        default=DEFAULT_FORMAL_DRAFT_PATH,
+    )
+    prepare_formal_review_parser.add_argument(
+        "--evidence-groups",
+        type=Path,
+        default=DEFAULT_FORMAL_EVIDENCE_GROUPS_PATH,
+    )
+    prepare_formal_review_parser.add_argument(
+        "--review-csv",
+        type=Path,
+        default=DEFAULT_FORMAL_REVIEW_PATH,
+    )
+    prepare_formal_review_parser.add_argument(
+        "--second-review-seed",
+        type=int,
+        default=20260614,
+    )
+
+    import_formal_review_parser = subparsers.add_parser(
+        "import-formal-review",
+        help="导入 Formal-400 双轮审核并在通过后生成正式集",
+    )
+    import_formal_review_parser.add_argument(
+        "--dataset",
+        type=Path,
+        default=DEFAULT_FORMAL_DRAFT_PATH,
+    )
+    import_formal_review_parser.add_argument(
+        "--evidence-groups",
+        type=Path,
+        default=DEFAULT_FORMAL_EVIDENCE_GROUPS_PATH,
+    )
+    import_formal_review_parser.add_argument(
+        "--reviewed-csv",
+        type=Path,
+        default=DEFAULT_FORMAL_REVIEW_PATH,
+    )
+    import_formal_review_parser.add_argument(
+        "--output",
+        type=Path,
+        default=DEFAULT_FORMAL_DATASET_PATH,
+    )
+    import_formal_review_parser.add_argument(
+        "--summary",
+        type=Path,
+        default=DEFAULT_FORMAL_REVIEW_SUMMARY_PATH,
     )
 
     pilot_evidence_parser = subparsers.add_parser(
@@ -1296,12 +1385,33 @@ def main(
             evidence_path=args.evidence,
             output_csv_path=args.output,
         )
+    elif args.command == "draft-formal-authoring":
+        manifest = draft_formal_authoring_csv(
+            authoring_csv_path=args.authoring_csv,
+            evidence_groups_path=args.evidence_groups,
+            evidence_path=args.evidence,
+        )
     elif args.command == "import-formal-authoring":
         manifest = import_formal_authoring_csv(
             authoring_csv_path=args.authoring_csv,
             evidence_groups_path=args.evidence_groups,
             evidence_path=args.evidence,
             output_dataset_path=args.output,
+        )
+    elif args.command == "prepare-formal-review":
+        manifest = prepare_formal_review(
+            draft_dataset_path=args.dataset,
+            evidence_groups_path=args.evidence_groups,
+            review_csv_path=args.review_csv,
+            second_review_seed=args.second_review_seed,
+        )
+    elif args.command == "import-formal-review":
+        manifest = import_formal_review(
+            draft_dataset_path=args.dataset,
+            evidence_groups_path=args.evidence_groups,
+            reviewed_csv_path=args.reviewed_csv,
+            output_dataset_path=args.output,
+            summary_path=args.summary,
         )
     elif args.command == "sample-pilot-evidence":
         manifest = sample_pilot_evidence_groups(
