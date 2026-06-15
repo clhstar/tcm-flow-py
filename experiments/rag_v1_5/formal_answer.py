@@ -906,6 +906,146 @@ def freeze_formal_answer_dev(
     return manifest
 
 
+def freeze_formal_answer_runs(
+    *,
+    run_dir: Path,
+    review_summary_path: Path,
+    answer_prereg_path: Path,
+    output_path: Path,
+    dev_freeze_path: Path | None = None,
+) -> dict:
+    run_summary_path = run_dir / "matrix-summary.json"
+    automatic_metrics_path = run_dir / "automatic-metrics.json"
+    paired_bootstrap_path = run_dir / "paired-bootstrap.json"
+    run_summary = _read_json(
+        run_summary_path,
+        label="Formal answer test summary",
+    )
+    if (
+        run_summary.get("status") != "completed"
+        or run_summary.get("split") != "formal_test"
+        or run_summary.get("error_count") != 0
+    ):
+        raise ValueError(
+            "只允许冻结无未解决错误的 completed formal_test"
+        )
+    automatic = _read_json(
+        automatic_metrics_path,
+        label="Formal answer automatic metrics",
+    )
+    if automatic.get("status") != "ready":
+        raise ValueError("自动回答指标必须为 ready")
+    paired = _read_json(
+        paired_bootstrap_path,
+        label="Formal answer paired bootstrap",
+    )
+    review = _read_json(
+        review_summary_path,
+        label="Formal answer review summary",
+    )
+    if (
+        review.get("status") != "ready"
+        or not review.get("answer_review_completed")
+    ):
+        raise ValueError("人工回答审核尚未完成")
+    prereg = _read_json(
+        answer_prereg_path,
+        label="Formal answer prereg",
+    )
+    if prereg.get("status") != "ready":
+        raise ValueError("回答层预注册必须为 ready")
+
+    dev_freeze = None
+    if dev_freeze_path is not None:
+        dev_freeze = _read_json(
+            dev_freeze_path,
+            label="Formal answer dev freeze",
+        )
+        if (
+            dev_freeze.get("status") != "ready"
+            or not dev_freeze.get("answer_dev_frozen")
+        ):
+            raise ValueError("回答层 dev freeze 必须为 ready")
+        if run_summary["input_hashes"].get(
+            "dev_freeze_sha256"
+        ) != _sha256_file(dev_freeze_path):
+            raise ValueError("test 运行与 dev freeze 哈希不一致")
+
+    file_paths = {
+        "matrix_summary": run_summary_path,
+        "automatic_metrics": automatic_metrics_path,
+        "paired_bootstrap": paired_bootstrap_path,
+        "review_summary": review_summary_path,
+    }
+    manifest = {
+        "version": prereg.get("version", "v1.5.0"),
+        "status": "ready",
+        "stage": "formal_answer_completed",
+        "model": prereg["model"],
+        "methods": prereg["methods"],
+        "repeats": prereg["repeats"],
+        "completion": {
+            "question_count": run_summary["question_count"],
+            "expected_runs": run_summary["expected_runs"],
+            "completed_count": run_summary[
+                "completed_count"
+            ],
+            "error_count": run_summary["error_count"],
+            "error_attempt_count": run_summary.get(
+                "error_attempt_count",
+                run_summary["error_count"],
+            ),
+        },
+        "inputs": {
+            **run_summary["input_hashes"],
+            "answer_prereg_sha256": _sha256_file(
+                answer_prereg_path
+            ),
+        },
+        "automatic_metrics": automatic["by_method"],
+        "metric_definitions": automatic.get("definitions", {}),
+        "paired_bootstrap": paired.get("comparisons", []),
+        "human_review": {
+            "reviewed_count": review["reviewed_count"],
+            "second_review_count": review[
+                "second_review_count"
+            ],
+            "disagreement_count": review[
+                "disagreement_count"
+            ],
+            "agreement_by_field": review[
+                "agreement_by_field"
+            ],
+            "metrics": review.get("metrics", {}),
+        },
+        "files": {
+            name: {
+                "path": path.name,
+                "sha256": _sha256_file(path),
+            }
+            for name, path in file_paths.items()
+        },
+        "privacy": {
+            "raw_private_content_included": False,
+            "full_results_committed": False,
+        },
+        "answer_level_evaluation_completed": True,
+        "next_stage": "TCM-QG external validation",
+    }
+    if dev_freeze is not None:
+        manifest["prompt_sha256"] = dev_freeze[
+            "prompt_sha256"
+        ]
+        manifest["generation"] = dev_freeze["generation"]
+        manifest["thresholds"] = dev_freeze["thresholds"]
+        manifest["files"]["dev_freeze"] = {
+            "path": dev_freeze_path.name,
+            "sha256": _sha256_file(dev_freeze_path),
+        }
+    _atomic_write_json(output_path, manifest)
+    return manifest
+
+
 def freeze_formal_answer_prereg(
     *,
     config_path: Path,

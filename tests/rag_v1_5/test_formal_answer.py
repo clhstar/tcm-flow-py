@@ -645,6 +645,13 @@ generation:
         import_review = build_parser().parse_args(
             ["import-formal-answer-review"]
         )
+        freeze_runs = build_parser().parse_args(
+            [
+                "freeze-formal-answer-runs",
+                "--run-dir",
+                "answer-test",
+            ]
+        )
         self.assertEqual(dev.command, "run-formal-answer-dev")
         self.assertEqual(
             freeze.command,
@@ -663,3 +670,95 @@ generation:
             import_review.command,
             "import-formal-answer-review",
         )
+        self.assertEqual(
+            freeze_runs.command,
+            "freeze-formal-answer-runs",
+        )
+
+    def test_freeze_answer_runs_excludes_private_text(self):
+        from experiments.rag_v1_5.formal_answer import (
+            freeze_formal_answer_runs,
+        )
+
+        run_dir = self.root / "test-run"
+        run_dir.mkdir()
+        (run_dir / "matrix-summary.json").write_text(
+            json.dumps(
+                {
+                    "status": "completed",
+                    "split": "formal_test",
+                    "question_count": 200,
+                    "expected_runs": 2400,
+                    "completed_count": 2400,
+                    "error_count": 0,
+                    "input_hashes": {"dataset_sha256": "A" * 64},
+                }
+            ),
+            encoding="utf-8",
+        )
+        (run_dir / "automatic-metrics.json").write_text(
+            json.dumps(
+                {
+                    "status": "ready",
+                    "by_method": {"P": {"char_f1": 0.8}},
+                }
+            ),
+            encoding="utf-8",
+        )
+        (run_dir / "paired-bootstrap.json").write_text(
+            json.dumps(
+                {
+                    "comparisons": [
+                        {"metric": "char_f1", "delta": 0.1}
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
+        review_summary_path = self.root / "review-summary.json"
+        review_summary_path.write_text(
+            json.dumps(
+                {
+                    "status": "ready",
+                    "answer_review_completed": True,
+                    "reviewed_count": 520,
+                    "second_review_count": 52,
+                    "disagreement_count": 0,
+                    "agreement_by_field": {
+                        "answer_correct": 1.0
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        answer_prereg_path = self.root / "answer-prereg.json"
+        answer_prereg_path.write_text(
+            json.dumps(
+                {
+                    "status": "ready",
+                    "model": {
+                        "name": "frozen-model",
+                        "base_url_origin": "example.invalid",
+                    },
+                    "methods": ["B0", "B4", "P", "P-no-parent"],
+                    "repeats": 3,
+                    "inputs": {"config_sha256": "B" * 64},
+                }
+            ),
+            encoding="utf-8",
+        )
+        output_path = self.root / "formal-answer-runs.json"
+
+        manifest = freeze_formal_answer_runs(
+            run_dir=run_dir,
+            review_summary_path=review_summary_path,
+            answer_prereg_path=answer_prereg_path,
+            output_path=output_path,
+        )
+        serialized = json.dumps(manifest, ensure_ascii=False)
+
+        self.assertEqual(manifest["status"], "ready")
+        self.assertNotIn("reference_answer", serialized)
+        self.assertNotIn("answer_text", serialized)
+        self.assertNotIn("context_text", serialized)
+        self.assertNotIn("question_text", serialized)

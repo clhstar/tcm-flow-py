@@ -51,6 +51,7 @@ from experiments.rag_v1_5.formal_dataset import (
 from experiments.rag_v1_5.formal_answer import (
     freeze_formal_answer_dev,
     freeze_formal_answer_prereg,
+    freeze_formal_answer_runs,
     run_formal_answer_matrix,
 )
 from experiments.rag_v1_5.formal_review import (
@@ -240,6 +241,10 @@ DEFAULT_FORMAL_ANSWER_TEST_OUTPUT_DIR = Path(
 )
 DEFAULT_FORMAL_ANSWER_REVIEW_DIR = Path(
     "data/rag_v1_5/formal/answer/review"
+)
+DEFAULT_FORMAL_ANSWER_RUNS_MANIFEST_PATH = Path(
+    "experiments/rag_v1_5/manifests/"
+    "formal-answer-runs-v1.5.0.json"
 )
 DIRECT_DEPENDENCIES = (
     "pydantic",
@@ -1669,6 +1674,39 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
 
+    freeze_formal_answer_runs_parser = subparsers.add_parser(
+        "freeze-formal-answer-runs",
+        help="冻结 Formal 回答层聚合结果与隐私安全哈希清单",
+    )
+    freeze_formal_answer_runs_parser.add_argument(
+        "--run-dir",
+        type=Path,
+        required=True,
+    )
+    freeze_formal_answer_runs_parser.add_argument(
+        "--review-summary",
+        type=Path,
+        default=(
+            DEFAULT_FORMAL_ANSWER_REVIEW_DIR
+            / "formal-answer-review-summary.json"
+        ),
+    )
+    freeze_formal_answer_runs_parser.add_argument(
+        "--answer-prereg",
+        type=Path,
+        default=DEFAULT_FORMAL_ANSWER_PREREG_PATH,
+    )
+    freeze_formal_answer_runs_parser.add_argument(
+        "--dev-freeze",
+        type=Path,
+        default=None,
+    )
+    freeze_formal_answer_runs_parser.add_argument(
+        "--output",
+        type=Path,
+        default=DEFAULT_FORMAL_ANSWER_RUNS_MANIFEST_PATH,
+    )
+
     pilot_evidence_parser = subparsers.add_parser(
         "sample-pilot-evidence",
         help="按固定配额选择 Pilot-40 Evidence Group",
@@ -2301,6 +2339,21 @@ def main(
             reviewed_csv_path=args.reviewed_csv,
             second_reviewed_csv_path=args.second_reviewed_csv,
             summary_path=args.summary,
+        )
+    elif args.command == "freeze-formal-answer-runs":
+        dev_freeze_path = args.dev_freeze
+        if dev_freeze_path is None:
+            dev_run_dir = _latest_directory_with_file(
+                DEFAULT_FORMAL_ANSWER_DEV_OUTPUT_DIR,
+                "dev-freeze.json",
+            )
+            dev_freeze_path = dev_run_dir / "dev-freeze.json"
+        manifest = freeze_formal_answer_runs(
+            run_dir=args.run_dir,
+            review_summary_path=args.review_summary,
+            answer_prereg_path=args.answer_prereg,
+            dev_freeze_path=dev_freeze_path,
+            output_path=args.output,
         )
     elif args.command == "sample-pilot-evidence":
         manifest = sample_pilot_evidence_groups(
