@@ -1370,3 +1370,109 @@ formal_dataset_frozen=true
 formal_retrieval_completed=false
 answer_level_evaluation_completed=false
 ```
+
+## 2026-06-15：Formal-400 开发集检索门禁
+
+在提交 `735767b4c408fedc74042837c3fa8bb106fd376b` 上构建 Formal 专用
+C0-C5 Chunk、C4 去标题索引，并执行 `formal_dev` 的 14 配置矩阵。私有
+Chunk、索引、逐题结果和命中正文均保留在 `data/rag_v1_5/formal`，未提交。
+
+环境与输入：
+
+```text
+start_at=2026-06-15T18:02:21+08:00
+completed_at=2026-06-15T18:16:54+08:00
+resume=false
+gpu=NVIDIA GeForce RTX 2070
+gpu_memory=8192 MiB
+driver=610.47
+formal_dataset_sha256=
+1C344CB271B24D14366AA0389AE192FDA99388D51724E56260D50497D7902230
+formal_manifest_sha256=
+937CA42841D98D398DC00BF659418EE4F0B783C9B5323A9AA630D29189BE78DE
+prereg_manifest_sha256=
+5DFF217581C574B67E776302A97857D14FE88886B5F7DBD9DB92F9D33F33A1E6
+config_sha256=
+D832EF32BCCFAAEDEB62BB2D3E4767246311A82CC21213CE4A5C5CB8AC975B1F
+chunk_manifest_sha256=
+C24E09FE7BA864602D1860C54500BEB66AC96338597229BC7D6FA398DF13D83D
+index_manifest_sha256=
+CA026E14CDF426E4A1484ED84E5EC32B46CCD2C7A6B9E5EFF0FC3AD7A3A1F572
+model_manifest_sha256=
+5523130CBAB3DC8829644E41F747B0856A64809C211A9B2665527033E3E7CDCB
+```
+
+Formal 诊断：
+
+```powershell
+.\.venv\Scripts\python.exe -m experiments.rag_v1_5.cli `
+  retrieval-doctor --formal
+```
+
+结果：
+
+```text
+cuda_available=true
+chunk_strategy_count=6
+chunk_manifest_status=valid
+index_strategy_count=7
+index_manifest_status=valid
+embedding_snapshot=valid
+reranker_snapshot=valid
+quality_gate_status=ready
+```
+
+开发矩阵：
+
+```text
+matrix_id=formal_dev-20260615T100221Z-1C344CB2-D832EF32
+status=completed
+config_count=14
+completed_config_count=14
+failed_config_count=0
+total_question_runs=2800
+runtime_error_attempt_count=0
+minimum_top5_traceability_rate=1.0
+minimum_parent_recovery_rate=1.0
+matrix-config.json SHA256=
+382E25AB89F6866DC2F99772F25568D16E2D70C2F805876AB8D77ABDDB0A50CC
+matrix-summary.json SHA256=
+7E0FB639CE79ACC825C3AA7B6FAE0D47509DF8C039CD27AA0E4CA800FCC38DCE
+```
+
+对每个配置抽取 2 条 answerable、1 条 unanswerable 和 2 条
+multi-evidence，共执行 70 条代理辅助抽查；另检查 C4/C5 Parent recovery、
+Top-10 数量、Top-5 traceability 和全部 `errors.jsonl`。结果：
+
+```text
+sampled_case_count=70
+sampled_traceability_failure_count=0
+short_hit_list_count=0
+bad_parent_recovery_count=0
+errors_jsonl_record_count=0
+question_id_literal_leakage_count=0
+```
+
+该抽查不是新增的独立人工复核；400 题一审和 40 题二审仍以用户已关闭的审核表为准。
+
+同时记录一个不改变冻结输入的研究边界：题目由已提交的模板草拟后人工审核，部分
+answerable 问题显式包含目标条文片段。对 320 道 answerable 问题执行规范化最长连续
+重合审计：
+
+```text
+overlap_at_least_8_chars=162
+overlap_at_least_12_chars=60
+overlap_at_least_20_chars=13
+overlap_ratio_at_least_0.25=62
+```
+
+因此本实验必须表述为“人工审核的、片段锚定的合成古籍检索基准”，不得外推为自然
+用户查询上的普遍性能。该限制不属于运行时、parser、gold 或 support 错误，本次不据此
+修改问题、gold、矩阵或参数，也不查看正式测试集检索结果后调参。
+
+开发集停止条件均未触发，门禁结论：
+
+```text
+formal_dev_gate=passed_with_scope_limitation
+formal_test_has_not_run=true
+```
