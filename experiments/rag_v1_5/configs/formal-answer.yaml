@@ -16,6 +16,9 @@ generation:
   answer_methods: [B0, B4, P, P-no-parent]
   evidence_labels: [E1, E2, E3, E4, E5]
 
+execution:
+  max_workers: 8
+
 retrieval_sources:
   B4: b4-c0-hybrid-rerank
   P: p-c4-hybrid-rerank

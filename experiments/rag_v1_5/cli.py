@@ -8,6 +8,13 @@ from typing import Callable, Sequence
 
 import yaml
 
+from experiments.rag_v1_5.answer_metrics import (
+    summarize_formal_answer_test,
+)
+from experiments.rag_v1_5.answer_review import (
+    import_formal_answer_review,
+    prepare_formal_answer_review,
+)
 from experiments.rag_v1_5.audit import (
     build_audit_artifacts,
     freeze_quality_gate,
@@ -42,7 +49,9 @@ from experiments.rag_v1_5.formal_dataset import (
     validate_formal_dataset,
 )
 from experiments.rag_v1_5.formal_answer import (
+    freeze_formal_answer_dev,
     freeze_formal_answer_prereg,
+    run_formal_answer_matrix,
 )
 from experiments.rag_v1_5.formal_review import (
     import_formal_review,
@@ -223,6 +232,15 @@ DEFAULT_FORMAL_TEST_MATRIX_DIR = Path(
     "data/rag_v1_5/formal/runs/test/"
     "formal_test-20260615T102626Z-1C344CB2-D832EF32"
 )
+DEFAULT_FORMAL_ANSWER_DEV_OUTPUT_DIR = Path(
+    "data/rag_v1_5/formal/answer/dev"
+)
+DEFAULT_FORMAL_ANSWER_TEST_OUTPUT_DIR = Path(
+    "data/rag_v1_5/formal/answer/test"
+)
+DEFAULT_FORMAL_ANSWER_REVIEW_DIR = Path(
+    "data/rag_v1_5/formal/answer/review"
+)
 DIRECT_DEPENDENCIES = (
     "pydantic",
     "PyYAML",
@@ -236,6 +254,24 @@ DIRECT_DEPENDENCIES = (
 
 def _sha256_file(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest().upper()
+
+
+def _latest_directory_with_file(
+    root: Path,
+    filename: str,
+) -> Path:
+    if not root.is_dir():
+        raise FileNotFoundError(f"缺少回答层运行目录: {root}")
+    candidates = [
+        path
+        for path in root.iterdir()
+        if path.is_dir() and (path / filename).is_file()
+    ]
+    if not candidates:
+        raise FileNotFoundError(
+            f"{root} 中没有包含 {filename} 的运行目录"
+        )
+    return max(candidates, key=lambda path: path.stat().st_mtime)
 
 
 def validate_smoke_runtime_inputs(
@@ -1400,6 +1436,239 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_FORMAL_ANSWER_PREREG_PATH,
     )
 
+    run_formal_answer_dev_parser = subparsers.add_parser(
+        "run-formal-answer-dev",
+        help="运行 Formal dev 回答层四方法三重复矩阵",
+    )
+    run_formal_answer_test_parser = subparsers.add_parser(
+        "run-formal-answer-test",
+        help="一次性运行 Formal test 回答层矩阵",
+    )
+    for answer_run_parser, matrix_dir, output_dir in (
+        (
+            run_formal_answer_dev_parser,
+            DEFAULT_FORMAL_DEV_MATRIX_DIR,
+            DEFAULT_FORMAL_ANSWER_DEV_OUTPUT_DIR,
+        ),
+        (
+            run_formal_answer_test_parser,
+            DEFAULT_FORMAL_TEST_MATRIX_DIR,
+            DEFAULT_FORMAL_ANSWER_TEST_OUTPUT_DIR,
+        ),
+    ):
+        answer_run_parser.add_argument(
+            "--dataset",
+            type=Path,
+            default=DEFAULT_FORMAL_DATASET_PATH,
+        )
+        answer_run_parser.add_argument(
+            "--matrix-dir",
+            type=Path,
+            default=matrix_dir,
+        )
+        answer_run_parser.add_argument(
+            "--answer-prereg",
+            type=Path,
+            default=DEFAULT_FORMAL_ANSWER_PREREG_PATH,
+        )
+        answer_run_parser.add_argument(
+            "--config",
+            type=Path,
+            default=DEFAULT_FORMAL_ANSWER_CONFIG_PATH,
+        )
+        answer_run_parser.add_argument(
+            "--formal-manifest",
+            type=Path,
+            default=DEFAULT_FORMAL_MANIFEST_PATH,
+        )
+        answer_run_parser.add_argument(
+            "--formal-runs-manifest",
+            type=Path,
+            default=DEFAULT_FORMAL_RUNS_MANIFEST_PATH,
+        )
+        answer_run_parser.add_argument(
+            "--output-dir",
+            type=Path,
+            default=output_dir,
+        )
+        answer_run_parser.add_argument(
+            "--resume",
+            type=Path,
+            default=None,
+        )
+    run_formal_answer_test_parser.add_argument(
+        "--dev-freeze",
+        type=Path,
+        default=None,
+    )
+
+    freeze_formal_answer_dev_parser = subparsers.add_parser(
+        "freeze-formal-answer-dev",
+        help="校准拒答阈值并冻结回答层 dev 参数",
+    )
+    freeze_formal_answer_dev_parser.add_argument(
+        "--run-dir",
+        type=Path,
+        default=None,
+    )
+    freeze_formal_answer_dev_parser.add_argument(
+        "--dataset",
+        type=Path,
+        default=DEFAULT_FORMAL_DATASET_PATH,
+    )
+    freeze_formal_answer_dev_parser.add_argument(
+        "--matrix-dir",
+        type=Path,
+        default=DEFAULT_FORMAL_DEV_MATRIX_DIR,
+    )
+    freeze_formal_answer_dev_parser.add_argument(
+        "--answer-prereg",
+        type=Path,
+        default=DEFAULT_FORMAL_ANSWER_PREREG_PATH,
+    )
+    freeze_formal_answer_dev_parser.add_argument(
+        "--config",
+        type=Path,
+        default=DEFAULT_FORMAL_ANSWER_CONFIG_PATH,
+    )
+    freeze_formal_answer_dev_parser.add_argument(
+        "--formal-manifest",
+        type=Path,
+        default=DEFAULT_FORMAL_MANIFEST_PATH,
+    )
+    freeze_formal_answer_dev_parser.add_argument(
+        "--formal-runs-manifest",
+        type=Path,
+        default=DEFAULT_FORMAL_RUNS_MANIFEST_PATH,
+    )
+    freeze_formal_answer_dev_parser.add_argument(
+        "--output",
+        type=Path,
+        default=None,
+    )
+
+    summarize_formal_answer_test_parser = subparsers.add_parser(
+        "summarize-formal-answer-test",
+        help="计算 Formal test 回答层自动指标与配对区间",
+    )
+    summarize_formal_answer_test_parser.add_argument(
+        "--run-dir",
+        type=Path,
+        required=True,
+    )
+    summarize_formal_answer_test_parser.add_argument(
+        "--dataset",
+        type=Path,
+        default=DEFAULT_FORMAL_DATASET_PATH,
+    )
+    summarize_formal_answer_test_parser.add_argument(
+        "--matrix-dir",
+        type=Path,
+        default=DEFAULT_FORMAL_TEST_MATRIX_DIR,
+    )
+    summarize_formal_answer_test_parser.add_argument(
+        "--answer-prereg",
+        type=Path,
+        default=DEFAULT_FORMAL_ANSWER_PREREG_PATH,
+    )
+    summarize_formal_answer_test_parser.add_argument(
+        "--config",
+        type=Path,
+        default=DEFAULT_FORMAL_ANSWER_CONFIG_PATH,
+    )
+    summarize_formal_answer_test_parser.add_argument(
+        "--formal-manifest",
+        type=Path,
+        default=DEFAULT_FORMAL_MANIFEST_PATH,
+    )
+    summarize_formal_answer_test_parser.add_argument(
+        "--formal-runs-manifest",
+        type=Path,
+        default=DEFAULT_FORMAL_RUNS_MANIFEST_PATH,
+    )
+
+    prepare_formal_answer_review_parser = subparsers.add_parser(
+        "prepare-formal-answer-review",
+        help="生成 Formal 回答层主盲审与 Parent 消融审核表",
+    )
+    prepare_formal_answer_review_parser.add_argument(
+        "--run-dir",
+        type=Path,
+        required=True,
+    )
+    prepare_formal_answer_review_parser.add_argument(
+        "--dataset",
+        type=Path,
+        default=DEFAULT_FORMAL_DATASET_PATH,
+    )
+    prepare_formal_answer_review_parser.add_argument(
+        "--matrix-dir",
+        type=Path,
+        default=DEFAULT_FORMAL_TEST_MATRIX_DIR,
+    )
+    prepare_formal_answer_review_parser.add_argument(
+        "--answer-prereg",
+        type=Path,
+        default=DEFAULT_FORMAL_ANSWER_PREREG_PATH,
+    )
+    prepare_formal_answer_review_parser.add_argument(
+        "--config",
+        type=Path,
+        default=DEFAULT_FORMAL_ANSWER_CONFIG_PATH,
+    )
+    prepare_formal_answer_review_parser.add_argument(
+        "--formal-manifest",
+        type=Path,
+        default=DEFAULT_FORMAL_MANIFEST_PATH,
+    )
+    prepare_formal_answer_review_parser.add_argument(
+        "--formal-runs-manifest",
+        type=Path,
+        default=DEFAULT_FORMAL_RUNS_MANIFEST_PATH,
+    )
+    prepare_formal_answer_review_parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=DEFAULT_FORMAL_ANSWER_REVIEW_DIR,
+    )
+
+    import_formal_answer_review_parser = subparsers.add_parser(
+        "import-formal-answer-review",
+        help="校验并汇总 Formal 回答层双轮人工审核",
+    )
+    import_formal_answer_review_parser.add_argument(
+        "--source-snapshot",
+        type=Path,
+        default=(
+            DEFAULT_FORMAL_ANSWER_REVIEW_DIR
+            / "formal-answer-review-source.json"
+        ),
+    )
+    import_formal_answer_review_parser.add_argument(
+        "--reviewed-csv",
+        type=Path,
+        default=(
+            DEFAULT_FORMAL_ANSWER_REVIEW_DIR
+            / "formal-answer-review.csv"
+        ),
+    )
+    import_formal_answer_review_parser.add_argument(
+        "--second-reviewed-csv",
+        type=Path,
+        default=(
+            DEFAULT_FORMAL_ANSWER_REVIEW_DIR
+            / "formal-answer-second-review.csv"
+        ),
+    )
+    import_formal_answer_review_parser.add_argument(
+        "--summary",
+        type=Path,
+        default=(
+            DEFAULT_FORMAL_ANSWER_REVIEW_DIR
+            / "formal-answer-review-summary.json"
+        ),
+    )
+
     pilot_evidence_parser = subparsers.add_parser(
         "sample-pilot-evidence",
         help="按固定配额选择 Pilot-40 Evidence Group",
@@ -1957,6 +2226,81 @@ def main(
             dev_run_dir=args.dev_run_dir,
             test_run_dir=args.test_run_dir,
             output_path=args.output,
+        )
+    elif args.command == "run-formal-answer-dev":
+        manifest = run_formal_answer_matrix(
+            split="formal_dev",
+            dataset_path=args.dataset,
+            matrix_dir=args.matrix_dir,
+            answer_prereg_path=args.answer_prereg,
+            config_path=args.config,
+            formal_manifest_path=args.formal_manifest,
+            formal_runs_manifest_path=args.formal_runs_manifest,
+            output_dir=args.output_dir,
+            resume_dir=args.resume,
+        )
+    elif args.command == "freeze-formal-answer-dev":
+        run_dir = args.run_dir or _latest_directory_with_file(
+            DEFAULT_FORMAL_ANSWER_DEV_OUTPUT_DIR,
+            "matrix-summary.json",
+        )
+        manifest = freeze_formal_answer_dev(
+            run_dir=run_dir,
+            dataset_path=args.dataset,
+            matrix_dir=args.matrix_dir,
+            answer_prereg_path=args.answer_prereg,
+            config_path=args.config,
+            formal_manifest_path=args.formal_manifest,
+            formal_runs_manifest_path=args.formal_runs_manifest,
+            output_path=args.output,
+        )
+    elif args.command == "run-formal-answer-test":
+        dev_freeze_path = args.dev_freeze
+        if dev_freeze_path is None:
+            dev_run_dir = _latest_directory_with_file(
+                DEFAULT_FORMAL_ANSWER_DEV_OUTPUT_DIR,
+                "dev-freeze.json",
+            )
+            dev_freeze_path = dev_run_dir / "dev-freeze.json"
+        manifest = run_formal_answer_matrix(
+            split="formal_test",
+            dataset_path=args.dataset,
+            matrix_dir=args.matrix_dir,
+            answer_prereg_path=args.answer_prereg,
+            config_path=args.config,
+            formal_manifest_path=args.formal_manifest,
+            formal_runs_manifest_path=args.formal_runs_manifest,
+            dev_freeze_path=dev_freeze_path,
+            output_dir=args.output_dir,
+            resume_dir=args.resume,
+        )
+    elif args.command == "summarize-formal-answer-test":
+        manifest = summarize_formal_answer_test(
+            run_dir=args.run_dir,
+            dataset_path=args.dataset,
+            matrix_dir=args.matrix_dir,
+            answer_prereg_path=args.answer_prereg,
+            config_path=args.config,
+            formal_manifest_path=args.formal_manifest,
+            formal_runs_manifest_path=args.formal_runs_manifest,
+        )
+    elif args.command == "prepare-formal-answer-review":
+        manifest = prepare_formal_answer_review(
+            run_dir=args.run_dir,
+            dataset_path=args.dataset,
+            matrix_dir=args.matrix_dir,
+            answer_prereg_path=args.answer_prereg,
+            config_path=args.config,
+            formal_manifest_path=args.formal_manifest,
+            formal_runs_manifest_path=args.formal_runs_manifest,
+            output_dir=args.output_dir,
+        )
+    elif args.command == "import-formal-answer-review":
+        manifest = import_formal_answer_review(
+            source_snapshot_path=args.source_snapshot,
+            reviewed_csv_path=args.reviewed_csv,
+            second_reviewed_csv_path=args.second_reviewed_csv,
+            summary_path=args.summary,
         )
     elif args.command == "sample-pilot-evidence":
         manifest = sample_pilot_evidence_groups(

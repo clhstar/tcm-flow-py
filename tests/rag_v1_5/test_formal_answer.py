@@ -1,7 +1,10 @@
 import hashlib
 import json
 import tempfile
+import threading
+import time
 import unittest
+import warnings
 from pathlib import Path
 
 from pydantic import ValidationError
@@ -17,6 +20,145 @@ class FormalAnswerSchemaTests(unittest.TestCase):
         self.temp_dir = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp_dir.cleanup)
         self.root = Path(self.temp_dir.name)
+
+    def _write_answer_matrix_fixture(self, *, split):
+        dataset_path = self.root / f"{split}.jsonl"
+        matrix_dir = self.root / f"{split}-retrieval"
+        config_path = self.root / "formal-answer.yaml"
+        formal_manifest_path = self.root / "formal-400.json"
+        formal_runs_manifest_path = self.root / "formal-runs.json"
+        answer_prereg_path = self.root / "answer-prereg.json"
+        config_path.write_text(
+            """
+version: v1.5.0
+seed: 20260616
+model:
+  env_model_key: OPENAI_MODEL
+  env_base_url_key: OPENAI_BASE_URL
+  temperature: 0.2
+  max_tokens: 512
+  timeout_seconds: 120
+  max_retries: 2
+  structured_output_method: json_mode
+generation:
+  repeats: 3
+  context_top_k: 5
+  answer_methods: [B0, B4, P, P-no-parent]
+execution:
+  max_workers: 2
+""".lstrip(),
+            encoding="utf-8",
+        )
+        dataset_path.write_text(
+            json.dumps(
+                {
+                    "question_id": "q-1",
+                    "question": "测试问题",
+                    "reference_answer": "测试答案",
+                    "answerable": True,
+                    "gold_clause_ids": ["gold-1"],
+                    "review_status": "approved",
+                    "split": split,
+                },
+                ensure_ascii=False,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        formal_manifest_path.write_text(
+            '{"status":"ready"}\n',
+            encoding="utf-8",
+        )
+        formal_runs_manifest_path.write_text(
+            '{"status":"ready"}\n',
+            encoding="utf-8",
+        )
+        matrix_dir.mkdir()
+        matrix_config = {
+            "status": "completed",
+            "split": split,
+            "input_hashes": {
+                "dataset_sha256": hashlib.sha256(
+                    dataset_path.read_bytes()
+                ).hexdigest().upper(),
+                "formal_manifest_sha256": hashlib.sha256(
+                    formal_manifest_path.read_bytes()
+                ).hexdigest().upper(),
+            },
+        }
+        matrix_config_path = matrix_dir / "matrix-config.json"
+        matrix_config_path.write_text(
+            json.dumps(matrix_config),
+            encoding="utf-8",
+        )
+        for config_id, context_text in (
+            ("b4-c0-hybrid-rerank", "b4 text"),
+            ("p-c4-hybrid-rerank", "parent text"),
+            ("p-no-parent", "child text"),
+        ):
+            config_dir = matrix_dir / config_id
+            config_dir.mkdir()
+            (config_dir / "per-question.jsonl").write_text(
+                json.dumps(
+                    {
+                        "question_id": "q-1",
+                        "config_id": config_id,
+                        "hits": [
+                            {
+                                "chunk_id": "chunk-1",
+                                "clause_ids": ["gold-1"],
+                                "context_text": context_text,
+                                "text": "child text",
+                                "retrieval_parent_id": "parent-1",
+                                "reranker_score": 0.9,
+                            }
+                        ],
+                    },
+                    ensure_ascii=False,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+        matrix_hash_key = (
+            "dev_matrix_config_sha256"
+            if split == "formal_dev"
+            else "test_matrix_config_sha256"
+        )
+        answer_prereg = {
+            "status": "ready",
+            "model": {
+                "name": "frozen-model",
+                "base_url_origin": "example.invalid",
+            },
+            "inputs": {
+                "config_sha256": hashlib.sha256(
+                    config_path.read_bytes()
+                ).hexdigest().upper(),
+                matrix_hash_key: hashlib.sha256(
+                    matrix_config_path.read_bytes()
+                ).hexdigest().upper(),
+                "formal_manifest_sha256": hashlib.sha256(
+                    formal_manifest_path.read_bytes()
+                ).hexdigest().upper(),
+                "formal_runs_manifest_sha256": hashlib.sha256(
+                    formal_runs_manifest_path.read_bytes()
+                ).hexdigest().upper(),
+            },
+            "methods": ["B0", "B4", "P", "P-no-parent"],
+            "repeats": 3,
+        }
+        answer_prereg_path.write_text(
+            json.dumps(answer_prereg),
+            encoding="utf-8",
+        )
+        return {
+            "dataset_path": dataset_path,
+            "matrix_dir": matrix_dir,
+            "config_path": config_path,
+            "formal_manifest_path": formal_manifest_path,
+            "formal_runs_manifest_path": formal_runs_manifest_path,
+            "answer_prereg_path": answer_prereg_path,
+        }
 
     def test_output_requires_consistent_abstention_and_citations(self):
         valid = FormalAnswerOutput(
@@ -367,4 +509,157 @@ generation:
         self.assertEqual(
             created[0].kwargs["model"],
             "frozen-model",
+        )
+
+    def test_calibrates_threshold_on_dev_only_with_stable_tie_break(
+        self,
+    ):
+        from experiments.rag_v1_5.formal_answer import calibrate_threshold
+
+        rows = [
+            {"answerable": True, "score": 0.9},
+            {"answerable": True, "score": 0.8},
+            {"answerable": False, "score": 0.4},
+            {"answerable": False, "score": 0.2},
+        ]
+
+        result = calibrate_threshold(rows)
+
+        self.assertEqual(result["objective"], "balanced_accuracy")
+        self.assertGreater(result["threshold"], 0.4)
+        self.assertLessEqual(result["threshold"], 0.8)
+
+    def test_test_run_requires_frozen_dev(self):
+        from experiments.rag_v1_5.formal_answer import (
+            run_formal_answer_matrix,
+        )
+
+        with self.assertRaises(ValueError):
+            run_formal_answer_matrix(
+                split="formal_test",
+                dev_freeze_path=self.root / "missing.json",
+                output_dir=self.root / "test",
+                model_factory=lambda **_: None,
+            )
+
+    def test_abstention_output_is_canonicalized_before_validation(self):
+        from experiments.rag_v1_5.formal_answer import (
+            ABSTAIN_ANSWER,
+            canonicalize_answer_output,
+        )
+        from experiments.rag_v1_5.schema import FormalAnswerOutput
+
+        output = canonicalize_answer_output(
+            FormalAnswerOutput(
+                answer="证据不足，无法回答。",
+                abstain=True,
+                citations=[],
+            )
+        )
+
+        self.assertEqual(output.answer, ABSTAIN_ANSWER)
+        self.assertEqual(output.citations, [])
+
+    def test_dev_matrix_writes_all_methods_and_repeats(self):
+        from experiments.rag_v1_5.formal_answer import (
+            run_formal_answer_matrix,
+        )
+        from experiments.rag_v1_5.schema import FormalAnswerOutput
+
+        fixture = self._write_answer_matrix_fixture(
+            split="formal_dev"
+        )
+
+        class FakeModel:
+            model_name = "frozen-model"
+
+            def invoke(self, messages):
+                nonlocal active_calls, max_active_calls
+                with call_lock:
+                    active_calls += 1
+                    max_active_calls = max(
+                        max_active_calls,
+                        active_calls,
+                    )
+                time.sleep(0.01)
+                with call_lock:
+                    active_calls -= 1
+                cited = "证据：" in messages[-1]["content"]
+                return (
+                    FormalAnswerOutput(
+                        answer="测试答案",
+                        abstain=False,
+                        citations=["E1"] if cited else [],
+                    ),
+                    {
+                        "input_tokens": 10,
+                        "output_tokens": 2,
+                        "system_fingerprint": "fp-test",
+                    },
+                )
+
+        call_lock = threading.Lock()
+        active_calls = 0
+        max_active_calls = 0
+        summary = run_formal_answer_matrix(
+            split="formal_dev",
+            output_dir=self.root / "answer-dev",
+            model_factory=lambda **_: FakeModel(),
+            **fixture,
+        )
+
+        self.assertEqual(summary["expected_runs"], 12)
+        self.assertEqual(summary["completed_count"], 12)
+        self.assertEqual(summary["error_count"], 0)
+        self.assertEqual(summary["status"], "completed")
+        records = (
+            Path(summary["run_dir"]) / "per-answer.jsonl"
+        ).read_text(encoding="utf-8").splitlines()
+        self.assertEqual(len(records), 12)
+        self.assertGreaterEqual(max_active_calls, 2)
+
+    def test_answer_cli_contracts(self):
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            from experiments.rag_v1_5.cli import build_parser
+
+        dev = build_parser().parse_args(["run-formal-answer-dev"])
+        freeze = build_parser().parse_args(
+            ["freeze-formal-answer-dev"]
+        )
+        test = build_parser().parse_args(["run-formal-answer-test"])
+        summarize = build_parser().parse_args(
+            [
+                "summarize-formal-answer-test",
+                "--run-dir",
+                "answer-test",
+            ]
+        )
+        prepare_review = build_parser().parse_args(
+            [
+                "prepare-formal-answer-review",
+                "--run-dir",
+                "answer-test",
+            ]
+        )
+        import_review = build_parser().parse_args(
+            ["import-formal-answer-review"]
+        )
+        self.assertEqual(dev.command, "run-formal-answer-dev")
+        self.assertEqual(
+            freeze.command,
+            "freeze-formal-answer-dev",
+        )
+        self.assertEqual(test.command, "run-formal-answer-test")
+        self.assertEqual(
+            summarize.command,
+            "summarize-formal-answer-test",
+        )
+        self.assertEqual(
+            prepare_review.command,
+            "prepare-formal-answer-review",
+        )
+        self.assertEqual(
+            import_review.command,
+            "import-formal-answer-review",
         )
