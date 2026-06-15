@@ -31,6 +31,8 @@ from experiments.rag_v1_5.dataset import (
 )
 from experiments.rag_v1_5.formal_dataset import (
     freeze_formal_preregistration,
+    import_formal_authoring_csv,
+    prepare_formal_authoring_csv,
     sample_formal_evidence_groups,
     validate_formal_dataset,
 )
@@ -155,6 +157,9 @@ DEFAULT_FORMAL_CONFIG_PATH = Path(
 )
 DEFAULT_FORMAL_PREREG_PATH = Path(
     "experiments/rag_v1_5/manifests/formal-prereg-v1.5.0.json"
+)
+DEFAULT_FORMAL_AUTHORING_PATH = (
+    DEFAULT_FORMAL_EVALUATION_DIR / "formal-authoring.csv"
 )
 DIRECT_DEPENDENCIES = (
     "pydantic",
@@ -831,6 +836,51 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_FORMAL_PREREG_PATH,
     )
 
+    prepare_formal_authoring_parser = subparsers.add_parser(
+        "prepare-formal-authoring",
+        help="导出带本地 Evidence 摘要的 Formal-400 编题工作表",
+    )
+    prepare_formal_authoring_parser.add_argument(
+        "--evidence-groups",
+        type=Path,
+        default=DEFAULT_FORMAL_EVIDENCE_GROUPS_PATH,
+    )
+    prepare_formal_authoring_parser.add_argument(
+        "--evidence",
+        type=Path,
+        default=DEFAULT_EVIDENCE_PATH,
+    )
+    prepare_formal_authoring_parser.add_argument(
+        "--output",
+        type=Path,
+        default=DEFAULT_FORMAL_AUTHORING_PATH,
+    )
+
+    import_formal_authoring_parser = subparsers.add_parser(
+        "import-formal-authoring",
+        help="导入并校验 Formal-400 编题工作表",
+    )
+    import_formal_authoring_parser.add_argument(
+        "--authoring-csv",
+        type=Path,
+        default=DEFAULT_FORMAL_AUTHORING_PATH,
+    )
+    import_formal_authoring_parser.add_argument(
+        "--evidence-groups",
+        type=Path,
+        default=DEFAULT_FORMAL_EVIDENCE_GROUPS_PATH,
+    )
+    import_formal_authoring_parser.add_argument(
+        "--evidence",
+        type=Path,
+        default=DEFAULT_EVIDENCE_PATH,
+    )
+    import_formal_authoring_parser.add_argument(
+        "--output",
+        type=Path,
+        default=DEFAULT_FORMAL_DRAFT_PATH,
+    )
+
     pilot_evidence_parser = subparsers.add_parser(
         "sample-pilot-evidence",
         help="按固定配额选择 Pilot-40 Evidence Group",
@@ -1239,6 +1289,19 @@ def main(
             pilot_manifest_path=args.pilot_manifest,
             pilot_runs_manifest_path=args.pilot_runs_manifest,
             output_path=args.output,
+        )
+    elif args.command == "prepare-formal-authoring":
+        manifest = prepare_formal_authoring_csv(
+            evidence_groups_path=args.evidence_groups,
+            evidence_path=args.evidence,
+            output_csv_path=args.output,
+        )
+    elif args.command == "import-formal-authoring":
+        manifest = import_formal_authoring_csv(
+            authoring_csv_path=args.authoring_csv,
+            evidence_groups_path=args.evidence_groups,
+            evidence_path=args.evidence,
+            output_dataset_path=args.output,
         )
     elif args.command == "sample-pilot-evidence":
         manifest = sample_pilot_evidence_groups(

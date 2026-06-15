@@ -1,3 +1,4 @@
+import csv
 import json
 import hashlib
 import tempfile
@@ -613,6 +614,31 @@ class FormalDatasetCliTests(unittest.TestCase):
             ),
         )
 
+    def test_formal_authoring_cli_contract(self) -> None:
+        from experiments.rag_v1_5.cli import build_parser
+
+        prepare_args = build_parser().parse_args(
+            ["prepare-formal-authoring"]
+        )
+        import_args = build_parser().parse_args(
+            ["import-formal-authoring"]
+        )
+
+        self.assertEqual(
+            prepare_args.output,
+            Path(
+                "data/rag_v1_5/formal/evaluation/"
+                "formal-authoring.csv"
+            ),
+        )
+        self.assertEqual(
+            import_args.output,
+            Path(
+                "data/rag_v1_5/formal/evaluation/"
+                "formal-400-draft.jsonl"
+            ),
+        )
+
 
 class FormalEvidenceSamplingTests(unittest.TestCase):
     def run_sampling(
@@ -1159,6 +1185,169 @@ class FormalPreregistrationTests(unittest.TestCase):
             )
             with self.assertRaisesRegex(ValueError, "运行字段"):
                 freeze_formal_preregistration(**paths)
+
+
+class FormalAuthoringWorkflowTests(unittest.TestCase):
+    def prepare_authoring_files(
+        self,
+        root: Path,
+    ) -> tuple[Path, Path, Path, list[dict]]:
+        from experiments.rag_v1_5.formal_dataset import (
+            prepare_formal_authoring_csv,
+        )
+
+        _, groups, evidence = make_formal_artifacts()
+        groups_path = root / "formal-evidence-groups.jsonl"
+        evidence_path = root / "evidence.jsonl"
+        authoring_path = root / "formal-authoring.csv"
+        write_jsonl(groups_path, groups)
+        write_jsonl(evidence_path, evidence)
+        summary = prepare_formal_authoring_csv(
+            evidence_groups_path=groups_path,
+            evidence_path=evidence_path,
+            output_csv_path=authoring_path,
+        )
+        self.assertEqual(summary["row_count"], 400)
+        return groups_path, evidence_path, authoring_path, evidence
+
+    def read_rows(self, path: Path) -> list[dict[str, str]]:
+        with path.open(
+            "r",
+            encoding="utf-8-sig",
+            newline="",
+        ) as file_handle:
+            return list(csv.DictReader(file_handle))
+
+    def write_rows(
+        self,
+        path: Path,
+        rows: list[dict[str, str]],
+    ) -> None:
+        with path.open(
+            "w",
+            encoding="utf-8-sig",
+            newline="",
+        ) as file_handle:
+            writer = csv.DictWriter(
+                file_handle,
+                fieldnames=list(rows[0]),
+                lineterminator="\n",
+            )
+            writer.writeheader()
+            writer.writerows(rows)
+
+    def complete_rows(self, rows: list[dict[str, str]]) -> None:
+        for row in rows:
+            context = json.loads(row["evidence_context"])
+            row["question"] = f"请回答 {row['question_id']} 对应的问题？"
+            if row["question_type"] == "unanswerable":
+                row["reference_answer"] = "当前指定古籍范围内无答案。"
+                row["gold_evidence_ids"] = "[]"
+                row["gold_clause_ids"] = "[]"
+                row["graded_relevance"] = "{}"
+                row["support_spans"] = "[]"
+            else:
+                support_spans = [
+                    item["normalized_text"] for item in context
+                ]
+                row["reference_answer"] = "；".join(support_spans)
+                row["support_spans"] = json.dumps(
+                    support_spans,
+                    ensure_ascii=False,
+                )
+            row["question_version"] = "1"
+
+    def test_prepare_and_import_complete_formal_authoring_csv(
+        self,
+    ) -> None:
+        from experiments.rag_v1_5.formal_dataset import (
+            FORMAL_AUTHORING_FIELDS,
+            import_formal_authoring_csv,
+        )
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            groups_path, evidence_path, authoring_path, _ = (
+                self.prepare_authoring_files(root)
+            )
+            self.assertTrue(
+                authoring_path.read_bytes().startswith(b"\xef\xbb\xbf")
+            )
+            rows = self.read_rows(authoring_path)
+            self.assertEqual(len(rows), 400)
+            self.assertEqual(list(rows[0]), list(FORMAL_AUTHORING_FIELDS))
+            self.assertTrue(rows[0]["evidence_context"])
+            self.assertEqual(rows[0]["question"], "")
+            self.complete_rows(rows)
+            self.write_rows(authoring_path, rows)
+            output_path = root / "formal-400-draft.jsonl"
+
+            summary = import_formal_authoring_csv(
+                authoring_csv_path=authoring_path,
+                evidence_groups_path=groups_path,
+                evidence_path=evidence_path,
+                output_dataset_path=output_path,
+            )
+            records = [
+                json.loads(line)
+                for line in output_path.read_text(
+                    encoding="utf-8"
+                ).splitlines()
+            ]
+
+        self.assertEqual(summary["status"], "draft")
+        self.assertEqual(summary["question_count"], 400)
+        self.assertEqual(summary["answerable_count"], 320)
+        self.assertEqual(summary["unanswerable_count"], 80)
+        self.assertEqual(len(records), 400)
+        self.assertTrue(
+            all(record["review_status"] == "draft" for record in records)
+        )
+
+    def test_import_rejects_immutable_duplicate_and_clinical_edits(
+        self,
+    ) -> None:
+        from experiments.rag_v1_5.formal_dataset import (
+            import_formal_authoring_csv,
+        )
+
+        cases = ("immutable", "duplicate", "clinical", "out_of_scope_gold")
+        for case in cases:
+            with self.subTest(case=case):
+                with tempfile.TemporaryDirectory() as temporary_directory:
+                    root = Path(temporary_directory)
+                    groups_path, evidence_path, authoring_path, _ = (
+                        self.prepare_authoring_files(root)
+                    )
+                    rows = self.read_rows(authoring_path)
+                    self.complete_rows(rows)
+                    if case == "immutable":
+                        rows[0]["split"] = "formal_test"
+                        expected = "不可编辑"
+                    elif case == "duplicate":
+                        rows[1]["question"] = rows[0]["question"]
+                        expected = "重复"
+                    elif case == "clinical":
+                        rows[0]["question"] = (
+                            "患者应该服用什么方剂治疗当前症状？"
+                        )
+                        expected = "临床"
+                    else:
+                        rows[0]["gold_evidence_ids"] = json.dumps(
+                            [json.loads(rows[1]["anchor_evidence_ids"])[0]]
+                        )
+                        expected = "anchor"
+                    self.write_rows(authoring_path, rows)
+
+                    with self.assertRaisesRegex(ValueError, expected):
+                        import_formal_authoring_csv(
+                            authoring_csv_path=authoring_path,
+                            evidence_groups_path=groups_path,
+                            evidence_path=evidence_path,
+                            output_dataset_path=(
+                                root / "formal-400-draft.jsonl"
+                            ),
+                        )
 
 
 if __name__ == "__main__":

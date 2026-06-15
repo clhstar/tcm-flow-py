@@ -1016,3 +1016,113 @@ ready_for_formal_400=true
 该状态只允许进入正式数据集构建和预注册比较，不表示 Pilot 已证明某一
 检索策略最终优越。完整报告见
 `docs/experiments/v1.5-retrieval-pilot-summary.md`。
+
+## 2026-06-15：Formal-400 候选分组、预注册与编题工作表
+
+### 数据契约与 Evidence Group
+
+按正式计划新增并验证了 Formal 数据契约、历史排除、跨 split 隔离和固定
+配额。执行：
+
+```powershell
+.\.venv\Scripts\python.exe -m experiments.rag_v1_5.cli sample-formal-evidence
+```
+
+真实输出：
+
+```text
+status=ready
+group_count=400
+answerable_group_count=320
+unanswerable_group_count=80
+formal_dev_count=200
+formal_test_count=200
+answerable_anchor_clause_count=400
+prior_overlap_count=0
+cross_split_clause_overlap_count=0
+```
+
+三份仅本地文件连续运行两次哈希完全一致：
+
+```text
+formal-evidence-groups.jsonl SHA256=
+AEC716E0555B665F949FB77F74F2FB92F0854ADAEFB790C9F57CA9F91CC8F1A7
+
+formal-exclusions.json SHA256=
+13AB8BACDB29D8218F59ED74434EA644D76EC95FF30A4C4F6B367B7C39A4FA85
+
+formal-candidate-report.json SHA256=
+08F5EE367EC724B124434BF3B47C768183B513D8565EA6131C37EEE69161075B
+```
+
+四个 `source_location` 单元格均实际选择了 note Evidence；80 个无答案
+Evidence Group 均记录 2 条 absence query。候选生成未复用 Smoke/Pilot
+Evidence 或 Clause，也未跨 `formal_dev/formal_test` 复用 Clause。
+
+### 正式预注册冻结
+
+执行：
+
+```powershell
+.\.venv\Scripts\python.exe -m experiments.rag_v1_5.cli freeze-formal-prereg
+```
+
+得到：
+
+```text
+formal-prereg-v1.5.0.json status=ready
+config_count=14
+primary_comparison=P vs B4
+ablation_comparison_count=6
+bootstrap_seed=20260614
+bootstrap_resamples=10000
+formal-prereg-v1.5.0.json SHA256=
+5DFF217581C574B67E776302A97857D14FE88886B5F7DBD9DB92F9D33F33A1E6
+```
+
+正式 YAML 继承 Pilot 固定模型 revision 和运行参数，包含可直接执行的
+CUDA、batch、BM25 tokenizer、Dense、RRF、Reranker 与 Top-10 配置。
+预注册 Manifest 只包含 ID、配置和哈希，不包含问题、答案、support span
+或古籍原文。
+
+### 编题工作表与当前停止点
+
+执行：
+
+```powershell
+.\.venv\Scripts\python.exe -m experiments.rag_v1_5.cli prepare-formal-authoring
+```
+
+得到仅本地工作表：
+
+```text
+formal-authoring.csv row_count=400
+formal_dev=200
+formal_test=200
+single_clause_fact=120
+formula_composition_or_use=80
+source_location=40
+multi_evidence=80
+unanswerable=80
+UTF-8 BOM=true
+SHA256=558EB84DF054DD09ECF19857CCED0337F03B073DF31C643B6CC6F04B6AAB32D0
+```
+
+工作表包含冻结的不可编辑字段、本地 Evidence 摘要和预填 gold 候选；
+导入器会拒绝不可编辑字段变化、越界 gold/support、归一化重复问题和现实
+临床建议。
+
+当前实际状态：
+
+```text
+formal_candidate_status=ready
+formal_prereg_status=ready
+formal_authoring_sheet_status=ready_for_authoring
+formal_authored_question_count=0
+formal_dataset_frozen=false
+formal_retrieval_completed=false
+```
+
+计划明确要求 400 题人工编写和后续 `400 + 40` 双轮人工审核。当前没有把
+规则模板或自动生成内容冒充人工题集，因此在题目正文和参考答案填写完成前，
+不得生成 `formal-400-draft.jsonl`，也不得继续正式检索矩阵。

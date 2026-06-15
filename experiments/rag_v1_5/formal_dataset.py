@@ -1,3 +1,4 @@
+import csv
 import hashlib
 import json
 import random
@@ -40,6 +41,30 @@ FORMAL_CONFIG_IDS = (
     "p-no-dense",
     "p-no-reranker",
     "p-no-title",
+)
+FORMAL_AUTHORING_IMMUTABLE_FIELDS = (
+    "question_id",
+    "group_id",
+    "split",
+    "book_scope",
+    "question_type",
+    "anchor_evidence_ids",
+    "anchor_clause_ids",
+    "absence_queries",
+    "evidence_context",
+)
+FORMAL_AUTHORING_EDITABLE_FIELDS = (
+    "question",
+    "reference_answer",
+    "gold_evidence_ids",
+    "gold_clause_ids",
+    "graded_relevance",
+    "support_spans",
+    "question_version",
+)
+FORMAL_AUTHORING_FIELDS = (
+    FORMAL_AUTHORING_IMMUTABLE_FIELDS
+    + FORMAL_AUTHORING_EDITABLE_FIELDS
 )
 UNANSWERABLE_TOPICS = (
     "青霉素用法",
@@ -1123,6 +1148,367 @@ def freeze_formal_preregistration(
 
     _write_json(output_path, manifest)
     return manifest
+
+
+def _formal_question_id(group: FormalEvidenceGroup) -> str:
+    return group.group_id.replace("formal-", "formal-q-", 1)
+
+
+def _json_cell(value: object) -> str:
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+
+def _build_formal_authoring_rows(
+    *,
+    groups: list[FormalEvidenceGroup],
+    evidence_by_id: dict[str, EvidenceUnit],
+) -> list[dict[str, str]]:
+    rows = []
+    for group in sorted(
+        groups,
+        key=lambda item: (
+            FORMAL_BOOKS.index(item.book_scope),
+            FORMAL_SPLITS.index(item.split),
+            FORMAL_QUESTION_TYPES.index(item.question_type),
+            item.group_id,
+        ),
+    ):
+        context = []
+        for evidence_id in group.anchor_evidence_ids:
+            evidence = evidence_by_id.get(evidence_id)
+            if evidence is None:
+                raise ValueError(
+                    f"{group.group_id} 找不到 anchor Evidence: "
+                    f"{evidence_id}"
+                )
+            context.append(
+                {
+                    "evidence_id": evidence.evidence_id,
+                    "clause_id": evidence.clause_id,
+                    "content_type": evidence.content_type,
+                    "book_title": evidence.book_title,
+                    "chapter_title": evidence.chapter_title,
+                    "clause_number": evidence.clause_number,
+                    "normalized_text": evidence.normalized_text,
+                }
+            )
+        row = {
+            "question_id": _formal_question_id(group),
+            "group_id": group.group_id,
+            "split": group.split,
+            "book_scope": group.book_scope,
+            "question_type": group.question_type,
+            "anchor_evidence_ids": _json_cell(
+                group.anchor_evidence_ids
+            ),
+            "anchor_clause_ids": _json_cell(group.anchor_clause_ids),
+            "absence_queries": _json_cell(group.absence_queries),
+            "evidence_context": _json_cell(context),
+            "question": "",
+            "reference_answer": "",
+            "gold_evidence_ids": _json_cell(
+                group.anchor_evidence_ids
+            ),
+            "gold_clause_ids": _json_cell(group.anchor_clause_ids),
+            "graded_relevance": _json_cell(
+                {
+                    clause_id: 2
+                    for clause_id in group.anchor_clause_ids
+                }
+            ),
+            "support_spans": "[]",
+            "question_version": "1",
+        }
+        if group.question_type == "unanswerable":
+            row["gold_evidence_ids"] = "[]"
+            row["gold_clause_ids"] = "[]"
+            row["graded_relevance"] = "{}"
+        rows.append(row)
+    return rows
+
+
+def _read_authoring_csv(path: Path) -> list[dict[str, str]]:
+    if not path.is_file():
+        raise FileNotFoundError(path)
+    with path.open(
+        "r",
+        encoding="utf-8-sig",
+        newline="",
+    ) as file_handle:
+        reader = csv.DictReader(file_handle)
+        if tuple(reader.fieldnames or ()) != FORMAL_AUTHORING_FIELDS:
+            raise ValueError("Formal authoring CSV 字段不符合契约")
+        return list(reader)
+
+
+def prepare_formal_authoring_csv(
+    *,
+    evidence_groups_path: Path,
+    evidence_path: Path,
+    output_csv_path: Path,
+) -> dict:
+    groups = _read_jsonl(evidence_groups_path, FormalEvidenceGroup)
+    _summarize_formal_groups(groups)
+    evidence_units = _read_jsonl(evidence_path, EvidenceUnit)
+    evidence_by_id = {
+        evidence.evidence_id: evidence for evidence in evidence_units
+    }
+    if len(evidence_by_id) != len(evidence_units):
+        raise ValueError("Evidence Tree 存在重复 evidence_id")
+    rows = _build_formal_authoring_rows(
+        groups=groups,
+        evidence_by_id=evidence_by_id,
+    )
+
+    if output_csv_path.is_file():
+        existing_rows = _read_authoring_csv(output_csv_path)
+        existing_by_id = {
+            row["question_id"]: row for row in existing_rows
+        }
+        if len(existing_by_id) != len(existing_rows):
+            raise ValueError("已有 Formal authoring CSV question_id 重复")
+        for row in rows:
+            existing = existing_by_id.get(row["question_id"])
+            if existing is None:
+                continue
+            immutable_changes = [
+                field
+                for field in FORMAL_AUTHORING_IMMUTABLE_FIELDS
+                if existing[field] != row[field]
+            ]
+            if immutable_changes:
+                raise ValueError(
+                    "已有 Formal authoring CSV 不可编辑字段已变化: "
+                    f"{immutable_changes}"
+                )
+            for field in FORMAL_AUTHORING_EDITABLE_FIELDS:
+                row[field] = existing[field]
+
+    output_csv_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_csv_path.open(
+        "w",
+        encoding="utf-8-sig",
+        newline="",
+    ) as file_handle:
+        writer = csv.DictWriter(
+            file_handle,
+            fieldnames=FORMAL_AUTHORING_FIELDS,
+            lineterminator="\n",
+        )
+        writer.writeheader()
+        writer.writerows(rows)
+    return {
+        "status": "ready_for_authoring",
+        "row_count": len(rows),
+        "editable_field_count": len(FORMAL_AUTHORING_EDITABLE_FIELDS),
+        "output_sha256": _sha256_file(output_csv_path),
+    }
+
+
+def _parse_json_cell(
+    row: dict[str, str],
+    field: str,
+    expected_type: type,
+) -> object:
+    try:
+        value = json.loads(row[field])
+    except (KeyError, json.JSONDecodeError) as error:
+        raise ValueError(
+            f"{row.get('question_id', '<unknown>')} {field} 不是合法 JSON"
+        ) from error
+    if not isinstance(value, expected_type):
+        raise ValueError(
+            f"{row.get('question_id', '<unknown>')} {field} 类型错误"
+        )
+    return value
+
+
+def _reject_clinical_question(question: str) -> None:
+    clinical_patterns = (
+        r"患者应该",
+        r"建议服用",
+        r"请给出处方",
+        r"如何治疗我",
+        r"为我诊断",
+        r"应该用多少剂量",
+    )
+    if any(re.search(pattern, question) for pattern in clinical_patterns):
+        raise ValueError("Formal 问题不得包含现实临床建议或诊断请求")
+
+
+def import_formal_authoring_csv(
+    *,
+    authoring_csv_path: Path,
+    evidence_groups_path: Path,
+    evidence_path: Path,
+    output_dataset_path: Path,
+) -> dict:
+    groups = _read_jsonl(evidence_groups_path, FormalEvidenceGroup)
+    _summarize_formal_groups(groups)
+    groups_by_id = {group.group_id: group for group in groups}
+    evidence_units = _read_jsonl(evidence_path, EvidenceUnit)
+    evidence_by_id = {
+        evidence.evidence_id: evidence for evidence in evidence_units
+    }
+    expected_rows = _build_formal_authoring_rows(
+        groups=groups,
+        evidence_by_id=evidence_by_id,
+    )
+    expected_by_id = {
+        row["question_id"]: row for row in expected_rows
+    }
+    rows = _read_authoring_csv(authoring_csv_path)
+    question_ids = [row["question_id"] for row in rows]
+    if len(question_ids) != len(set(question_ids)):
+        raise ValueError("Formal authoring CSV 存在重复 question_id")
+    if set(question_ids) != set(expected_by_id):
+        raise ValueError("Formal authoring CSV 行集合与 Evidence Group 不一致")
+
+    records = []
+    normalized_questions = []
+    for row in rows:
+        expected = expected_by_id[row["question_id"]]
+        immutable_changes = [
+            field
+            for field in FORMAL_AUTHORING_IMMUTABLE_FIELDS
+            if row[field] != expected[field]
+        ]
+        if immutable_changes:
+            raise ValueError(
+                f"{row['question_id']} 不可编辑字段已变化: "
+                f"{immutable_changes}"
+            )
+        question = row["question"].strip()
+        reference_answer = row["reference_answer"].strip()
+        if not question or not reference_answer:
+            raise ValueError(
+                f"{row['question_id']} 问题和参考答案不得为空"
+            )
+        _reject_clinical_question(question)
+        normalized_questions.append(_normalize_question_text(question))
+
+        group = groups_by_id[row["group_id"]]
+        gold_evidence_ids = _parse_json_cell(
+            row,
+            "gold_evidence_ids",
+            list,
+        )
+        gold_clause_ids = _parse_json_cell(
+            row,
+            "gold_clause_ids",
+            list,
+        )
+        graded_relevance = _parse_json_cell(
+            row,
+            "graded_relevance",
+            dict,
+        )
+        support_spans = _parse_json_cell(
+            row,
+            "support_spans",
+            list,
+        )
+        if not all(
+            isinstance(value, str)
+            for value in gold_evidence_ids
+            + gold_clause_ids
+            + support_spans
+        ):
+            raise ValueError("Formal gold/support 字段必须为字符串列表")
+        if not set(gold_evidence_ids) <= set(
+            group.anchor_evidence_ids
+        ):
+            raise ValueError(
+                f"{row['question_id']} gold Evidence 越出 anchor"
+            )
+        if not set(gold_clause_ids) <= set(group.anchor_clause_ids):
+            raise ValueError(
+                f"{row['question_id']} gold clause 越出 anchor"
+            )
+        leaked_ids = [
+            gold_id
+            for gold_id in gold_evidence_ids + gold_clause_ids
+            if gold_id in question
+        ]
+        if leaked_ids:
+            raise ValueError(
+                f"{row['question_id']} 问题泄漏 gold ID"
+            )
+
+        answerable = group.question_type != "unanswerable"
+        if answerable:
+            if (
+                not gold_evidence_ids
+                or not gold_clause_ids
+                or not support_spans
+            ):
+                raise ValueError("Formal answerable 问题缺少 gold/support")
+            if (
+                group.question_type == "multi_evidence"
+                and len(set(gold_clause_ids)) < 2
+            ):
+                raise ValueError(
+                    "Formal multi_evidence 至少需要 2 个 gold clause"
+                )
+            for support_span in support_spans:
+                if not any(
+                    support_span
+                    in evidence_by_id[evidence_id].normalized_text
+                    for evidence_id in gold_evidence_ids
+                ):
+                    raise ValueError(
+                        f"{row['question_id']} support span "
+                        "不属于 gold Evidence"
+                    )
+        elif (
+            gold_evidence_ids
+            or gold_clause_ids
+            or graded_relevance
+            or support_spans
+        ):
+            raise ValueError("Formal 无答案问题不得包含 gold/support")
+
+        try:
+            question_version = int(row["question_version"])
+        except ValueError as error:
+            raise ValueError("question_version 必须为正整数") from error
+        record = PilotQuestion(
+            question_id=row["question_id"],
+            question=question,
+            question_type=group.question_type,
+            book_scope=group.book_scope,
+            answerable=answerable,
+            reference_answer=reference_answer,
+            gold_evidence_ids=gold_evidence_ids,
+            gold_clause_ids=gold_clause_ids,
+            graded_relevance=graded_relevance,
+            support_spans=support_spans,
+            review_status="draft",
+            split=group.split,
+            evidence_group_id=group.group_id,
+            question_version=question_version,
+        )
+        records.append(record.model_dump(mode="json"))
+
+    if len(normalized_questions) != len(set(normalized_questions)):
+        raise ValueError("Formal authoring CSV 问题文本归一化后重复")
+
+    records.sort(key=lambda record: record["question_id"])
+    _write_jsonl(output_dataset_path, records)
+    answerable_count = sum(record["answerable"] for record in records)
+    return {
+        "status": "draft",
+        "question_count": len(records),
+        "answerable_count": answerable_count,
+        "unanswerable_count": len(records) - answerable_count,
+        "output_sha256": _sha256_file(output_dataset_path),
+        "authoring_csv_sha256": _sha256_file(authoring_csv_path),
+    }
 
 
 def validate_formal_dataset(
