@@ -77,6 +77,57 @@ Pilot 数据集、模型、索引和运行结果都保存在本地 `data/rag_v1_
 `docs/experiments/v1.5-retrieval-pilot-summary.md`。逐题结果仍留在本地，
 不得将 `data/rag_v1_5` 加入 Git。
 
+## Formal-400 正式检索实验
+
+Formal-400 的题目、审核表、Chunk、索引和逐题结果都保存在本地
+`data/rag_v1_5/formal`。仓库只提交预注册、计数、哈希、冻结 Manifest 和不含
+私有正文的结果报告。
+
+冻结数据集后构建 Formal 专用 C0-C5 Chunk 和索引：
+
+```powershell
+.\.venv\Scripts\python.exe -m experiments.rag_v1_5.cli freeze-formal-dataset
+.\.venv\Scripts\python.exe -m experiments.rag_v1_5.cli build-formal-chunks
+.\.venv\Scripts\python.exe -m experiments.rag_v1_5.cli build-formal-indexes
+.\.venv\Scripts\python.exe -m experiments.rag_v1_5.cli retrieval-doctor --formal
+```
+
+先运行开发集 14 配置门禁：
+
+```powershell
+.\.venv\Scripts\python.exe -m experiments.rag_v1_5.cli run-formal-dev
+```
+
+开发集门禁通过并冻结代码后，只运行一次正式测试集：
+
+```powershell
+.\.venv\Scripts\python.exe -m experiments.rag_v1_5.cli run-formal-test
+```
+
+只有进程意外中断时，才允许在输入哈希和固定矩阵完全相同的目录中恢复：
+
+```powershell
+.\.venv\Scripts\python.exe -m experiments.rag_v1_5.cli run-formal-test `
+  --resume data/rag_v1_5/formal/runs/test/<matrix_id>
+```
+
+完成后生成 10000 次配对分层 Bootstrap 统计并冻结运行清单：
+
+```powershell
+$matrixDir = 'data/rag_v1_5/formal/runs/test/<matrix_id>'
+
+.\.venv\Scripts\python.exe -m experiments.rag_v1_5.cli summarize-formal-test `
+  --run-dir $matrixDir
+
+.\.venv\Scripts\python.exe -m experiments.rag_v1_5.cli freeze-formal-runs `
+  --run-dir $matrixDir
+```
+
+可提交的运行清单位于
+`experiments/rag_v1_5/manifests/formal-runs-v1.5.0.json`，正式结果报告位于
+`docs/experiments/v1.5-formal-retrieval-results.md`。任何
+`data/rag_v1_5/formal` 文件都不得加入 Git。
+
 ## C0-C4 Chunk 实验
 
 五种策略读取同一份 `data/rag_v1_5/processed/evidence.jsonl`：

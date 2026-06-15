@@ -1548,3 +1548,47 @@ contains_manual_comments=false
 
 运行未发生进程中断、resume、CUDA OOM 或 RuntimeError。正式结果的解释继续受 Dev
 阶段记录的“片段锚定合成题库”边界约束。
+
+## 2026-06-15：Formal-400 正式检索报告与阶段收束
+
+根据已冻结的 Formal 数据集 Manifest、运行 Manifest 和本地
+`formal-statistics.json` 编写正式检索结果报告：
+
+```text
+report=docs/experiments/v1.5-formal-retrieval-results.md
+formal_report_written=true
+private_question_text_in_report=false
+private_reference_answer_in_report=false
+private_hit_text_in_report=false
+manual_review_comments_in_report=false
+```
+
+主比较 `P - B4` 在 160 道 answerable 测试题上的配对分层 Bootstrap 结果：
+
+```text
+Recall@5 delta=0.00625
+Recall@5 95% CI=[-0.00625, 0.021875]
+MRR@10 delta=0.0304166667
+MRR@10 95% CI=[0.0010416667, 0.0619791667]
+nDCG@10 delta=0.0523711428
+nDCG@10 95% CI=[0.0264241346, 0.0792654951]
+```
+
+阶段判定：
+
+```text
+RQ2=hybrid evidence mixed; ranking gains do not imply universal recall gains
+RQ3=reranker improves Recall@5 but reduces MRR@10 and adds latency
+RQ4=P improves ranking over B4, but C4 structure-specific contribution is not isolated
+RQ5=parent recovery and traceability established; answer-level benefit not tested
+formal_dataset_frozen=true
+formal_retrieval_completed=true
+answer_level_evaluation_completed=false
+```
+
+报告明确披露题库是人工审核的片段锚定合成基准，并记录 320 道 answerable 问题
+中的字面重合审计。未将该结果外推为自然用户查询、临床诊疗或回答生成质量。
+
+下一阶段需要单独预注册 B0/B4/P 回答层实验，在 `formal_dev` 冻结 Prompt、
+生成参数和无答案阈值后，一次性评估 `formal_test` 的引用准确率、支持率、拒答
+准确率和幻觉率。本次未开始回答层实验。
