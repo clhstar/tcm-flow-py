@@ -12,12 +12,114 @@ from experiments.rag_v1_5.runner import (
     _read_jsonl_strict,
     _sha256_file,
 )
+from experiments.rag_v1_5.schema import FormalAnswerOutput
 
 ANSWER_RETRIEVAL_CONFIGS = {
     "B4": "b4-c0-hybrid-rerank",
     "P": "p-c4-hybrid-rerank",
     "P-no-parent": "p-no-parent",
 }
+ABSTAIN_ANSWER = "在指定古籍证据范围内未找到可靠答案。"
+EVIDENCE_SYSTEM_PROMPT = """你是中医古籍证据问答评测模型。
+对于 B4、P 和 P-no-parent，只能依据给定证据回答，不得补充证据之外的医学常识。
+证据不足时必须拒答。
+引用只能使用输入中给出的 E1、E2 等标签。
+输出必须符合 JSON：{"answer":"回答正文","abstain":false,"citations":["E1"]}。
+拒答时 answer 固定为“在指定古籍证据范围内未找到可靠答案。”，
+abstain=true，citations=[]。"""
+B0_SYSTEM_PROMPT = """你是中医古籍问答评测模型。
+本配置不提供外部证据，可依据模型已有知识回答；不确定时必须拒答。
+输出必须符合 JSON：{"answer":"回答正文","abstain":false,"citations":[]}。
+citations 必须为空。
+拒答时 answer 固定为“在指定古籍证据范围内未找到可靠答案。”，
+abstain=true，citations=[]。"""
+
+
+def build_answer_messages(
+    *,
+    question: str,
+    evidence: list[dict],
+    method: str,
+) -> list[dict]:
+    if method == "B0":
+        if evidence:
+            raise ValueError("B0 不允许传入检索证据")
+        return [
+            {"role": "system", "content": B0_SYSTEM_PROMPT},
+            {"role": "user", "content": f"问题：{question}"},
+        ]
+    if method not in ANSWER_RETRIEVAL_CONFIGS:
+        raise ValueError(f"不支持的回答方法: {method}")
+    evidence_text = "\n\n".join(
+        f"[{item['label']}]\n{item['text']}" for item in evidence
+    )
+    return [
+        {"role": "system", "content": EVIDENCE_SYSTEM_PROMPT},
+        {
+            "role": "user",
+            "content": f"问题：{question}\n\n证据：\n{evidence_text}",
+        },
+    ]
+
+
+class FormalAnswerModel:
+    def __init__(
+        self,
+        *,
+        config: dict,
+        env: Mapping[str, str] | None = None,
+        chat_model_factory=None,
+    ) -> None:
+        if env is None:
+            load_dotenv()
+            environment = os.environ
+        else:
+            environment = env
+        model_config = config["model"]
+        self.model_name = environment[
+            model_config["env_model_key"]
+        ]
+        base_url = environment[
+            model_config["env_base_url_key"]
+        ]
+        if chat_model_factory is None:
+            from langchain_openai import ChatOpenAI
+
+            chat_model_factory = ChatOpenAI
+        model = chat_model_factory(
+            model=self.model_name,
+            base_url=base_url,
+            temperature=model_config["temperature"],
+            max_tokens=model_config["max_tokens"],
+            timeout=model_config["timeout_seconds"],
+            max_retries=model_config["max_retries"],
+        )
+        self.structured = model.with_structured_output(
+            FormalAnswerOutput,
+            method=model_config["structured_output_method"],
+            include_raw=True,
+        )
+
+    def invoke(
+        self,
+        messages: list[dict],
+    ) -> tuple[FormalAnswerOutput, dict]:
+        response = self.structured.invoke(messages)
+        parsed = FormalAnswerOutput.model_validate(response["parsed"])
+        metadata = (
+            getattr(response["raw"], "response_metadata", {})
+            or {}
+        )
+        usage = metadata.get("token_usage", {})
+        return parsed, {
+            "input_tokens": int(usage.get("prompt_tokens", 0)),
+            "output_tokens": int(
+                usage.get("completion_tokens", 0)
+            ),
+            "system_fingerprint": metadata.get(
+                "system_fingerprint"
+            ),
+        }
 
 
 def build_evidence_items(

@@ -255,3 +255,116 @@ generation:
             ["E1", "E2"],
         )
         self.assertEqual(len(items), 2)
+
+    def test_prompt_requires_evidence_only_answer_and_citations(self):
+        from experiments.rag_v1_5.formal_answer import (
+            build_answer_messages,
+        )
+
+        messages = build_answer_messages(
+            question="桂枝汤由哪些药组成？",
+            evidence=[
+                {
+                    "label": "E1",
+                    "text": "桂枝、芍药、生姜...",
+                }
+            ],
+            method="P",
+        )
+        serialized = json.dumps(messages, ensure_ascii=False)
+        self.assertIn("只能依据给定证据", serialized)
+        self.assertIn("citations", serialized)
+        self.assertIn("E1", serialized)
+
+    def test_b0_prompt_has_no_evidence_labels(self):
+        from experiments.rag_v1_5.formal_answer import (
+            build_answer_messages,
+        )
+
+        messages = build_answer_messages(
+            question="桂枝汤由哪些药组成？",
+            evidence=[],
+            method="B0",
+        )
+        self.assertNotIn(
+            "[E1]",
+            json.dumps(messages, ensure_ascii=False),
+        )
+
+    def test_model_adapter_parses_structured_output_and_usage(self):
+        from experiments.rag_v1_5.formal_answer import FormalAnswerModel
+
+        class FakeRaw:
+            response_metadata = {
+                "token_usage": {
+                    "prompt_tokens": 12,
+                    "completion_tokens": 3,
+                },
+                "system_fingerprint": "fp-test",
+            }
+
+        class FakeStructuredModel:
+            def invoke(self, messages):
+                self.messages = messages
+                return {
+                    "parsed": {
+                        "answer": "桂枝汤。",
+                        "abstain": False,
+                        "citations": ["E1"],
+                    },
+                    "raw": FakeRaw(),
+                }
+
+        class FakeChatModel:
+            def __init__(self, **kwargs):
+                self.kwargs = kwargs
+                self.structured = FakeStructuredModel()
+
+            def with_structured_output(
+                self,
+                schema,
+                *,
+                method,
+                include_raw,
+            ):
+                self.schema = schema
+                self.method = method
+                self.include_raw = include_raw
+                return self.structured
+
+        created = []
+
+        def fake_factory(**kwargs):
+            model = FakeChatModel(**kwargs)
+            created.append(model)
+            return model
+
+        adapter = FormalAnswerModel(
+            config={
+                "model": {
+                    "env_model_key": "OPENAI_MODEL",
+                    "env_base_url_key": "OPENAI_BASE_URL",
+                    "temperature": 0.2,
+                    "max_tokens": 512,
+                    "timeout_seconds": 120,
+                    "max_retries": 2,
+                    "structured_output_method": "json_mode",
+                }
+            },
+            env={
+                "OPENAI_MODEL": "frozen-model",
+                "OPENAI_BASE_URL": "https://example.invalid/v1",
+            },
+            chat_model_factory=fake_factory,
+        )
+        parsed, metadata = adapter.invoke(
+            [{"role": "user", "content": "test"}]
+        )
+
+        self.assertEqual(parsed.answer, "桂枝汤。")
+        self.assertEqual(metadata["input_tokens"], 12)
+        self.assertEqual(metadata["output_tokens"], 3)
+        self.assertEqual(
+            created[0].kwargs["model"],
+            "frozen-model",
+        )
