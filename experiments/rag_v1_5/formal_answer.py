@@ -8,8 +8,191 @@ from dotenv import load_dotenv
 
 from experiments.rag_v1_5.runner import (
     _atomic_write_json,
+    _read_json,
+    _read_jsonl_strict,
     _sha256_file,
 )
+
+ANSWER_RETRIEVAL_CONFIGS = {
+    "B4": "b4-c0-hybrid-rerank",
+    "P": "p-c4-hybrid-rerank",
+    "P-no-parent": "p-no-parent",
+}
+
+
+def build_evidence_items(
+    record: dict,
+    top_k: int = 5,
+) -> list[dict]:
+    config_id = record.get("config_id", "")
+    dedupe_field = (
+        "retrieval_parent_id"
+        if config_id == ANSWER_RETRIEVAL_CONFIGS["P"]
+        else "chunk_id"
+    )
+    items = []
+    seen = set()
+    for hit in record["hits"][:top_k]:
+        dedupe_key = hit.get(dedupe_field) or hit["chunk_id"]
+        if dedupe_key in seen:
+            continue
+        seen.add(dedupe_key)
+        items.append(
+            {
+                "label": f"E{len(items) + 1}",
+                "text": hit["context_text"],
+                "chunk_id": hit["chunk_id"],
+                "clause_ids": hit["clause_ids"],
+                "retrieval_parent_id": hit.get(
+                    "retrieval_parent_id"
+                ),
+                "reranker_score": hit.get("reranker_score"),
+            }
+        )
+    return items
+
+
+def load_frozen_answer_inputs(
+    *,
+    dataset_path: Path,
+    matrix_dir: Path,
+    answer_prereg_path: Path,
+    split: str,
+    formal_manifest_path: Path | None = None,
+    formal_runs_manifest_path: Path | None = None,
+) -> dict:
+    if split not in {"formal_dev", "formal_test"}:
+        raise ValueError(f"不支持的回答层 split: {split}")
+    prereg = _read_json(
+        answer_prereg_path,
+        label="Formal answer prereg",
+    )
+    if prereg.get("status") != "ready":
+        raise ValueError("Formal answer prereg 必须为 ready")
+
+    matrix_config_path = matrix_dir / "matrix-config.json"
+    matrix_config = _read_json(
+        matrix_config_path,
+        label="Formal retrieval matrix config",
+    )
+    if matrix_config.get("status") != "completed":
+        raise ValueError("Formal retrieval matrix 必须为 completed")
+    if matrix_config.get("split") != split:
+        raise ValueError("回答层 split 与检索矩阵不一致")
+    prereg_matrix_hash_key = (
+        "dev_matrix_config_sha256"
+        if split == "formal_dev"
+        else "test_matrix_config_sha256"
+    )
+    if (
+        _sha256_file(matrix_config_path)
+        != prereg["inputs"][prereg_matrix_hash_key]
+    ):
+        raise ValueError("检索 matrix-config 哈希与回答层预注册不一致")
+
+    matrix_input_hashes = matrix_config.get("input_hashes", {})
+    if (
+        _sha256_file(dataset_path)
+        != matrix_input_hashes.get("dataset_sha256")
+    ):
+        raise ValueError("Formal 数据集哈希与检索矩阵不一致")
+    if (
+        prereg["inputs"].get("formal_manifest_sha256")
+        != matrix_input_hashes.get("formal_manifest_sha256")
+    ):
+        raise ValueError("Formal Manifest 哈希链不一致")
+    if formal_manifest_path is not None and (
+        _sha256_file(formal_manifest_path)
+        != prereg["inputs"]["formal_manifest_sha256"]
+    ):
+        raise ValueError("Formal Manifest 当前文件哈希已漂移")
+    if formal_runs_manifest_path is not None and (
+        _sha256_file(formal_runs_manifest_path)
+        != prereg["inputs"]["formal_runs_manifest_sha256"]
+    ):
+        raise ValueError("Formal runs Manifest 当前文件哈希已漂移")
+
+    question_rows = _read_jsonl_strict(
+        dataset_path,
+        label="Formal answer dataset",
+    )
+    questions = {}
+    for row in question_rows:
+        if row.get("split") != split:
+            continue
+        if row.get("review_status") != "approved":
+            raise ValueError("回答层只允许 approved Formal 问题")
+        question_id = row["question_id"]
+        if question_id in questions:
+            raise ValueError(f"Formal 问题 ID 重复: {question_id}")
+        questions[question_id] = row
+    if not questions:
+        raise ValueError(f"{split} 没有 approved 问题")
+
+    retrieval = {}
+    raw_records = {}
+    expected_question_ids = set(questions)
+    for method, config_id in ANSWER_RETRIEVAL_CONFIGS.items():
+        rows = _read_jsonl_strict(
+            matrix_dir / config_id / "per-question.jsonl",
+            label=f"{config_id} per-question",
+        )
+        records = {}
+        for row in rows:
+            if row.get("config_id") != config_id:
+                raise ValueError(f"{config_id} 记录配置 ID 不一致")
+            question_id = row["question_id"]
+            if question_id in records:
+                raise ValueError(
+                    f"{config_id} question ID 重复: {question_id}"
+                )
+            records[question_id] = row
+        if set(records) != expected_question_ids:
+            raise ValueError(
+                f"{config_id} 问题集合与 {split} 数据集不一致"
+            )
+        raw_records[method] = records
+        retrieval[method] = {
+            question_id: {
+                "evidence": build_evidence_items(record),
+                "top_score": (
+                    record["hits"][0].get("reranker_score")
+                    if record.get("hits")
+                    else None
+                ),
+            }
+            for question_id, record in records.items()
+        }
+
+    for question_id in expected_question_ids:
+        p_ids = [
+            hit["chunk_id"]
+            for hit in raw_records["P"][question_id]["hits"]
+        ]
+        child_ids = [
+            hit["chunk_id"]
+            for hit in raw_records["P-no-parent"][question_id]["hits"]
+        ]
+        if p_ids != child_ids:
+            raise ValueError(
+                "P-no-parent 必须复用 P 的完全相同检索排序"
+            )
+
+    return {
+        "split": split,
+        "questions": questions,
+        "retrieval": retrieval,
+        "question_count": len(questions),
+        "input_hashes": {
+            "dataset_sha256": _sha256_file(dataset_path),
+            "matrix_config_sha256": _sha256_file(
+                matrix_config_path
+            ),
+            "answer_prereg_sha256": _sha256_file(
+                answer_prereg_path
+            ),
+        },
+    }
 
 
 def freeze_formal_answer_prereg(
