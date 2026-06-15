@@ -1,0 +1,175 @@
+version: v1.5.0
+seed: 20260614
+
+dataset:
+  dev_count: 200
+  test_count: 200
+
+quota_per_book_split:
+  single_clause_fact: 30
+  formula_composition_or_use: 20
+  source_location: 10
+  multi_evidence: 20
+  unanswerable: 20
+
+retrieval:
+  bm25_top_k: 20
+  dense_top_k: 20
+  rrf_k: 60
+  reranker_candidate_k: 40
+  result_top_k: 10
+  primary_report_top_k: 5
+
+embedding:
+  model: BAAI/bge-m3
+  revision: 5617a9f61b028005a4858fdac845db406aefb181
+  device: cuda
+  use_fp16: true
+  batch_size: 4
+  max_length: 1024
+  normalize: true
+
+bm25:
+  tokenizer: jieba
+  hmm: false
+  top_k: 20
+
+dense:
+  top_k: 20
+
+rrf:
+  k: 60
+
+reranker:
+  model: BAAI/bge-reranker-v2-m3
+  revision: 953dc6f6f85a1b2dbfca4c34a2796e7dde08d41e
+  device: cuda
+  use_fp16: true
+  batch_size: 2
+  max_length: 1024
+  candidate_k: 40
+  top_k: 10
+  normalize_score: true
+
+evaluation:
+  top_ks: [1, 5, 10]
+  primary_granularity: clause
+
+statistics:
+  bootstrap_seed: 20260614
+  bootstrap_resamples: 10000
+  confidence_level: 0.95
+  strata:
+    - book_scope
+    - question_type
+  primary_metrics:
+    - recall_at_5
+    - mrr_at_10
+    - ndcg_at_10
+
+matrix:
+  - config_id: b1-c0-bm25
+    paper_role: B1
+    strategy: c0
+    mode: bm25
+    context_policy: parent
+    metadata_policy: with_titles
+  - config_id: b2-c0-dense
+    paper_role: B2
+    strategy: c0
+    mode: dense
+    context_policy: parent
+    metadata_policy: with_titles
+  - config_id: b3-c0-hybrid
+    paper_role: B3
+    strategy: c0
+    mode: hybrid
+    context_policy: parent
+    metadata_policy: with_titles
+  - config_id: b4-c0-hybrid-rerank
+    paper_role: B4/C0
+    strategy: c0
+    mode: hybrid_rerank
+    context_policy: parent
+    metadata_policy: with_titles
+  - config_id: c1-hybrid-rerank
+    paper_role: C1
+    strategy: c1
+    mode: hybrid_rerank
+    context_policy: parent
+    metadata_policy: with_titles
+  - config_id: c2-hybrid-rerank
+    paper_role: C2
+    strategy: c2
+    mode: hybrid_rerank
+    context_policy: parent
+    metadata_policy: with_titles
+  - config_id: c3-hybrid-rerank
+    paper_role: C3
+    strategy: c3
+    mode: hybrid_rerank
+    context_policy: parent
+    metadata_policy: with_titles
+  - config_id: p-c4-hybrid-rerank
+    paper_role: P/C4
+    strategy: c4
+    mode: hybrid_rerank
+    context_policy: parent
+    metadata_policy: with_titles
+  - config_id: p-no-parent
+    paper_role: P-Parent
+    strategy: c4
+    mode: hybrid_rerank
+    context_policy: child
+    metadata_policy: with_titles
+  - config_id: p-no-structure
+    paper_role: P-Structure
+    strategy: c5
+    mode: hybrid_rerank
+    context_policy: parent
+    metadata_policy: with_titles
+  - config_id: p-no-bm25
+    paper_role: P-BM25
+    strategy: c4
+    mode: dense_rerank
+    context_policy: parent
+    metadata_policy: with_titles
+  - config_id: p-no-dense
+    paper_role: P-Dense
+    strategy: c4
+    mode: bm25_rerank
+    context_policy: parent
+    metadata_policy: with_titles
+  - config_id: p-no-reranker
+    paper_role: P-Reranker
+    strategy: c4
+    mode: hybrid
+    context_policy: parent
+    metadata_policy: with_titles
+  - config_id: p-no-title
+    paper_role: P-Title
+    strategy: c4
+    mode: hybrid_rerank
+    context_policy: parent
+    metadata_policy: without_titles
+
+comparisons:
+  primary:
+    a: p-c4-hybrid-rerank
+    b: b4-c0-hybrid-rerank
+  ablations:
+    - a: p-c4-hybrid-rerank
+      b: p-no-parent
+    - a: p-c4-hybrid-rerank
+      b: p-no-structure
+    - a: p-c4-hybrid-rerank
+      b: p-no-bm25
+    - a: p-c4-hybrid-rerank
+      b: p-no-dense
+    - a: p-c4-hybrid-rerank
+      b: p-no-reranker
+    - a: p-c4-hybrid-rerank
+      b: p-no-title
+
+provenance:
+  pilot_config_sha256: 29A47B7F4AC3D7CA305EBFFC6542FA43DE14F75937C0A235C71688ABA7DB7966

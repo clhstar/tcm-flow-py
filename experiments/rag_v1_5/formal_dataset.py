@@ -3,7 +3,10 @@ import json
 import random
 import re
 from collections import Counter, defaultdict
+from datetime import datetime, timezone
 from pathlib import Path
+
+import yaml
 
 from experiments.rag_v1_5.schema import (
     EvidenceUnit,
@@ -22,6 +25,22 @@ FORMAL_PER_BOOK_SPLIT = {
     "unanswerable": 20,
 }
 FORMAL_QUESTION_TYPES = tuple(FORMAL_PER_BOOK_SPLIT)
+FORMAL_CONFIG_IDS = (
+    "b1-c0-bm25",
+    "b2-c0-dense",
+    "b3-c0-hybrid",
+    "b4-c0-hybrid-rerank",
+    "c1-hybrid-rerank",
+    "c2-hybrid-rerank",
+    "c3-hybrid-rerank",
+    "p-c4-hybrid-rerank",
+    "p-no-parent",
+    "p-no-structure",
+    "p-no-bm25",
+    "p-no-dense",
+    "p-no-reranker",
+    "p-no-title",
+)
 UNANSWERABLE_TOPICS = (
     "青霉素用法",
     "磁共振检查",
@@ -783,6 +802,327 @@ def sample_formal_evidence_groups(
             candidate_report_path
         ),
     }
+
+
+def _manifest_path(path: Path) -> str:
+    if not path.is_absolute():
+        return path.as_posix()
+    try:
+        return path.resolve().relative_to(Path.cwd().resolve()).as_posix()
+    except ValueError:
+        return path.as_posix()
+
+
+def _hashed_input(path: Path) -> dict[str, str]:
+    if not path.is_file():
+        raise FileNotFoundError(path)
+    return {
+        "path": _manifest_path(path),
+        "sha256": _sha256_file(path),
+    }
+
+
+def _validate_formal_prereg_config(config: dict) -> None:
+    matrix = config.get("matrix")
+    if not isinstance(matrix, list) or len(matrix) != 14:
+        raise ValueError("Formal 预注册矩阵必须包含 14 个配置")
+    config_ids = [
+        row.get("config_id")
+        for row in matrix
+        if isinstance(row, dict)
+    ]
+    if (
+        len(config_ids) != 14
+        or len(set(config_ids)) != 14
+        or set(config_ids) != set(FORMAL_CONFIG_IDS)
+    ):
+        raise ValueError("Formal 预注册必须包含 14 个唯一固定配置")
+    required_fields = {
+        "config_id",
+        "paper_role",
+        "strategy",
+        "mode",
+        "context_policy",
+        "metadata_policy",
+    }
+    for row in matrix:
+        if not isinstance(row, dict) or not required_fields <= set(row):
+            raise ValueError("Formal 矩阵配置字段不完整")
+
+    comparisons = config.get("comparisons", {})
+    primary = comparisons.get("primary", {})
+    if primary != {
+        "a": "p-c4-hybrid-rerank",
+        "b": "b4-c0-hybrid-rerank",
+    }:
+        raise ValueError("Formal 主比较必须固定为 P vs B4")
+    ablations = comparisons.get("ablations")
+    expected_ablations = {
+        "p-no-parent",
+        "p-no-structure",
+        "p-no-bm25",
+        "p-no-dense",
+        "p-no-reranker",
+        "p-no-title",
+    }
+    if (
+        not isinstance(ablations, list)
+        or len(ablations) != 6
+        or {
+            row.get("b")
+            for row in ablations
+            if isinstance(row, dict)
+            and row.get("a") == "p-c4-hybrid-rerank"
+        }
+        != expected_ablations
+    ):
+        raise ValueError("Formal 必须固定六组 P 消融比较")
+
+    if config.get("dataset") != {
+        "dev_count": 200,
+        "test_count": 200,
+    }:
+        raise ValueError("Formal 数据配额必须固定为 200/200")
+    if config.get("quota_per_book_split") != FORMAL_PER_BOOK_SPLIT:
+        raise ValueError("Formal 书籍 × split × type 配额不一致")
+
+    retrieval = config.get("retrieval", {})
+    expected_retrieval = {
+        "bm25_top_k": 20,
+        "dense_top_k": 20,
+        "rrf_k": 60,
+        "reranker_candidate_k": 40,
+        "result_top_k": 10,
+        "primary_report_top_k": 5,
+    }
+    if retrieval != expected_retrieval:
+        raise ValueError("Formal 检索参数与预注册固定值不一致")
+
+    runtime_fields_valid = (
+        config.get("bm25")
+        == {"tokenizer": "jieba", "hmm": False, "top_k": 20}
+        and config.get("dense") == {"top_k": 20}
+        and config.get("rrf") == {"k": 60}
+        and config.get("evaluation")
+        == {
+            "top_ks": [1, 5, 10],
+            "primary_granularity": "clause",
+        }
+        and config.get("embedding", {}).get("device") == "cuda"
+        and config.get("embedding", {}).get("use_fp16") is True
+        and config.get("embedding", {}).get("batch_size") == 4
+        and config.get("embedding", {}).get("max_length") == 1024
+        and config.get("embedding", {}).get("normalize") is True
+        and config.get("reranker", {}).get("device") == "cuda"
+        and config.get("reranker", {}).get("use_fp16") is True
+        and config.get("reranker", {}).get("batch_size") == 2
+        and config.get("reranker", {}).get("max_length") == 1024
+        and config.get("reranker", {}).get("candidate_k") == 40
+        and config.get("reranker", {}).get("top_k") == 10
+        and config.get("reranker", {}).get("normalize_score") is True
+    )
+    if not runtime_fields_valid:
+        raise ValueError("Formal 配置缺少固定检索运行字段")
+
+    statistics = config.get("statistics", {})
+    if (
+        statistics.get("bootstrap_seed") != 20260614
+        or statistics.get("bootstrap_resamples") != 10000
+        or statistics.get("confidence_level") != 0.95
+        or statistics.get("strata")
+        != ["book_scope", "question_type"]
+        or statistics.get("primary_metrics")
+        != ["recall_at_5", "mrr_at_10", "ndcg_at_10"]
+    ):
+        raise ValueError("Formal Bootstrap 预注册字段不一致")
+
+    for role in ("embedding", "reranker"):
+        revision = config.get(role, {}).get("revision")
+        if (
+            not isinstance(revision, str)
+            or re.fullmatch(r"[0-9a-f]{40}", revision) is None
+        ):
+            raise ValueError(f"{role} revision 必须固定为 40 位提交")
+
+
+def _summarize_formal_groups(
+    groups: list[FormalEvidenceGroup],
+) -> dict:
+    group_ids = [group.group_id for group in groups]
+    if len(group_ids) != len(set(group_ids)):
+        raise ValueError("Formal Evidence Group 存在重复 group_id")
+    quota = {
+        book: {
+            split: {
+                question_type: 0
+                for question_type in FORMAL_PER_BOOK_SPLIT
+            }
+            for split in FORMAL_SPLITS
+        }
+        for book in FORMAL_BOOKS
+    }
+    clauses_by_split = {split: set() for split in FORMAL_SPLITS}
+    answerable_count = 0
+    unanswerable_count = 0
+    for group in groups:
+        quota[group.book_scope][group.split][group.question_type] += 1
+        if group.question_type == "unanswerable":
+            unanswerable_count += 1
+            if (
+                group.anchor_evidence_ids
+                or group.anchor_clause_ids
+                or len(group.absence_queries) < 2
+            ):
+                raise ValueError("Formal 无答案组契约不完整")
+        else:
+            answerable_count += 1
+            if not group.anchor_evidence_ids or not group.anchor_clause_ids:
+                raise ValueError("Formal answerable group 缺少 anchor")
+            clauses_by_split[group.split].update(
+                group.anchor_clause_ids
+            )
+    quota_mismatches = {
+        f"{book}/{split}/{question_type}": actual
+        for book, split_counts in quota.items()
+        for split, type_counts in split_counts.items()
+        for question_type, actual in type_counts.items()
+        if actual != FORMAL_PER_BOOK_SPLIT[question_type]
+    }
+    if quota_mismatches:
+        raise ValueError(f"Formal Evidence Group 配额错误: {quota_mismatches}")
+    if (
+        len(groups) != 400
+        or answerable_count != 320
+        or unanswerable_count != 80
+    ):
+        raise ValueError("Formal Evidence Group 必须满足 400/320/80")
+    if clauses_by_split["formal_dev"] & clauses_by_split["formal_test"]:
+        raise ValueError("Formal Evidence Group 存在 dev/test clause 泄漏")
+    anchor_clause_ids = {
+        clause_id
+        for group in groups
+        for clause_id in group.anchor_clause_ids
+    }
+    if len(anchor_clause_ids) != 400:
+        raise ValueError("Formal answerable anchor clause 必须恰好为 400")
+    return {
+        "question_count": 400,
+        "answerable_count": 320,
+        "unanswerable_count": 80,
+        "dev_count": 200,
+        "test_count": 200,
+        "answerable_anchor_clause_count": 400,
+        "quota_per_book_split": quota,
+    }
+
+
+def freeze_formal_preregistration(
+    *,
+    config_path: Path,
+    evidence_groups_path: Path,
+    exclusions_path: Path,
+    pilot_manifest_path: Path,
+    pilot_runs_manifest_path: Path,
+    output_path: Path,
+) -> dict:
+    if not config_path.is_file():
+        raise FileNotFoundError(config_path)
+    try:
+        config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, yaml.YAMLError) as error:
+        raise ValueError("Formal 配置不是合法 YAML") from error
+    if not isinstance(config, dict):
+        raise ValueError("Formal 配置顶层必须为 mapping")
+    _validate_formal_prereg_config(config)
+
+    groups = _read_jsonl(evidence_groups_path, FormalEvidenceGroup)
+    dataset_summary = _summarize_formal_groups(groups)
+    exclusions = _load_json_object(exclusions_path)
+    if not {
+        "prior_group_ids",
+        "prior_evidence_ids",
+        "prior_clause_ids",
+    } <= set(exclusions):
+        raise ValueError("Formal exclusions 缺少历史排除字段")
+
+    pilot_manifest = _load_json_object(pilot_manifest_path)
+    if pilot_manifest.get("status") != "ready":
+        raise ValueError("Formal 预注册要求 Pilot Manifest 为 ready")
+    pilot_runs = _load_json_object(pilot_runs_manifest_path)
+    if (
+        pilot_runs.get("status") != "ready"
+        or pilot_runs.get("config_count") != 8
+        or pilot_runs.get("completed_config_count") != 8
+        or pilot_runs.get("failed_config_count") != 0
+    ):
+        raise ValueError("Formal 预注册要求 Pilot 8 组矩阵完整")
+    pilot_manifest_sha256 = _sha256_file(pilot_manifest_path)
+    if (
+        pilot_runs.get("input_hashes", {}).get(
+            "pilot_manifest_sha256"
+        )
+        != pilot_manifest_sha256
+    ):
+        raise ValueError("Pilot runs 与 Pilot Manifest 哈希不一致")
+    pilot_config_sha256 = (
+        pilot_manifest.get("inputs", {})
+        .get("config", {})
+        .get("sha256")
+    )
+    if (
+        config.get("provenance", {}).get("pilot_config_sha256")
+        != pilot_config_sha256
+    ):
+        raise ValueError("Formal 配置未继承冻结的 Pilot 配置哈希")
+
+    manifest = {
+        "version": config["version"],
+        "status": "ready",
+        "frozen_at": datetime.now(timezone.utc).isoformat(),
+        "seed": config["seed"],
+        "dataset": dataset_summary,
+        "retrieval": config["retrieval"],
+        "models": {
+            "embedding": config["embedding"],
+            "reranker": config["reranker"],
+            "pilot_model_manifest_sha256": (
+                pilot_manifest.get("inputs", {})
+                .get("model_manifest", {})
+                .get("sha256")
+            ),
+        },
+        "statistics": config["statistics"],
+        "matrix": config["matrix"],
+        "comparisons": config["comparisons"],
+        "inputs": {
+            "config": _hashed_input(config_path),
+            "evidence_groups": _hashed_input(evidence_groups_path),
+            "exclusions": _hashed_input(exclusions_path),
+            "pilot_manifest": _hashed_input(pilot_manifest_path),
+            "pilot_runs_manifest": _hashed_input(
+                pilot_runs_manifest_path
+            ),
+        },
+        "privacy": {
+            "ids_and_hashes_only": True,
+            "raw_private_content_included": False,
+        },
+    }
+    if output_path.is_file():
+        existing = _load_json_object(output_path)
+        existing_core = dict(existing)
+        manifest_core = dict(manifest)
+        existing_core.pop("frozen_at", None)
+        manifest_core.pop("frozen_at", None)
+        if existing.get("status") == "ready":
+            if existing_core != manifest_core:
+                raise ValueError(
+                    "现有 ready Formal 预注册核心输入已变化，拒绝覆盖"
+                )
+            return existing
+
+    _write_json(output_path, manifest)
+    return manifest
 
 
 def validate_formal_dataset(

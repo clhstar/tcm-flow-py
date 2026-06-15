@@ -30,6 +30,7 @@ from experiments.rag_v1_5.dataset import (
     validate_dataset,
 )
 from experiments.rag_v1_5.formal_dataset import (
+    freeze_formal_preregistration,
     sample_formal_evidence_groups,
     validate_formal_dataset,
 )
@@ -148,6 +149,12 @@ DEFAULT_FORMAL_EXCLUSIONS_PATH = (
 )
 DEFAULT_FORMAL_CANDIDATE_REPORT_PATH = (
     DEFAULT_FORMAL_EVALUATION_DIR / "formal-candidate-report.json"
+)
+DEFAULT_FORMAL_CONFIG_PATH = Path(
+    "experiments/rag_v1_5/configs/formal-400.yaml"
+)
+DEFAULT_FORMAL_PREREG_PATH = Path(
+    "experiments/rag_v1_5/manifests/formal-prereg-v1.5.0.json"
 )
 DIRECT_DEPENDENCIES = (
     "pydantic",
@@ -789,6 +796,41 @@ def build_parser() -> argparse.ArgumentParser:
         default=20260614,
     )
 
+    freeze_formal_prereg_parser = subparsers.add_parser(
+        "freeze-formal-prereg",
+        help="冻结 Formal-400 检索预注册与上游哈希链",
+    )
+    freeze_formal_prereg_parser.add_argument(
+        "--config",
+        type=Path,
+        default=DEFAULT_FORMAL_CONFIG_PATH,
+    )
+    freeze_formal_prereg_parser.add_argument(
+        "--evidence-groups",
+        type=Path,
+        default=DEFAULT_FORMAL_EVIDENCE_GROUPS_PATH,
+    )
+    freeze_formal_prereg_parser.add_argument(
+        "--exclusions",
+        type=Path,
+        default=DEFAULT_FORMAL_EXCLUSIONS_PATH,
+    )
+    freeze_formal_prereg_parser.add_argument(
+        "--pilot-manifest",
+        type=Path,
+        default=DEFAULT_PILOT_MANIFEST_PATH,
+    )
+    freeze_formal_prereg_parser.add_argument(
+        "--pilot-runs-manifest",
+        type=Path,
+        default=DEFAULT_PILOT_RUNS_MANIFEST_PATH,
+    )
+    freeze_formal_prereg_parser.add_argument(
+        "--output",
+        type=Path,
+        default=DEFAULT_FORMAL_PREREG_PATH,
+    )
+
     pilot_evidence_parser = subparsers.add_parser(
         "sample-pilot-evidence",
         help="按固定配额选择 Pilot-40 Evidence Group",
@@ -1188,6 +1230,15 @@ def main(
             exclusions_path=args.exclusions,
             candidate_report_path=args.candidate_report,
             seed=args.seed,
+        )
+    elif args.command == "freeze-formal-prereg":
+        manifest = freeze_formal_preregistration(
+            config_path=args.config,
+            evidence_groups_path=args.evidence_groups,
+            exclusions_path=args.exclusions,
+            pilot_manifest_path=args.pilot_manifest,
+            pilot_runs_manifest_path=args.pilot_runs_manifest,
+            output_path=args.output,
         )
     elif args.command == "sample-pilot-evidence":
         manifest = sample_pilot_evidence_groups(

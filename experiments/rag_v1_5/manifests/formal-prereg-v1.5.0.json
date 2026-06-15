@@ -1,0 +1,265 @@
+{
+  "comparisons": {
+    "ablations": [
+      {
+        "a": "p-c4-hybrid-rerank",
+        "b": "p-no-parent"
+      },
+      {
+        "a": "p-c4-hybrid-rerank",
+        "b": "p-no-structure"
+      },
+      {
+        "a": "p-c4-hybrid-rerank",
+        "b": "p-no-bm25"
+      },
+      {
+        "a": "p-c4-hybrid-rerank",
+        "b": "p-no-dense"
+      },
+      {
+        "a": "p-c4-hybrid-rerank",
+        "b": "p-no-reranker"
+      },
+      {
+        "a": "p-c4-hybrid-rerank",
+        "b": "p-no-title"
+      }
+    ],
+    "primary": {
+      "a": "p-c4-hybrid-rerank",
+      "b": "b4-c0-hybrid-rerank"
+    }
+  },
+  "dataset": {
+    "answerable_anchor_clause_count": 400,
+    "answerable_count": 320,
+    "dev_count": 200,
+    "question_count": 400,
+    "quota_per_book_split": {
+      "jin_gui_yao_lue": {
+        "formal_dev": {
+          "formula_composition_or_use": 20,
+          "multi_evidence": 20,
+          "single_clause_fact": 30,
+          "source_location": 10,
+          "unanswerable": 20
+        },
+        "formal_test": {
+          "formula_composition_or_use": 20,
+          "multi_evidence": 20,
+          "single_clause_fact": 30,
+          "source_location": 10,
+          "unanswerable": 20
+        }
+      },
+      "shang_han_lun": {
+        "formal_dev": {
+          "formula_composition_or_use": 20,
+          "multi_evidence": 20,
+          "single_clause_fact": 30,
+          "source_location": 10,
+          "unanswerable": 20
+        },
+        "formal_test": {
+          "formula_composition_or_use": 20,
+          "multi_evidence": 20,
+          "single_clause_fact": 30,
+          "source_location": 10,
+          "unanswerable": 20
+        }
+      }
+    },
+    "test_count": 200,
+    "unanswerable_count": 80
+  },
+  "frozen_at": "2026-06-15T04:36:24.788871+00:00",
+  "inputs": {
+    "config": {
+      "path": "experiments/rag_v1_5/configs/formal-400.yaml",
+      "sha256": "D832EF32BCCFAAEDEB62BB2D3E4767246311A82CC21213CE4A5C5CB8AC975B1F"
+    },
+    "evidence_groups": {
+      "path": "data/rag_v1_5/formal/evaluation/formal-evidence-groups.jsonl",
+      "sha256": "AEC716E0555B665F949FB77F74F2FB92F0854ADAEFB790C9F57CA9F91CC8F1A7"
+    },
+    "exclusions": {
+      "path": "data/rag_v1_5/formal/evaluation/formal-exclusions.json",
+      "sha256": "13AB8BACDB29D8218F59ED74434EA644D76EC95FF30A4C4F6B367B7C39A4FA85"
+    },
+    "pilot_manifest": {
+      "path": "experiments/rag_v1_5/manifests/pilot-40-v1.5.0.json",
+      "sha256": "1A8A783DB2BE32A4048D06DE670A03A7C954502B37542CD2AEC0D4548FF88F90"
+    },
+    "pilot_runs_manifest": {
+      "path": "experiments/rag_v1_5/manifests/pilot-runs-v1.5.0.json",
+      "sha256": "1CB8DDD0818B0F2B0D98AC5E0D2C0420E1CE8E82589F55CDCF8AE6545AD2994C"
+    }
+  },
+  "matrix": [
+    {
+      "config_id": "b1-c0-bm25",
+      "context_policy": "parent",
+      "metadata_policy": "with_titles",
+      "mode": "bm25",
+      "paper_role": "B1",
+      "strategy": "c0"
+    },
+    {
+      "config_id": "b2-c0-dense",
+      "context_policy": "parent",
+      "metadata_policy": "with_titles",
+      "mode": "dense",
+      "paper_role": "B2",
+      "strategy": "c0"
+    },
+    {
+      "config_id": "b3-c0-hybrid",
+      "context_policy": "parent",
+      "metadata_policy": "with_titles",
+      "mode": "hybrid",
+      "paper_role": "B3",
+      "strategy": "c0"
+    },
+    {
+      "config_id": "b4-c0-hybrid-rerank",
+      "context_policy": "parent",
+      "metadata_policy": "with_titles",
+      "mode": "hybrid_rerank",
+      "paper_role": "B4/C0",
+      "strategy": "c0"
+    },
+    {
+      "config_id": "c1-hybrid-rerank",
+      "context_policy": "parent",
+      "metadata_policy": "with_titles",
+      "mode": "hybrid_rerank",
+      "paper_role": "C1",
+      "strategy": "c1"
+    },
+    {
+      "config_id": "c2-hybrid-rerank",
+      "context_policy": "parent",
+      "metadata_policy": "with_titles",
+      "mode": "hybrid_rerank",
+      "paper_role": "C2",
+      "strategy": "c2"
+    },
+    {
+      "config_id": "c3-hybrid-rerank",
+      "context_policy": "parent",
+      "metadata_policy": "with_titles",
+      "mode": "hybrid_rerank",
+      "paper_role": "C3",
+      "strategy": "c3"
+    },
+    {
+      "config_id": "p-c4-hybrid-rerank",
+      "context_policy": "parent",
+      "metadata_policy": "with_titles",
+      "mode": "hybrid_rerank",
+      "paper_role": "P/C4",
+      "strategy": "c4"
+    },
+    {
+      "config_id": "p-no-parent",
+      "context_policy": "child",
+      "metadata_policy": "with_titles",
+      "mode": "hybrid_rerank",
+      "paper_role": "P-Parent",
+      "strategy": "c4"
+    },
+    {
+      "config_id": "p-no-structure",
+      "context_policy": "parent",
+      "metadata_policy": "with_titles",
+      "mode": "hybrid_rerank",
+      "paper_role": "P-Structure",
+      "strategy": "c5"
+    },
+    {
+      "config_id": "p-no-bm25",
+      "context_policy": "parent",
+      "metadata_policy": "with_titles",
+      "mode": "dense_rerank",
+      "paper_role": "P-BM25",
+      "strategy": "c4"
+    },
+    {
+      "config_id": "p-no-dense",
+      "context_policy": "parent",
+      "metadata_policy": "with_titles",
+      "mode": "bm25_rerank",
+      "paper_role": "P-Dense",
+      "strategy": "c4"
+    },
+    {
+      "config_id": "p-no-reranker",
+      "context_policy": "parent",
+      "metadata_policy": "with_titles",
+      "mode": "hybrid",
+      "paper_role": "P-Reranker",
+      "strategy": "c4"
+    },
+    {
+      "config_id": "p-no-title",
+      "context_policy": "parent",
+      "metadata_policy": "without_titles",
+      "mode": "hybrid_rerank",
+      "paper_role": "P-Title",
+      "strategy": "c4"
+    }
+  ],
+  "models": {
+    "embedding": {
+      "batch_size": 4,
+      "device": "cuda",
+      "max_length": 1024,
+      "model": "BAAI/bge-m3",
+      "normalize": true,
+      "revision": "5617a9f61b028005a4858fdac845db406aefb181",
+      "use_fp16": true
+    },
+    "pilot_model_manifest_sha256": "5523130CBAB3DC8829644E41F747B0856A64809C211A9B2665527033E3E7CDCB",
+    "reranker": {
+      "batch_size": 2,
+      "candidate_k": 40,
+      "device": "cuda",
+      "max_length": 1024,
+      "model": "BAAI/bge-reranker-v2-m3",
+      "normalize_score": true,
+      "revision": "953dc6f6f85a1b2dbfca4c34a2796e7dde08d41e",
+      "top_k": 10,
+      "use_fp16": true
+    }
+  },
+  "privacy": {
+    "ids_and_hashes_only": true,
+    "raw_private_content_included": false
+  },
+  "retrieval": {
+    "bm25_top_k": 20,
+    "dense_top_k": 20,
+    "primary_report_top_k": 5,
+    "reranker_candidate_k": 40,
+    "result_top_k": 10,
+    "rrf_k": 60
+  },
+  "seed": 20260614,
+  "statistics": {
+    "bootstrap_resamples": 10000,
+    "bootstrap_seed": 20260614,
+    "confidence_level": 0.95,
+    "primary_metrics": [
+      "recall_at_5",
+      "mrr_at_10",
+      "ndcg_at_10"
+    ],
+    "strata": [
+      "book_scope",
+      "question_type"
+    ]
+  },
+  "status": "ready",
+  "version": "v1.5.0"
+}

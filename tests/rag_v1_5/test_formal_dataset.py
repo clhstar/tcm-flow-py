@@ -5,6 +5,8 @@ import unittest
 from copy import deepcopy
 from pathlib import Path
 
+import yaml
+
 
 BOOKS = ("shang_han_lun", "jin_gui_yao_lue")
 SPLITS = ("formal_dev", "formal_test")
@@ -15,6 +17,22 @@ FORMAL_PER_BOOK_SPLIT = {
     "multi_evidence": 20,
     "unanswerable": 20,
 }
+FORMAL_CONFIG_IDS = (
+    "b1-c0-bm25",
+    "b2-c0-dense",
+    "b3-c0-hybrid",
+    "b4-c0-hybrid-rerank",
+    "c1-hybrid-rerank",
+    "c2-hybrid-rerank",
+    "c3-hybrid-rerank",
+    "p-c4-hybrid-rerank",
+    "p-no-parent",
+    "p-no-structure",
+    "p-no-bm25",
+    "p-no-dense",
+    "p-no-reranker",
+    "p-no-title",
+)
 
 
 def write_jsonl(path: Path, records: list[dict]) -> None:
@@ -577,6 +595,24 @@ class FormalDatasetCliTests(unittest.TestCase):
             ),
         )
 
+    def test_freeze_formal_prereg_cli_contract(self) -> None:
+        from experiments.rag_v1_5.cli import build_parser
+
+        args = build_parser().parse_args(["freeze-formal-prereg"])
+
+        self.assertEqual(args.command, "freeze-formal-prereg")
+        self.assertEqual(
+            args.config,
+            Path("experiments/rag_v1_5/configs/formal-400.yaml"),
+        )
+        self.assertEqual(
+            args.output,
+            Path(
+                "experiments/rag_v1_5/manifests/"
+                "formal-prereg-v1.5.0.json"
+            ),
+        )
+
 
 class FormalEvidenceSamplingTests(unittest.TestCase):
     def run_sampling(
@@ -779,6 +815,350 @@ class FormalEvidenceSamplingTests(unittest.TestCase):
             "formula_composition_or_use",
             report["blocked_strata"],
         )
+
+
+def make_formal_config() -> dict:
+    matrix = []
+    definitions = (
+        ("b1-c0-bm25", "B1", "c0", "bm25", "parent", "with_titles"),
+        ("b2-c0-dense", "B2", "c0", "dense", "parent", "with_titles"),
+        ("b3-c0-hybrid", "B3", "c0", "hybrid", "parent", "with_titles"),
+        (
+            "b4-c0-hybrid-rerank",
+            "B4/C0",
+            "c0",
+            "hybrid_rerank",
+            "parent",
+            "with_titles",
+        ),
+        (
+            "c1-hybrid-rerank",
+            "C1",
+            "c1",
+            "hybrid_rerank",
+            "parent",
+            "with_titles",
+        ),
+        (
+            "c2-hybrid-rerank",
+            "C2",
+            "c2",
+            "hybrid_rerank",
+            "parent",
+            "with_titles",
+        ),
+        (
+            "c3-hybrid-rerank",
+            "C3",
+            "c3",
+            "hybrid_rerank",
+            "parent",
+            "with_titles",
+        ),
+        (
+            "p-c4-hybrid-rerank",
+            "P/C4",
+            "c4",
+            "hybrid_rerank",
+            "parent",
+            "with_titles",
+        ),
+        (
+            "p-no-parent",
+            "P-Parent",
+            "c4",
+            "hybrid_rerank",
+            "child",
+            "with_titles",
+        ),
+        (
+            "p-no-structure",
+            "P-Structure",
+            "c5",
+            "hybrid_rerank",
+            "parent",
+            "with_titles",
+        ),
+        (
+            "p-no-bm25",
+            "P-BM25",
+            "c4",
+            "dense_rerank",
+            "parent",
+            "with_titles",
+        ),
+        (
+            "p-no-dense",
+            "P-Dense",
+            "c4",
+            "bm25_rerank",
+            "parent",
+            "with_titles",
+        ),
+        (
+            "p-no-reranker",
+            "P-Reranker",
+            "c4",
+            "hybrid",
+            "parent",
+            "with_titles",
+        ),
+        (
+            "p-no-title",
+            "P-Title",
+            "c4",
+            "hybrid_rerank",
+            "parent",
+            "without_titles",
+        ),
+    )
+    for (
+        config_id,
+        paper_role,
+        strategy,
+        mode,
+        context_policy,
+        metadata_policy,
+    ) in definitions:
+        matrix.append(
+            {
+                "config_id": config_id,
+                "paper_role": paper_role,
+                "strategy": strategy,
+                "mode": mode,
+                "context_policy": context_policy,
+                "metadata_policy": metadata_policy,
+            }
+        )
+    return {
+        "version": "v1.5.0",
+        "seed": 20260614,
+        "dataset": {"dev_count": 200, "test_count": 200},
+        "retrieval": {
+            "bm25_top_k": 20,
+            "dense_top_k": 20,
+            "rrf_k": 60,
+            "reranker_candidate_k": 40,
+            "result_top_k": 10,
+            "primary_report_top_k": 5,
+        },
+        "embedding": {
+            "model": "BAAI/bge-m3",
+            "revision": "5617a9f61b028005a4858fdac845db406aefb181",
+            "device": "cuda",
+            "use_fp16": True,
+            "batch_size": 4,
+            "max_length": 1024,
+            "normalize": True,
+        },
+        "bm25": {
+            "tokenizer": "jieba",
+            "hmm": False,
+            "top_k": 20,
+        },
+        "dense": {"top_k": 20},
+        "rrf": {"k": 60},
+        "reranker": {
+            "model": "BAAI/bge-reranker-v2-m3",
+            "revision": "953dc6f6f85a1b2dbfca4c34a2796e7dde08d41e",
+            "device": "cuda",
+            "use_fp16": True,
+            "batch_size": 2,
+            "max_length": 1024,
+            "candidate_k": 40,
+            "top_k": 10,
+            "normalize_score": True,
+        },
+        "evaluation": {
+            "top_ks": [1, 5, 10],
+            "primary_granularity": "clause",
+        },
+        "statistics": {
+            "bootstrap_seed": 20260614,
+            "bootstrap_resamples": 10000,
+            "confidence_level": 0.95,
+            "strata": ["book_scope", "question_type"],
+            "primary_metrics": [
+                "recall_at_5",
+                "mrr_at_10",
+                "ndcg_at_10",
+            ],
+        },
+        "quota_per_book_split": FORMAL_PER_BOOK_SPLIT,
+        "matrix": matrix,
+        "comparisons": {
+            "primary": {
+                "a": "p-c4-hybrid-rerank",
+                "b": "b4-c0-hybrid-rerank",
+            },
+            "ablations": [
+                {"a": "p-c4-hybrid-rerank", "b": config_id}
+                for config_id in (
+                    "p-no-parent",
+                    "p-no-structure",
+                    "p-no-bm25",
+                    "p-no-dense",
+                    "p-no-reranker",
+                    "p-no-title",
+                )
+            ],
+        },
+        "provenance": {"pilot_config_sha256": "B" * 64},
+    }
+
+
+class FormalPreregistrationTests(unittest.TestCase):
+    def prepare_files(self, root: Path) -> dict[str, Path]:
+        from experiments.rag_v1_5.formal_dataset import _sha256_file
+
+        _, groups, _ = make_formal_artifacts()
+        config_path = root / "formal-400.yaml"
+        groups_path = root / "formal-evidence-groups.jsonl"
+        exclusions_path = root / "formal-exclusions.json"
+        pilot_manifest_path = root / "pilot-40-v1.5.0.json"
+        pilot_runs_path = root / "pilot-runs-v1.5.0.json"
+        output_path = root / "formal-prereg-v1.5.0.json"
+
+        config = make_formal_config()
+        config_path.write_text(
+            yaml.safe_dump(config, allow_unicode=True, sort_keys=False),
+            encoding="utf-8",
+        )
+        write_jsonl(groups_path, groups)
+        exclusions_path.write_text(
+            json.dumps(
+                {
+                    "prior_group_ids": ["pilot-group"],
+                    "prior_evidence_ids": ["pilot-evidence"],
+                    "prior_clause_ids": ["pilot-clause"],
+                }
+            ),
+            encoding="utf-8",
+        )
+        pilot_manifest_path.write_text(
+            json.dumps(
+                {
+                    "version": "v1.5.0",
+                    "status": "ready",
+                    "inputs": {
+                        "config": {"sha256": "B" * 64},
+                        "model_manifest": {"sha256": "C" * 64},
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        pilot_runs_path.write_text(
+            json.dumps(
+                {
+                    "version": "v1.5.0",
+                    "status": "ready",
+                    "config_count": 8,
+                    "completed_config_count": 8,
+                    "failed_config_count": 0,
+                    "input_hashes": {
+                        "pilot_manifest_sha256": _sha256_file(
+                            pilot_manifest_path
+                        )
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        return {
+            "config_path": config_path,
+            "evidence_groups_path": groups_path,
+            "exclusions_path": exclusions_path,
+            "pilot_manifest_path": pilot_manifest_path,
+            "pilot_runs_manifest_path": pilot_runs_path,
+            "output_path": output_path,
+        }
+
+    def test_freezes_private_safe_idempotent_preregistration(self) -> None:
+        from experiments.rag_v1_5.formal_dataset import (
+            freeze_formal_preregistration,
+        )
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            paths = self.prepare_files(Path(temporary_directory))
+            first = freeze_formal_preregistration(**paths)
+            second = freeze_formal_preregistration(**paths)
+            serialized = json.dumps(first, ensure_ascii=False)
+
+        self.assertEqual(first["status"], "ready")
+        self.assertEqual(len(first["matrix"]), 14)
+        self.assertEqual(
+            {row["config_id"] for row in first["matrix"]},
+            set(FORMAL_CONFIG_IDS),
+        )
+        self.assertEqual(len(first["comparisons"]["ablations"]), 6)
+        self.assertEqual(first["dataset"]["question_count"], 400)
+        self.assertEqual(first["dataset"]["dev_count"], 200)
+        self.assertEqual(first["dataset"]["test_count"], 200)
+        self.assertEqual(first["statistics"]["bootstrap_resamples"], 10000)
+        self.assertEqual(first, second)
+        self.assertNotIn("测试问题", serialized)
+        self.assertNotIn("reference_answer", serialized)
+        self.assertNotIn("support_spans", serialized)
+        self.assertNotIn("original_text", serialized)
+
+    def test_rejects_incomplete_matrix_and_ready_input_change(self) -> None:
+        from experiments.rag_v1_5.formal_dataset import (
+            freeze_formal_preregistration,
+        )
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            paths = self.prepare_files(Path(temporary_directory))
+            config = yaml.safe_load(
+                paths["config_path"].read_text(encoding="utf-8")
+            )
+            config["matrix"].pop()
+            paths["config_path"].write_text(
+                yaml.safe_dump(
+                    config,
+                    allow_unicode=True,
+                    sort_keys=False,
+                ),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "14"):
+                freeze_formal_preregistration(**paths)
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            paths = self.prepare_files(Path(temporary_directory))
+            freeze_formal_preregistration(**paths)
+            exclusions = json.loads(
+                paths["exclusions_path"].read_text(encoding="utf-8")
+            )
+            exclusions["prior_clause_ids"].append("changed")
+            paths["exclusions_path"].write_text(
+                json.dumps(exclusions),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "拒绝覆盖"):
+                freeze_formal_preregistration(**paths)
+
+    def test_rejects_config_missing_runtime_retrieval_fields(self) -> None:
+        from experiments.rag_v1_5.formal_dataset import (
+            freeze_formal_preregistration,
+        )
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            paths = self.prepare_files(Path(temporary_directory))
+            config = yaml.safe_load(
+                paths["config_path"].read_text(encoding="utf-8")
+            )
+            config.pop("bm25")
+            paths["config_path"].write_text(
+                yaml.safe_dump(
+                    config,
+                    allow_unicode=True,
+                    sort_keys=False,
+                ),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "运行字段"):
+                freeze_formal_preregistration(**paths)
 
 
 if __name__ == "__main__":
