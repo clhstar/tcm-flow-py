@@ -64,6 +64,14 @@ def _normalize_dense_vectors(
     return normalized.astype(np.float32, copy=False)
 
 
+def _strip_title_context(text: str) -> str:
+    parts = text.split("\n", 3)
+    if len(parts) != 4:
+        return text
+    body = parts[3].strip()
+    return body or text
+
+
 def build_strategy_index(
     *,
     chunks: list[ChunkUnit],
@@ -72,11 +80,24 @@ def build_strategy_index(
     quality_gate_sha256: str,
     chunk_sha256: str,
     model_record: dict,
+    metadata_policy: str = "with_titles",
 ) -> dict:
     started = time.perf_counter()
+    if metadata_policy not in {"with_titles", "without_titles"}:
+        raise ValueError(f"Unknown metadata policy: {metadata_policy}")
     if not chunks:
         raise ValueError("索引输入 Chunk 不能为空")
     ordered = sorted(chunks, key=lambda item: item.chunk_id)
+    if metadata_policy == "without_titles":
+        projected = []
+        for chunk in ordered:
+            text = _strip_title_context(chunk.text)
+            projected.append(
+                chunk.model_copy(
+                    update={"text": text, "char_count": len(text)}
+                )
+            )
+        ordered = projected
     chunk_ids = [chunk.chunk_id for chunk in ordered]
     if len(set(chunk_ids)) != len(chunk_ids):
         raise ValueError("索引输入存在重复 Chunk ID")
@@ -138,6 +159,7 @@ def build_strategy_index(
         "normalize": True,
         "tokenizer": "jieba",
         "hmm": False,
+        "metadata_policy": metadata_policy,
         "files": files,
         "built_at": datetime.now(timezone.utc).isoformat().replace(
             "+00:00",
@@ -341,6 +363,147 @@ def build_indexes(
             "Z",
         ),
         "elapsed_ms": round((time.perf_counter() - started) * 1000, 3),
+    }
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    manifest_path.write_text(
+        json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True)
+        + "\n",
+        encoding="utf-8",
+    )
+    return manifest
+
+
+def build_formal_indexes(
+    *,
+    config_path: Path,
+    chunks_dir: Path,
+    chunk_manifest_path: Path,
+    quality_gate_path: Path,
+    model_manifest_path: Path,
+    formal_manifest_path: Path,
+    output_dir: Path,
+    manifest_path: Path,
+    repository_root: Path | None = None,
+    encoder_factory: EncoderFactory = _default_encoder_factory,
+) -> dict:
+    started = time.perf_counter()
+    repository_root = (
+        repository_root.resolve()
+        if repository_root is not None
+        else Path.cwd().resolve()
+    )
+    gate = validate_quality_gate(quality_gate_path)
+    local_model_path, model_record, embedding_config = (
+        load_verified_embedding_model(
+            config_path=config_path,
+            model_manifest_path=model_manifest_path,
+            repository_root=repository_root,
+        )
+    )
+    formal_manifest = json.loads(
+        formal_manifest_path.read_text(encoding="utf-8")
+    )
+    if formal_manifest.get("status") != "ready":
+        raise ValueError("Formal Manifest 必须为 ready")
+    chunk_manifest = json.loads(
+        chunk_manifest_path.read_text(encoding="utf-8")
+    )
+    evidence_sha256 = (
+        formal_manifest.get("inputs", {})
+        .get("evidence", {})
+        .get("sha256")
+    )
+    if chunk_manifest.get("evidence_sha256") != evidence_sha256:
+        raise ValueError("Formal Chunk 与冻结 Evidence 哈希不一致")
+
+    gate_sha256 = _sha256_file(quality_gate_path)
+    encoder = encoder_factory(local_model_path, embedding_config)
+    strategy_manifests = {}
+    strategy_specs = [
+        ("c0", "c0", "with_titles"),
+        ("c1", "c1", "with_titles"),
+        ("c2", "c2", "with_titles"),
+        ("c3", "c3", "with_titles"),
+        ("c4", "c4", "with_titles"),
+        ("c5", "c5", "with_titles"),
+        ("c4-no-title", "c4", "without_titles"),
+    ]
+    try:
+        for index_key, source_strategy, metadata_policy in strategy_specs:
+            chunk_record = chunk_manifest.get("strategies", {}).get(
+                source_strategy
+            )
+            if not isinstance(chunk_record, dict):
+                raise ValueError(
+                    f"Formal Chunk Manifest 缺少策略: {source_strategy}"
+                )
+            chunk_path = chunks_dir / chunk_record["output_file"]
+            chunk_sha256 = _sha256_file(chunk_path)
+            if chunk_sha256 != chunk_record["output_sha256"]:
+                raise ValueError(
+                    f"{source_strategy} Formal Chunk SHA256 不匹配"
+                )
+            chunks = _load_chunks(chunk_path)
+            if len(chunks) != chunk_record["count"]:
+                raise ValueError(
+                    f"{source_strategy} Formal Chunk 行数不一致"
+                )
+            strategy_manifest = build_strategy_index(
+                chunks=chunks,
+                output_dir=output_dir / index_key,
+                encoder=encoder,
+                quality_gate_sha256=gate_sha256,
+                chunk_sha256=chunk_sha256,
+                model_record=model_record,
+                metadata_policy=metadata_policy,
+            )
+            strategy_manifest_path = (
+                output_dir / index_key / "manifest.json"
+            )
+            strategy_manifests[index_key] = {
+                "source_strategy": source_strategy,
+                "metadata_policy": metadata_policy,
+                "row_count": strategy_manifest["row_count"],
+                "manifest_sha256": _sha256_file(
+                    strategy_manifest_path
+                ),
+                "files": strategy_manifest["files"],
+            }
+    finally:
+        del encoder
+        try:
+            import torch
+
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        except ImportError:
+            pass
+
+    manifest = {
+        "version": "v1.5.0",
+        "status": "ready",
+        "formal_manifest_sha256": _sha256_file(
+            formal_manifest_path
+        ),
+        "quality_gate_sha256": gate_sha256,
+        "model_manifest_sha256": _sha256_file(model_manifest_path),
+        "embedding_model": model_record["model"],
+        "embedding_revision": model_record["revision"],
+        "chunk_manifest": {
+            "path": (
+                chunk_manifest_path.resolve()
+                .relative_to(repository_root)
+                .as_posix()
+            ),
+            "sha256": _sha256_file(chunk_manifest_path),
+        },
+        "strategies": strategy_manifests,
+        "built_at": datetime.now(timezone.utc).isoformat().replace(
+            "+00:00",
+            "Z",
+        ),
+        "elapsed_ms": round((time.perf_counter() - started) * 1000, 3),
+        "quality_gate_status": gate["status"],
     }
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
     manifest_path.write_text(

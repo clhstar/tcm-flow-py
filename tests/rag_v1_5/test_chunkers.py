@@ -47,9 +47,12 @@ class ChunkUnitSchemaTests(unittest.TestCase):
         self.assertEqual(chunk.source_hash, "A" * 64)
         self.assertEqual(chunk.source_evidence_ids, ["shl-chapter-01-001"])
 
-    def test_rejects_unknown_strategy(self):
+    def test_accepts_c5_and_rejects_unknown_strategy(self):
+        chunk = ChunkUnit(**{**VALID_CHUNK, "strategy": "c5"})
+
+        self.assertEqual(chunk.strategy, "c5")
         with self.assertRaises(ValidationError):
-            ChunkUnit(**{**VALID_CHUNK, "strategy": "c5"})
+            ChunkUnit(**{**VALID_CHUNK, "strategy": "c6"})
 
     def test_rejects_empty_source_evidence_ids(self):
         with self.assertRaises(ValidationError):
@@ -431,6 +434,72 @@ class ParentChildChunkingTests(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, "Duplicate Evidence ID"):
             build_chunks([unit, unit.model_copy()], "c4", self.config)
+
+
+class GenericParentChildChunkingTests(unittest.TestCase):
+    def setUp(self):
+        self.units = load_evidence(FIXTURES_DIR / "evidence_sample.jsonl")
+        self.config = load_chunk_config(CONFIG_PATH)
+
+    def test_c5_builds_generic_recursive_parents_and_children(self):
+        chunks = build_chunks(self.units, "c5", self.config)
+
+        self.assertTrue(chunks)
+        self.assertTrue(all(chunk.strategy == "c5" for chunk in chunks))
+        self.assertTrue(all(chunk.char_count <= 300 for chunk in chunks))
+        self.assertTrue(
+            all(len(chunk.context_text) <= 1000 for chunk in chunks)
+        )
+        self.assertTrue(
+            all(chunk.retrieval_parent_id for chunk in chunks)
+        )
+        self.assertTrue(
+            all(chunk.source_evidence_ids for chunk in chunks)
+        )
+        self.assertTrue(
+            any(
+                len(chunk.source_evidence_ids) > 1
+                for chunk in chunks
+            )
+        )
+
+    def test_c5_does_not_use_content_type_to_choose_boundaries(self):
+        changed = [
+            unit.model_copy(
+                update={
+                    "content_type": (
+                        "note"
+                        if unit.content_type == "clause"
+                        else "clause"
+                    )
+                }
+            )
+            for unit in self.units
+        ]
+
+        original = build_chunks(self.units, "c5", self.config)
+        modified = build_chunks(changed, "c5", self.config)
+
+        self.assertEqual(
+            [
+                (
+                    chunk.chunk_id,
+                    chunk.text,
+                    chunk.context_text,
+                    chunk.source_evidence_ids,
+                )
+                for chunk in original
+            ],
+            [
+                (
+                    chunk.chunk_id,
+                    chunk.text,
+                    chunk.context_text,
+                    chunk.source_evidence_ids,
+                )
+                for chunk in modified
+            ],
+        )
 
 
 class ChunkValidationTests(unittest.TestCase):

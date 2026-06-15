@@ -19,7 +19,10 @@ from experiments.rag_v1_5.corpus import (
     CorpusFileSpec,
     prepare_corpus,
 )
-from experiments.rag_v1_5.chunkers import build_chunk_artifacts
+from experiments.rag_v1_5.chunkers import (
+    FORMAL_CHUNK_STRATEGIES,
+    build_chunk_artifacts,
+)
 from experiments.rag_v1_5.dataset import (
     freeze_pilot_manifest,
     import_pilot_review,
@@ -42,8 +45,13 @@ from experiments.rag_v1_5.formal_review import (
     import_formal_review,
     prepare_formal_review,
 )
+from experiments.rag_v1_5.formal_runner import (
+    freeze_formal_runs,
+    run_formal_matrix,
+)
 from experiments.rag_v1_5.indexing import (
     BgeM3DenseEncoder,
+    build_formal_indexes,
     build_indexes,
 )
 from experiments.rag_v1_5.model_store import (
@@ -62,6 +70,7 @@ from experiments.rag_v1_5.runner import (
     freeze_pilot_runs,
     run_pilot_matrix,
 )
+from experiments.rag_v1_5.statistics import summarize_formal_test
 
 
 DEFAULT_SOURCE_DIR = Path(r"G:\work\TCM-Ancient-Books-master")
@@ -179,6 +188,23 @@ DEFAULT_FORMAL_DATASET_PATH = (
 DEFAULT_FORMAL_MANIFEST_PATH = Path(
     "experiments/rag_v1_5/manifests/formal-400-v1.5.0.json"
 )
+DEFAULT_FORMAL_CHUNKS_DIR = Path("data/rag_v1_5/formal/chunks")
+DEFAULT_FORMAL_CHUNK_MANIFEST_PATH = (
+    DEFAULT_FORMAL_CHUNKS_DIR / "manifest.json"
+)
+DEFAULT_FORMAL_INDEXES_DIR = Path("data/rag_v1_5/formal/indexes")
+DEFAULT_FORMAL_INDEX_MANIFEST_PATH = (
+    DEFAULT_FORMAL_INDEXES_DIR / "manifest.json"
+)
+DEFAULT_FORMAL_DEV_RUNS_DIR = Path(
+    "data/rag_v1_5/formal/runs/dev"
+)
+DEFAULT_FORMAL_TEST_RUNS_DIR = Path(
+    "data/rag_v1_5/formal/runs/test"
+)
+DEFAULT_FORMAL_RUNS_MANIFEST_PATH = Path(
+    "experiments/rag_v1_5/manifests/formal-runs-v1.5.0.json"
+)
 DIRECT_DEPENDENCIES = (
     "pydantic",
     "PyYAML",
@@ -290,10 +316,17 @@ def _chunk_manifest_status(
     *,
     chunks_dir: Path,
     chunk_manifest_path: Path,
+    expected_strategies: tuple[str, ...] = (
+        "c0",
+        "c1",
+        "c2",
+        "c3",
+        "c4",
+    ),
 ) -> tuple[int, str]:
     existing = [
         strategy
-        for strategy in ("c0", "c1", "c2", "c3", "c4")
+        for strategy in expected_strategies
         if (chunks_dir / f"{strategy}.jsonl").is_file()
     ]
     if not chunk_manifest_path.is_file():
@@ -310,7 +343,82 @@ def _chunk_manifest_status(
             or _sha256_file(path) != strategy_manifest["output_sha256"]
         ):
             return len(existing), "mismatch"
-    return len(existing), "valid" if len(existing) == 5 else "incomplete"
+    return (
+        len(existing),
+        (
+            "valid"
+            if len(existing) == len(expected_strategies)
+            else "incomplete"
+        ),
+    )
+
+
+def _index_manifest_status(
+    *,
+    indexes_dir: Path,
+    index_manifest_path: Path,
+    chunk_manifest_path: Path,
+    formal_manifest_path: Path | None,
+    expected_strategies: tuple[str, ...],
+) -> tuple[int, str]:
+    existing = [
+        strategy
+        for strategy in expected_strategies
+        if (indexes_dir / strategy / "manifest.json").is_file()
+    ]
+    if not index_manifest_path.is_file():
+        return len(existing), "missing"
+
+    manifest = json.loads(index_manifest_path.read_text(encoding="utf-8"))
+    if manifest.get("status") not in {None, "ready"}:
+        return len(existing), "mismatch"
+    if chunk_manifest_path.is_file():
+        expected_chunk_hash = manifest.get("chunk_manifest", {}).get(
+            "sha256",
+            manifest.get("chunk_manifest_sha256"),
+        )
+        if (
+            expected_chunk_hash is not None
+            and expected_chunk_hash != _sha256_file(chunk_manifest_path)
+        ):
+            return len(existing), "mismatch"
+    if formal_manifest_path is not None:
+        if (
+            not formal_manifest_path.is_file()
+            or manifest.get("formal_manifest_sha256")
+            != _sha256_file(formal_manifest_path)
+        ):
+            return len(existing), "mismatch"
+
+    for strategy in existing:
+        record = manifest.get("strategies", {}).get(strategy)
+        strategy_manifest_path = (
+            indexes_dir / strategy / "manifest.json"
+        )
+        if (
+            not isinstance(record, dict)
+            or record.get("manifest_sha256")
+            != _sha256_file(strategy_manifest_path)
+        ):
+            return len(existing), "mismatch"
+        strategy_manifest = json.loads(
+            strategy_manifest_path.read_text(encoding="utf-8")
+        )
+        for file_record in strategy_manifest.get("files", {}).values():
+            file_path = indexes_dir / strategy / file_record["path"]
+            if (
+                not file_path.is_file()
+                or _sha256_file(file_path) != file_record["sha256"]
+            ):
+                return len(existing), "mismatch"
+    return (
+        len(existing),
+        (
+            "valid"
+            if len(existing) == len(expected_strategies)
+            else "incomplete"
+        ),
+    )
 
 
 def _model_snapshot_status(
@@ -365,6 +473,22 @@ def build_retrieval_doctor_report(
     quality_gate_path: Path = DEFAULT_QUALITY_GATE_PATH,
     model_manifest_path: Path = DEFAULT_MODEL_MANIFEST_PATH,
     indexes_dir: Path = DEFAULT_INDEXES_DIR,
+    index_manifest_path: Path = DEFAULT_INDEX_MANIFEST_PATH,
+    formal_manifest_path: Path | None = None,
+    expected_chunk_strategies: tuple[str, ...] = (
+        "c0",
+        "c1",
+        "c2",
+        "c3",
+        "c4",
+    ),
+    expected_index_strategies: tuple[str, ...] = (
+        "c0",
+        "c1",
+        "c2",
+        "c3",
+        "c4",
+    ),
     system_reader: Callable[[], dict] = _read_system_info,
     package_version_reader: Callable[[str], str | None] = (
         _read_package_version
@@ -379,6 +503,7 @@ def build_retrieval_doctor_report(
     chunk_count, chunk_manifest_status = _chunk_manifest_status(
         chunks_dir=chunks_dir,
         chunk_manifest_path=chunk_manifest_path,
+        expected_strategies=expected_chunk_strategies,
     )
     report["chunk_strategy_count"] = chunk_count
     report["chunk_manifest_status"] = chunk_manifest_status
@@ -405,6 +530,15 @@ def build_retrieval_doctor_report(
         model_manifest_path=model_manifest_path,
         repository_root=Path.cwd().resolve(),
     )
+    index_count, index_manifest_status = _index_manifest_status(
+        indexes_dir=indexes_dir,
+        index_manifest_path=index_manifest_path,
+        chunk_manifest_path=chunk_manifest_path,
+        formal_manifest_path=formal_manifest_path,
+        expected_strategies=expected_index_strategies,
+    )
+    report["index_strategy_count"] = index_count
+    report["index_manifest_status"] = index_manifest_status
     report["indexes_writable"] = _directory_is_writable(indexes_dir)
     return report
 
@@ -485,6 +619,36 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_MANIFEST_PATH,
     )
 
+    formal_chunk_parser = subparsers.add_parser(
+        "build-formal-chunks",
+        help="构建 Formal C0-C5 Chunk 与私有 Manifest",
+    )
+    formal_chunk_parser.add_argument(
+        "--evidence",
+        type=Path,
+        default=DEFAULT_EVIDENCE_PATH,
+    )
+    formal_chunk_parser.add_argument(
+        "--config",
+        type=Path,
+        default=DEFAULT_CHUNK_CONFIG_PATH,
+    )
+    formal_chunk_parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=DEFAULT_FORMAL_CHUNKS_DIR,
+    )
+    formal_chunk_parser.add_argument(
+        "--manifest",
+        type=Path,
+        default=DEFAULT_FORMAL_CHUNK_MANIFEST_PATH,
+    )
+    formal_chunk_parser.add_argument(
+        "--corpus-manifest",
+        type=Path,
+        default=DEFAULT_MANIFEST_PATH,
+    )
+
     doctor_parser = subparsers.add_parser(
         "retrieval-doctor",
         help="检查检索实验环境、输入哈希、模型和 Quality Gate",
@@ -518,6 +682,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--indexes-dir",
         type=Path,
         default=DEFAULT_INDEXES_DIR,
+    )
+    doctor_parser.add_argument(
+        "--formal",
+        action="store_true",
+        help="检查 Formal C0-C5、C4 去标题索引及其哈希链",
     )
 
     model_parser = subparsers.add_parser(
@@ -685,18 +854,70 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_INDEX_MANIFEST_PATH,
     )
 
+    formal_index_parser = subparsers.add_parser(
+        "build-formal-indexes",
+        help="构建 Formal C0-C5 与 C4 去标题索引",
+    )
+    formal_index_parser.add_argument(
+        "--config",
+        type=Path,
+        default=DEFAULT_FORMAL_CONFIG_PATH,
+    )
+    formal_index_parser.add_argument(
+        "--chunks-dir",
+        type=Path,
+        default=DEFAULT_FORMAL_CHUNKS_DIR,
+    )
+    formal_index_parser.add_argument(
+        "--chunk-manifest",
+        type=Path,
+        default=DEFAULT_FORMAL_CHUNK_MANIFEST_PATH,
+    )
+    formal_index_parser.add_argument(
+        "--quality-gate",
+        type=Path,
+        default=DEFAULT_QUALITY_GATE_PATH,
+    )
+    formal_index_parser.add_argument(
+        "--model-manifest",
+        type=Path,
+        default=DEFAULT_MODEL_MANIFEST_PATH,
+    )
+    formal_index_parser.add_argument(
+        "--formal-manifest",
+        type=Path,
+        default=DEFAULT_FORMAL_MANIFEST_PATH,
+    )
+    formal_index_parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=DEFAULT_FORMAL_INDEXES_DIR,
+    )
+    formal_index_parser.add_argument(
+        "--manifest",
+        type=Path,
+        default=DEFAULT_FORMAL_INDEX_MANIFEST_PATH,
+    )
+
     search_parser = subparsers.add_parser(
         "search",
         help="运行 BM25、Dense、Hybrid 或 Hybrid+Reranker 检索",
     )
     search_parser.add_argument(
         "--strategy",
-        choices=("c0", "c1", "c2", "c3", "c4"),
+        choices=("c0", "c1", "c2", "c3", "c4", "c5"),
         required=True,
     )
     search_parser.add_argument(
         "--mode",
-        choices=("bm25", "dense", "hybrid", "hybrid_rerank"),
+        choices=(
+            "bm25",
+            "dense",
+            "hybrid",
+            "hybrid_rerank",
+            "bm25_rerank",
+            "dense_rerank",
+        ),
         required=True,
     )
     search_parser.add_argument("--query", required=True)
@@ -1033,6 +1254,99 @@ def build_parser() -> argparse.ArgumentParser:
         ],
     )
 
+    run_formal_dev_parser = subparsers.add_parser(
+        "run-formal-dev",
+        help="运行 Formal-400 开发集 14 配置矩阵",
+    )
+    run_formal_test_parser = subparsers.add_parser(
+        "run-formal-test",
+        help="一次性运行 Formal-400 测试集 14 配置矩阵",
+    )
+    for formal_run_parser, output_dir in (
+        (run_formal_dev_parser, DEFAULT_FORMAL_DEV_RUNS_DIR),
+        (run_formal_test_parser, DEFAULT_FORMAL_TEST_RUNS_DIR),
+    ):
+        formal_run_parser.add_argument(
+            "--dataset",
+            type=Path,
+            default=DEFAULT_FORMAL_DATASET_PATH,
+        )
+        formal_run_parser.add_argument(
+            "--formal-manifest",
+            type=Path,
+            default=DEFAULT_FORMAL_MANIFEST_PATH,
+        )
+        formal_run_parser.add_argument(
+            "--prereg-manifest",
+            type=Path,
+            default=DEFAULT_FORMAL_PREREG_PATH,
+        )
+        formal_run_parser.add_argument(
+            "--config",
+            type=Path,
+            default=DEFAULT_FORMAL_CONFIG_PATH,
+        )
+        formal_run_parser.add_argument(
+            "--indexes-dir",
+            type=Path,
+            default=DEFAULT_FORMAL_INDEXES_DIR,
+        )
+        formal_run_parser.add_argument(
+            "--output-dir",
+            type=Path,
+            default=output_dir,
+        )
+        formal_run_parser.add_argument(
+            "--resume",
+            type=Path,
+            default=None,
+        )
+
+    summarize_formal_parser = subparsers.add_parser(
+        "summarize-formal-test",
+        help="生成 Formal test 的分层 Bootstrap 统计摘要",
+    )
+    summarize_formal_parser.add_argument(
+        "--run-dir",
+        type=Path,
+        required=True,
+    )
+    summarize_formal_parser.add_argument(
+        "--prereg-manifest",
+        type=Path,
+        default=DEFAULT_FORMAL_PREREG_PATH,
+    )
+    summarize_formal_parser.add_argument(
+        "--output",
+        type=Path,
+        default=None,
+    )
+
+    freeze_formal_runs_parser = subparsers.add_parser(
+        "freeze-formal-runs",
+        help="冻结 Formal 14 配置运行结果与哈希",
+    )
+    freeze_formal_runs_parser.add_argument(
+        "--run-dir",
+        type=Path,
+        required=True,
+    )
+    freeze_formal_runs_parser.add_argument(
+        "--formal-manifest",
+        type=Path,
+        default=DEFAULT_FORMAL_MANIFEST_PATH,
+    )
+    freeze_formal_runs_parser.add_argument(
+        "--prereg-manifest",
+        type=Path,
+        default=DEFAULT_FORMAL_PREREG_PATH,
+    )
+    freeze_formal_runs_parser.add_argument(
+        "--output",
+        type=Path,
+        default=DEFAULT_FORMAL_RUNS_MANIFEST_PATH,
+    )
+
     pilot_evidence_parser = subparsers.add_parser(
         "sample-pilot-evidence",
         help="按固定配额选择 Pilot-40 Evidence Group",
@@ -1350,14 +1664,68 @@ def main(
             manifest_path=args.manifest,
             corpus_manifest_path=args.corpus_manifest,
         )
-    elif args.command == "retrieval-doctor":
-        manifest = build_retrieval_doctor_report(
+    elif args.command == "build-formal-chunks":
+        manifest = build_chunk_artifacts(
+            evidence_path=args.evidence,
             config_path=args.config,
-            chunks_dir=args.chunks_dir,
-            chunk_manifest_path=args.chunk_manifest,
+            output_dir=args.output_dir,
+            manifest_path=args.manifest,
+            corpus_manifest_path=args.corpus_manifest,
+            strategies=FORMAL_CHUNK_STRATEGIES,
+        )
+    elif args.command == "retrieval-doctor":
+        formal_profile = bool(args.formal)
+        manifest = build_retrieval_doctor_report(
+            config_path=(
+                DEFAULT_FORMAL_CONFIG_PATH
+                if formal_profile
+                else args.config
+            ),
+            chunks_dir=(
+                DEFAULT_FORMAL_CHUNKS_DIR
+                if formal_profile
+                else args.chunks_dir
+            ),
+            chunk_manifest_path=(
+                DEFAULT_FORMAL_CHUNK_MANIFEST_PATH
+                if formal_profile
+                else args.chunk_manifest
+            ),
             quality_gate_path=args.quality_gate,
             model_manifest_path=args.model_manifest,
-            indexes_dir=args.indexes_dir,
+            indexes_dir=(
+                DEFAULT_FORMAL_INDEXES_DIR
+                if formal_profile
+                else args.indexes_dir
+            ),
+            index_manifest_path=(
+                DEFAULT_FORMAL_INDEX_MANIFEST_PATH
+                if formal_profile
+                else DEFAULT_INDEX_MANIFEST_PATH
+            ),
+            formal_manifest_path=(
+                DEFAULT_FORMAL_MANIFEST_PATH
+                if formal_profile
+                else None
+            ),
+            expected_chunk_strategies=(
+                FORMAL_CHUNK_STRATEGIES
+                if formal_profile
+                else ("c0", "c1", "c2", "c3", "c4")
+            ),
+            expected_index_strategies=(
+                (
+                    "c0",
+                    "c1",
+                    "c2",
+                    "c3",
+                    "c4",
+                    "c5",
+                    "c4-no-title",
+                )
+                if formal_profile
+                else ("c0", "c1", "c2", "c3", "c4")
+            ),
         )
     elif args.command == "prepare-models":
         manifest = prepare_models(
@@ -1404,6 +1772,17 @@ def main(
             chunk_manifest_path=args.chunk_manifest,
             quality_gate_path=args.quality_gate,
             model_manifest_path=args.model_manifest,
+            output_dir=args.output_dir,
+            manifest_path=args.manifest,
+        )
+    elif args.command == "build-formal-indexes":
+        manifest = build_formal_indexes(
+            config_path=args.config,
+            chunks_dir=args.chunks_dir,
+            chunk_manifest_path=args.chunk_manifest,
+            quality_gate_path=args.quality_gate,
+            model_manifest_path=args.model_manifest,
+            formal_manifest_path=args.formal_manifest,
             output_dir=args.output_dir,
             manifest_path=args.manifest,
         )
@@ -1488,6 +1867,34 @@ def main(
             evidence_path=args.evidence,
             output_path=args.output,
             prior_dataset_paths=tuple(args.prior_dataset),
+        )
+    elif args.command in {"run-formal-dev", "run-formal-test"}:
+        manifest = run_formal_matrix(
+            split=(
+                "formal_dev"
+                if args.command == "run-formal-dev"
+                else "formal_test"
+            ),
+            dataset_path=args.dataset,
+            formal_manifest_path=args.formal_manifest,
+            prereg_manifest_path=args.prereg_manifest,
+            config_path=args.config,
+            indexes_dir=args.indexes_dir,
+            output_dir=args.output_dir,
+            resume_dir=args.resume,
+        )
+    elif args.command == "summarize-formal-test":
+        manifest = summarize_formal_test(
+            run_dir=args.run_dir,
+            prereg_manifest_path=args.prereg_manifest,
+            output_path=args.output,
+        )
+    elif args.command == "freeze-formal-runs":
+        manifest = freeze_formal_runs(
+            run_dir=args.run_dir,
+            formal_manifest_path=args.formal_manifest,
+            prereg_manifest_path=args.prereg_manifest,
+            output_path=args.output,
         )
     elif args.command == "sample-pilot-evidence":
         manifest = sample_pilot_evidence_groups(

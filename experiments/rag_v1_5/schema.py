@@ -11,7 +11,7 @@ from pydantic import (
 
 ContentType = Literal["clause", "formula", "ingredients", "preparation", "note"]
 AnomalyStatus = Literal["open", "reviewed", "ignored"]
-ChunkStrategy = Literal["c0", "c1", "c2", "c3", "c4"]
+ChunkStrategy = Literal["c0", "c1", "c2", "c3", "c4", "c5"]
 AuditSampleType = Literal["clause", "formula", "note_or_boundary"]
 AuditStatus = Literal["pending", "pass", "fail"]
 ReviewDecision = Literal[

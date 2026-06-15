@@ -1,5 +1,6 @@
 import importlib
 import importlib.util
+import hashlib
 import json
 import tempfile
 import unittest
@@ -75,6 +76,112 @@ class RetrievalDoctorTests(unittest.TestCase):
         serialized = json.dumps(report).lower()
         self.assertNotIn("token", serialized)
         self.assertNotIn("api_key", serialized)
+
+    def test_validates_formal_chunk_and_index_hash_chain(self) -> None:
+        def sha256(path: Path) -> str:
+            return hashlib.sha256(path.read_bytes()).hexdigest().upper()
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            chunks_dir = root / "formal" / "chunks"
+            indexes_dir = root / "formal" / "indexes"
+            chunks_dir.mkdir(parents=True)
+            indexes_dir.mkdir(parents=True)
+            chunk_strategies = ("c0", "c1", "c2", "c3", "c4", "c5")
+            chunk_records = {}
+            for strategy in chunk_strategies:
+                chunk_path = chunks_dir / f"{strategy}.jsonl"
+                chunk_path.write_text("{}\n", encoding="utf-8")
+                chunk_records[strategy] = {
+                    "output_file": chunk_path.name,
+                    "output_sha256": sha256(chunk_path),
+                }
+            chunk_manifest_path = chunks_dir / "manifest.json"
+            chunk_manifest_path.write_text(
+                json.dumps({"strategies": chunk_records}),
+                encoding="utf-8",
+            )
+            formal_manifest_path = root / "formal-manifest.json"
+            formal_manifest_path.write_text(
+                json.dumps({"status": "ready"}),
+                encoding="utf-8",
+            )
+
+            index_records = {}
+            index_strategies = (*chunk_strategies, "c4-no-title")
+            for strategy in index_strategies:
+                strategy_dir = indexes_dir / strategy
+                strategy_dir.mkdir()
+                rows_path = strategy_dir / "rows.jsonl"
+                rows_path.write_text("{}\n", encoding="utf-8")
+                strategy_manifest_path = strategy_dir / "manifest.json"
+                strategy_manifest_path.write_text(
+                    json.dumps(
+                        {
+                            "files": {
+                                "rows": {
+                                    "path": rows_path.name,
+                                    "sha256": sha256(rows_path),
+                                }
+                            }
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+                index_records[strategy] = {
+                    "manifest_sha256": sha256(
+                        strategy_manifest_path
+                    )
+                }
+            index_manifest_path = indexes_dir / "manifest.json"
+            index_manifest_path.write_text(
+                json.dumps(
+                    {
+                        "status": "ready",
+                        "formal_manifest_sha256": sha256(
+                            formal_manifest_path
+                        ),
+                        "chunk_manifest": {
+                            "sha256": sha256(chunk_manifest_path)
+                        },
+                        "strategies": index_records,
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            report = cli.build_retrieval_doctor_report(
+                config_path=root / "formal-400.yaml",
+                chunks_dir=chunks_dir,
+                chunk_manifest_path=chunk_manifest_path,
+                quality_gate_path=root / "quality-gate.json",
+                model_manifest_path=root / "models.json",
+                indexes_dir=indexes_dir,
+                index_manifest_path=index_manifest_path,
+                formal_manifest_path=formal_manifest_path,
+                expected_chunk_strategies=chunk_strategies,
+                expected_index_strategies=index_strategies,
+                system_reader=lambda: {
+                    "python_version": "3.10.6",
+                    "torch_version": "2.7.0+cu128",
+                    "cuda_available": True,
+                    "gpu_name": "NVIDIA GeForce RTX 2070",
+                    "gpu_memory_mib": 8192,
+                },
+                package_version_reader=lambda package: None,
+            )
+
+        self.assertEqual(report["chunk_strategy_count"], 6)
+        self.assertEqual(report["chunk_manifest_status"], "valid")
+        self.assertEqual(report["index_strategy_count"], 7)
+        self.assertEqual(report["index_manifest_status"], "valid")
+
+    def test_cli_accepts_formal_doctor_profile(self) -> None:
+        args = cli.build_parser().parse_args(
+            ["retrieval-doctor", "--formal"]
+        )
+
+        self.assertTrue(args.formal)
 
 
 class RetrievalSchemaTests(unittest.TestCase):

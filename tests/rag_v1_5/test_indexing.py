@@ -164,6 +164,61 @@ class IndexingTests(unittest.TestCase):
                             },
                         )
 
+    def test_without_titles_changes_index_text_but_preserves_chunk_ids(
+        self,
+    ) -> None:
+        indexing = self.indexing_module()
+        text = "book title\nchapter title\ncontent type\nBODY"
+        chunk = load_chunks()[0].model_copy(
+            update={"text": text, "char_count": len(text)}
+        )
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            with_titles_encoder = FakeEncoder()
+            without_titles_encoder = FakeEncoder()
+            model_record = {
+                "model": "BAAI/bge-m3",
+                "revision": "1" * 40,
+                "local_path": "data/models/bge-m3",
+            }
+            indexing.build_strategy_index(
+                chunks=[chunk],
+                output_dir=root / "with",
+                encoder=with_titles_encoder,
+                quality_gate_sha256="A" * 64,
+                chunk_sha256="B" * 64,
+                model_record=model_record,
+                metadata_policy="with_titles",
+            )
+            indexing.build_strategy_index(
+                chunks=[chunk],
+                output_dir=root / "without",
+                encoder=without_titles_encoder,
+                quality_gate_sha256="A" * 64,
+                chunk_sha256="B" * 64,
+                model_record=model_record,
+                metadata_policy="without_titles",
+            )
+            with_row = json.loads(
+                (root / "with" / "rows.jsonl").read_text(
+                    encoding="utf-8"
+                )
+            )
+            without_row = json.loads(
+                (root / "without" / "rows.jsonl").read_text(
+                    encoding="utf-8"
+                )
+            )
+
+        self.assertEqual(with_row["chunk_id"], without_row["chunk_id"])
+        self.assertEqual(with_titles_encoder.texts, [chunk.text])
+        self.assertEqual(without_titles_encoder.texts, ["BODY"])
+        self.assertEqual(without_row["text"], "BODY")
+        self.assertEqual(
+            without_row["retrieval_parent_id"],
+            with_row["retrieval_parent_id"],
+        )
+
     def test_real_build_rejects_non_ready_gate(self) -> None:
         indexing = self.indexing_module()
         validator = getattr(indexing, "validate_quality_gate", None)

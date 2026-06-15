@@ -27,7 +27,14 @@ from experiments.rag_v1_5.schema import (
 from experiments.rag_v1_5.tokenization import tokenize_text
 
 
-RetrievalMode = Literal["bm25", "dense", "hybrid", "hybrid_rerank"]
+RetrievalMode = Literal[
+    "bm25",
+    "dense",
+    "hybrid",
+    "hybrid_rerank",
+    "bm25_rerank",
+    "dense_rerank",
+]
 DEFAULT_MODEL_MANIFEST_PATH = Path(
     "experiments/rag_v1_5/manifests/models-v1.5.0.json"
 )
@@ -279,12 +286,23 @@ def retrieve_loaded(
     dense_encoder: DenseEncoder | None = None,
     reranker_scorer: RerankerScorer | None = None,
     result_top_k: int | None = None,
+    context_policy: str = "parent",
 ) -> RetrievalResult:
     total_started = time.perf_counter()
     if not query.strip():
         raise ValueError("查询不能为空")
-    if mode not in {"bm25", "dense", "hybrid", "hybrid_rerank"}:
+    if mode not in {
+        "bm25",
+        "dense",
+        "hybrid",
+        "hybrid_rerank",
+        "bm25_rerank",
+        "dense_rerank",
+    }:
         raise ValueError(f"未知检索模式: {mode}")
+
+    if context_policy not in {"parent", "child"}:
+        raise ValueError(f"Unknown context policy: {context_policy}")
 
     output_top_k = (
         int(config["reranker"]["top_k"])
@@ -304,7 +322,12 @@ def retrieve_loaded(
     }
     bm25_hits = []
     dense_hits = []
-    if mode in {"bm25", "hybrid", "hybrid_rerank"}:
+    if mode in {
+        "bm25",
+        "hybrid",
+        "hybrid_rerank",
+        "bm25_rerank",
+    }:
         started = time.perf_counter()
         bm25_hits = search_bm25(
             index,
@@ -313,7 +336,12 @@ def retrieve_loaded(
         )
         latency["bm25_ms"] = (time.perf_counter() - started) * 1000
 
-    if mode in {"dense", "hybrid", "hybrid_rerank"}:
+    if mode in {
+        "dense",
+        "hybrid",
+        "hybrid_rerank",
+        "dense_rerank",
+    }:
         if dense_encoder is None:
             raise ValueError(f"{mode} 模式必须提供已加载 Dense Encoder")
         started = time.perf_counter()
@@ -328,6 +356,10 @@ def retrieve_loaded(
         hits = bm25_hits[:output_top_k]
     elif mode == "dense":
         hits = dense_hits[:output_top_k]
+    elif mode == "bm25_rerank":
+        hits = bm25_hits[: int(config["reranker"]["candidate_k"])]
+    elif mode == "dense_rerank":
+        hits = dense_hits[: int(config["reranker"]["candidate_k"])]
     else:
         started = time.perf_counter()
         fused = reciprocal_rank_fusion(
@@ -356,6 +388,26 @@ def retrieve_loaded(
                 time.perf_counter() - started
             ) * 1000
 
+    if mode in {"bm25_rerank", "dense_rerank"}:
+        if reranker_scorer is None:
+            raise ValueError(f"{mode} requires a loaded Reranker")
+        started = time.perf_counter()
+        hits = rerank_hits(
+            query,
+            hits,
+            scorer=reranker_scorer,
+            top_k=output_top_k,
+        )
+        latency["reranker_ms"] = (
+            time.perf_counter() - started
+        ) * 1000
+
+    if context_policy == "child":
+        hits = [
+            hit.model_copy(update={"context_text": hit.text})
+            for hit in hits
+        ]
+
     latency["returned_context_chars"] = sum(
         len(hit.context_text) for hit in hits[:5]
     )
@@ -374,13 +426,26 @@ def retrieve(
     reranker_scorer: RerankerScorer | None = None,
     model_manifest_path: Path = DEFAULT_MODEL_MANIFEST_PATH,
     repository_root: Path | None = None,
+    context_policy: str = "parent",
 ) -> list[RetrievalHit]:
     if not query.strip():
         raise ValueError("查询不能为空")
-    if mode not in {"bm25", "dense", "hybrid", "hybrid_rerank"}:
+    if mode not in {
+        "bm25",
+        "dense",
+        "hybrid",
+        "hybrid_rerank",
+        "bm25_rerank",
+        "dense_rerank",
+    }:
         raise ValueError(f"未知检索模式: {mode}")
     index = load_index(indexes_dir / strategy)
-    if mode in {"dense", "hybrid", "hybrid_rerank"}:
+    if mode in {
+        "dense",
+        "hybrid",
+        "hybrid_rerank",
+        "dense_rerank",
+    }:
         if dense_encoder is None:
             local_path, _ = resolve_model_snapshot(
                 config=config,
@@ -392,7 +457,11 @@ def retrieve(
                 local_path,
                 config["embedding"],
             )
-    if mode == "hybrid_rerank" and reranker_scorer is None:
+    if (
+        mode
+        in {"hybrid_rerank", "bm25_rerank", "dense_rerank"}
+        and reranker_scorer is None
+    ):
         local_path, _ = resolve_model_snapshot(
             config=config,
             role="reranker",
@@ -411,4 +480,5 @@ def retrieve(
         dense_encoder=dense_encoder,
         reranker_scorer=reranker_scorer,
         result_top_k=None,
+        context_policy=context_policy,
     ).hits

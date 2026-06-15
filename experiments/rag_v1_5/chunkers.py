@@ -17,6 +17,7 @@ from experiments.rag_v1_5.schema import ChunkUnit, EvidenceUnit
 
 ChunkConfig = dict[str, Any]
 CHUNK_STRATEGIES = ("c0", "c1", "c2", "c3", "c4")
+FORMAL_CHUNK_STRATEGIES = (*CHUNK_STRATEGIES, "c5")
 
 
 @dataclass(frozen=True)
@@ -63,6 +64,8 @@ def build_chunks(
         return _build_structured_chunks(units, config)
     if strategy == "c4":
         return _build_parent_child_chunks(units, config)
+    if strategy == "c5":
+        return _build_generic_parent_child_chunks(units, config)
     raise ValueError(f"Unsupported chunk strategy: {strategy}")
 
 
@@ -325,6 +328,135 @@ def _build_parent_child_chunks(
     return chunks
 
 
+def _source_ids_for_range(
+    spans: list[EvidenceSpan],
+    *,
+    start: int,
+    end: int,
+) -> list[str]:
+    return [
+        span.evidence_id
+        for span in spans
+        if span.start < end and span.end > start
+    ]
+
+
+def _generic_context_prefix(unit: EvidenceUnit) -> str:
+    return (
+        f"书名：{unit.book_title}\n"
+        f"篇名：{unit.chapter_title}\n"
+        "正文："
+    )
+
+
+def _build_generic_parent_child_chunks(
+    units: list[EvidenceUnit],
+    config: ChunkConfig,
+) -> list[ChunkUnit]:
+    strategy_config = config["strategies"]["c5"]
+    parent_max_length = int(strategy_config["parent_max_length"])
+    child_max_length = int(strategy_config["child_max_length"])
+    child_overlap = int(strategy_config["child_overlap"])
+    separators = _with_character_fallback(
+        config["shared"]["separators"]
+    )
+    chapters: dict[tuple[str, str], list[EvidenceUnit]] = {}
+    for unit in units:
+        chapters.setdefault((unit.book_id, unit.chapter_id), []).append(
+            unit
+        )
+
+    chunks: list[ChunkUnit] = []
+    for chapter_units in chapters.values():
+        chapter_units = sorted(
+            chapter_units,
+            key=lambda unit: (
+                unit.clause_number or 0,
+                unit.evidence_id,
+            ),
+        )
+        chapter_text, spans = _join_evidence_text(chapter_units)
+        units_by_id = {
+            unit.evidence_id: unit for unit in chapter_units
+        }
+        source_unit = chapter_units[0]
+        prefix = _generic_context_prefix(source_unit)
+        parent_body_size = parent_max_length - len(prefix)
+        child_body_size = child_max_length - len(prefix)
+        if parent_body_size < 1 or child_body_size < 1:
+            raise ValueError("C5 title context exceeds chunk limit")
+        parent_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=parent_body_size,
+            chunk_overlap=0,
+            separators=separators,
+            add_start_index=True,
+        )
+        for parent_document in parent_splitter.create_documents(
+            [chapter_text]
+        ):
+            parent_body = parent_document.page_content
+            parent_start = parent_document.metadata["start_index"]
+            parent_id = (
+                f"c5-parent-{source_unit.chapter_id}-"
+                f"{parent_start:06d}"
+            )
+            parent_context = f"{prefix}{parent_body}"
+            child_splitter = RecursiveCharacterTextSplitter(
+                chunk_size=child_body_size,
+                chunk_overlap=min(
+                    child_overlap,
+                    max(0, child_body_size - 1),
+                ),
+                separators=separators,
+                add_start_index=True,
+            )
+            for child_document in child_splitter.create_documents(
+                [parent_body]
+            ):
+                child_body = child_document.page_content
+                child_start = (
+                    parent_start
+                    + child_document.metadata["start_index"]
+                )
+                child_end = child_start + len(child_body)
+                source_evidence_ids = _source_ids_for_range(
+                    spans,
+                    start=child_start,
+                    end=child_end,
+                )
+                source_clause_ids = {
+                    units_by_id[evidence_id].clause_id
+                    for evidence_id in source_evidence_ids
+                }
+                clause_id = (
+                    next(iter(source_clause_ids))
+                    if len(source_clause_ids) == 1
+                    else None
+                )
+                text = f"{prefix}{child_body}"
+                chunks.append(
+                    ChunkUnit(
+                        chunk_id=(
+                            f"c5-{source_unit.chapter_id}-"
+                            f"{parent_start:06d}-{child_start:06d}"
+                        ),
+                        strategy="c5",
+                        book_id=source_unit.book_id,
+                        chapter_id=source_unit.chapter_id,
+                        clause_id=clause_id,
+                        retrieval_parent_id=parent_id,
+                        source_evidence_ids=source_evidence_ids,
+                        text=text,
+                        context_text=parent_context,
+                        char_count=len(text),
+                        start_index=child_start,
+                        source_hash=source_unit.source_hash,
+                        corpus_version=source_unit.corpus_version,
+                    )
+                )
+    return chunks
+
+
 def _index_evidence(
     units: list[EvidenceUnit],
 ) -> dict[str, EvidenceUnit]:
@@ -422,6 +554,17 @@ def validate_chunks(
                 raise ValueError(
                     f"C4 clause parent mismatch: {chunk.chunk_id}"
                 )
+        if chunk.strategy == "c5":
+            if not (chunk.retrieval_parent_id or "").startswith(
+                "c5-parent-"
+            ):
+                raise ValueError(
+                    f"C5 retrieval parent is invalid: {chunk.chunk_id}"
+                )
+            if len(chunk.context_text) > 1000:
+                raise ValueError(
+                    f"C5 parent context exceeds limit: {chunk.chunk_id}"
+                )
 
 
 def summarize_chunk_statistics(
@@ -445,7 +588,7 @@ def summarize_chunk_statistics(
     lengths = sorted(chunk.char_count for chunk in chunks)
     parent_contexts: dict[str, int] = {}
     for chunk in chunks:
-        if chunk.strategy == "c4" and chunk.retrieval_parent_id:
+        if chunk.strategy in {"c4", "c5"} and chunk.retrieval_parent_id:
             parent_contexts.setdefault(
                 chunk.retrieval_parent_id,
                 len(chunk.context_text),
@@ -482,6 +625,7 @@ def build_chunk_artifacts(
     manifest_path: Path,
     corpus_manifest_path: Path,
     generated_at: datetime | None = None,
+    strategies: tuple[str, ...] = CHUNK_STRATEGIES,
 ) -> dict[str, Any]:
     evidence_units = load_evidence(evidence_path)
     config = load_chunk_config(config_path)
@@ -489,7 +633,7 @@ def build_chunk_artifacts(
 
     strategy_manifest: dict[str, Any] = {}
     strategy_statistics: dict[str, Any] = {}
-    for strategy in CHUNK_STRATEGIES:
+    for strategy in strategies:
         chunks = build_chunks(evidence_units, strategy, config)
         validate_chunks(chunks, evidence_units)
         output_path = output_dir / f"{strategy}.jsonl"

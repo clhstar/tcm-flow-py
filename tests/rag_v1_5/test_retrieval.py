@@ -214,6 +214,8 @@ class RetrievalTests(unittest.TestCase):
             "bm25": {"bm25_ms"},
             "dense": {"dense_ms"},
             "hybrid": {"bm25_ms", "dense_ms", "rrf_ms"},
+            "bm25_rerank": {"bm25_ms", "reranker_ms"},
+            "dense_rerank": {"dense_ms", "reranker_ms"},
             "hybrid_rerank": {
                 "bm25_ms",
                 "dense_ms",
@@ -246,12 +248,22 @@ class RetrievalTests(unittest.TestCase):
                             dense_encoder=(
                                 encoder
                                 if mode
-                                in {"dense", "hybrid", "hybrid_rerank"}
+                                in {
+                                    "dense",
+                                    "hybrid",
+                                    "dense_rerank",
+                                    "hybrid_rerank",
+                                }
                                 else None
                             ),
                             reranker_scorer=(
                                 scorer
-                                if mode == "hybrid_rerank"
+                                if mode
+                                in {
+                                    "bm25_rerank",
+                                    "dense_rerank",
+                                    "hybrid_rerank",
+                                }
                                 else None
                             ),
                         )
@@ -291,6 +303,61 @@ class RetrievalTests(unittest.TestCase):
                         self.assertTrue(hit.clause_ids)
                         self.assertTrue(hit.source_evidence_ids)
                         self.assertTrue(hit.retrieval_parent_id)
+
+    def test_context_policy_changes_only_returned_context(self) -> None:
+        retrieval = self.retrieval_module()
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            index_dir = Path(temporary_directory)
+            self.create_index(index_dir)
+            index = retrieval.load_index(index_dir)
+
+            parent = retrieval.retrieve_loaded(
+                "鍏卞悓",
+                index=index,
+                mode="hybrid_rerank",
+                config=self.retrieval_config(),
+                dense_encoder=FakeEncoder(
+                    np.asarray([[1.0, 0.0]], dtype=np.float32)
+                ),
+                reranker_scorer=DynamicReranker(),
+                context_policy="parent",
+            )
+            child = retrieval.retrieve_loaded(
+                "鍏卞悓",
+                index=index,
+                mode="hybrid_rerank",
+                config=self.retrieval_config(),
+                dense_encoder=FakeEncoder(
+                    np.asarray([[1.0, 0.0]], dtype=np.float32)
+                ),
+                reranker_scorer=DynamicReranker(),
+                context_policy="child",
+            )
+
+        self.assertEqual(
+            [hit.chunk_id for hit in parent.hits],
+            [hit.chunk_id for hit in child.hits],
+        )
+        self.assertEqual(
+            [hit.rank for hit in parent.hits],
+            [hit.rank for hit in child.hits],
+        )
+        self.assertEqual(
+            [hit.reranker_score for hit in parent.hits],
+            [hit.reranker_score for hit in child.hits],
+        )
+        self.assertTrue(
+            all(hit.context_text == hit.text for hit in child.hits)
+        )
+        self.assertTrue(
+            any(
+                parent_hit.context_text != child_hit.context_text
+                for parent_hit, child_hit in zip(
+                    parent.hits,
+                    child.hits,
+                )
+            )
+        )
 
     def test_retrieve_loaded_matches_legacy_order_and_supports_top_10(
         self,

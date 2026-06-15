@@ -32,3 +32,11 @@ strategies:
     kind: evidence_unit
     max_length: 300
     parent_recovery: true
+
+  c5:
+    kind: generic_parent_child
+    input_scope: chapter
+    parent_max_length: 1000
+    child_max_length: 300
+    child_overlap: 40
+    parent_recovery: true
