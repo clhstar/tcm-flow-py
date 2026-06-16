@@ -1,0 +1,47 @@
+{
+  "audit_review_sha256": "FAF0C0BA04BCA31D654864CAAEAB16ADDC7444411E04021291A3C9C38730F0DB",
+  "audit_sample_sha256": "CDBE575495BF1D68CE14978F649F4788967ACA507229A228BD0A47CB2931FA1C",
+  "chunk_manifest_sha256": "7A7EC85D3E2782F7B0BA4D173F5F6AF6C23D89E8DA9E034CCC0C3F90AAC7418E",
+  "chunks": {
+    "c0": "2E6AD8225E5ECE5EA305EFEF3D1DFC8532E672178823637BECE2728BF8B3F5B4",
+    "c1": "92F73997A233BF910213AED5A9355EF91F6B719F3F5EFD94A489940636199411",
+    "c2": "4737A00E3AF7F50B680CDF10579FEB98B083A83D8B482A5D19B2629E7E837DC5",
+    "c3": "75978E60EF81805B90D94ACEE4E4C620C87C7D6F3323477E0ACB315A6C0711AC",
+    "c4": "E80F94C71FAA91C812F2E91660FC1E202282D1C19D9D903BABC1655D7D14B090"
+  },
+  "counts": {
+    "jin_gui_yao_lue": {
+      "clause": 30,
+      "formula": 20,
+      "note_or_boundary": 20
+    },
+    "shang_han_lun": {
+      "clause": 30,
+      "formula": 20,
+      "note_or_boundary": 20
+    }
+  },
+  "evidence_sha256": "9DBD2ED476F4AD7B89D628CACF6A2F963987C77276F8CFFC8E8FE1BE29F7FF4B",
+  "initial_error_counts": {
+    "boundary_error": 5,
+    "parent_error": 0,
+    "text_error": 0,
+    "type_error": 7
+  },
+  "pending_count": 0,
+  "reviewed_count": 140,
+  "reviewed_dates": [
+    "2026/6/14"
+  ],
+  "reviewers": [
+    "陈力恒"
+  ],
+  "status": "ready",
+  "unresolved_error_counts": {
+    "boundary_error": 0,
+    "parent_error": 0,
+    "text_error": 0,
+    "type_error": 0
+  },
+  "version": "v1.5.0"
+}

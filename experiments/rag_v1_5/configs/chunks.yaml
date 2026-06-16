@@ -1,0 +1,42 @@
+version: v1.5.0
+
+shared:
+  title_context: true
+  separators: ["\n\n", "\n", "。", "；", "，", " "]
+
+strategies:
+  c0:
+    kind: recursive_character
+    input_scope: chapter
+    chunk_size: 500
+    chunk_overlap: 80
+
+  c1:
+    kind: recursive_character
+    input_scope: chapter
+    chunk_size: 250
+    chunk_overlap: 40
+
+  c2:
+    kind: clause
+    max_length: 1000
+    overflow_chunk_size: 500
+    overflow_overlap: 80
+
+  c3:
+    kind: evidence_unit
+    max_length: 500
+    parent_recovery: false
+
+  c4:
+    kind: evidence_unit
+    max_length: 300
+    parent_recovery: true
+
+  c5:
+    kind: generic_parent_child
+    input_scope: chapter
+    parent_max_length: 1000
+    child_max_length: 300
+    child_overlap: 40
+    parent_recovery: true

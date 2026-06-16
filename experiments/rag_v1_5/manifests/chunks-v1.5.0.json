@@ -1,0 +1,62 @@
+{
+  "config_sha256": "EAC1CF154BAC4E887468EE84A38CBCD78A3639300D9B25F54F05035997384548",
+  "corpus_manifest_sha256": "B9FB823BF736AD48F8F45722F971E398BBB755480EC5A125568E0147B342C82D",
+  "evidence_sha256": "9DBD2ED476F4AD7B89D628CACF6A2F963987C77276F8CFFC8E8FE1BE29F7FF4B",
+  "generated_at": "2026-06-14T05:50:15.176499Z",
+  "strategies": {
+    "c0": {
+      "count": 198,
+      "output_file": "c0.jsonl",
+      "output_sha256": "2E6AD8225E5ECE5EA305EFEF3D1DFC8532E672178823637BECE2728BF8B3F5B4",
+      "parameters": {
+        "chunk_overlap": 80,
+        "chunk_size": 500,
+        "input_scope": "chapter",
+        "kind": "recursive_character"
+      }
+    },
+    "c1": {
+      "count": 414,
+      "output_file": "c1.jsonl",
+      "output_sha256": "92F73997A233BF910213AED5A9355EF91F6B719F3F5EFD94A489940636199411",
+      "parameters": {
+        "chunk_overlap": 40,
+        "chunk_size": 250,
+        "input_scope": "chapter",
+        "kind": "recursive_character"
+      }
+    },
+    "c2": {
+      "count": 918,
+      "output_file": "c2.jsonl",
+      "output_sha256": "4737A00E3AF7F50B680CDF10579FEB98B083A83D8B482A5D19B2629E7E837DC5",
+      "parameters": {
+        "kind": "clause",
+        "max_length": 1000,
+        "overflow_chunk_size": 500,
+        "overflow_overlap": 80
+      }
+    },
+    "c3": {
+      "count": 2271,
+      "output_file": "c3.jsonl",
+      "output_sha256": "75978E60EF81805B90D94ACEE4E4C620C87C7D6F3323477E0ACB315A6C0711AC",
+      "parameters": {
+        "kind": "evidence_unit",
+        "max_length": 500,
+        "parent_recovery": false
+      }
+    },
+    "c4": {
+      "count": 2315,
+      "output_file": "c4.jsonl",
+      "output_sha256": "E80F94C71FAA91C812F2E91660FC1E202282D1C19D9D903BABC1655D7D14B090",
+      "parameters": {
+        "kind": "evidence_unit",
+        "max_length": 300,
+        "parent_recovery": true
+      }
+    }
+  },
+  "version": "v1.5.0"
+}

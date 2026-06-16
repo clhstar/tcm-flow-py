@@ -1,0 +1,19 @@
+{
+  "document_count": 5881,
+  "document_mean_chars": 352.3952,
+  "generated_at": "2026-06-16T02:34:50.982889Z",
+  "gold_response_mean_chars": 47.6578,
+  "privacy": {
+    "full_source_committed": false,
+    "raw_text_included": false
+  },
+  "public_dataset_name": "Tianchi TCM-QG",
+  "public_dataset_url": "https://tianchi.aliyun.com/dataset/86895",
+  "qa_pair_count": 18478,
+  "question_mean_chars": 14.3966,
+  "source_file": "train.json",
+  "source_sha256": "5C79F24114AA01184F19247689D18D412BCBB39CDDE3292A80FAC0DBBDBC7CB6",
+  "stage": "public_tcm_qg_source_frozen",
+  "status": "ready",
+  "version": "v1.6.0"
+}

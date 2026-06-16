@@ -1,0 +1,43 @@
+version: v1.5.0
+seed: 20260612
+
+quality_gate:
+  required_status: ready
+  required_reviewed_count: 140
+  allowed_unresolved_critical_errors: 0
+
+embedding:
+  model: BAAI/bge-m3
+  revision: 5617a9f61b028005a4858fdac845db406aefb181
+  device: cuda
+  use_fp16: true
+  batch_size: 4
+  max_length: 1024
+  normalize: true
+
+bm25:
+  tokenizer: jieba
+  hmm: false
+  top_k: 20
+
+dense:
+  top_k: 20
+
+rrf:
+  k: 60
+
+reranker:
+  model: BAAI/bge-reranker-v2-m3
+  revision: 953dc6f6f85a1b2dbfca4c34a2796e7dde08d41e
+  device: cuda
+  use_fp16: true
+  batch_size: 2
+  max_length: 1024
+  candidate_k: 40
+  top_k: 5
+  normalize_score: true
+
+evaluation:
+  top_ks: [1, 5, 10]
+  primary_granularity: clause
+  smoke_min_answerable_hit_at_5: 0.70

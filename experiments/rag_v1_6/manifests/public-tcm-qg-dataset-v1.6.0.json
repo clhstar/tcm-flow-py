@@ -1,0 +1,34 @@
+{
+  "dataset": {
+    "by_split": {
+      "dev": 2714,
+      "test": 2786,
+      "train_pool": 12956
+    },
+    "path": "data/rag_v1_6/public_tcm_qg/processed/public-tcm-qg.jsonl",
+    "qa_pair_count": 18456,
+    "sha256": "0F5DDE83FA6E3DEC342714458E7F2E0EB1F65E6684E024E673D383EE3962FDBF",
+    "source_doc_count_by_split": {
+      "dev": 880,
+      "test": 882,
+      "train_pool": 4117
+    }
+  },
+  "filtering": {
+    "dedupe_key": "source_doc_id + normalized_question + normalized_answer",
+    "require_answer_substring": true
+  },
+  "generated_at": "2026-06-16T02:34:51.508626Z",
+  "inputs": {
+    "config_sha256": "9282EF1274DD80EEB0D65BD63203DF11D36B78B3CA18831CDE5044827C96E269",
+    "source_sha256": "5C79F24114AA01184F19247689D18D412BCBB39CDDE3292A80FAC0DBBDBC7CB6",
+    "split_sha256": "B41EC5D4317D40AC14B68BCEBCBF7008DCA2334615DFB0938D5B7914EAA7F9D9"
+  },
+  "privacy": {
+    "qa_content_included": false,
+    "raw_text_included": false
+  },
+  "stage": "public_tcm_qg_dataset_frozen",
+  "status": "ready",
+  "version": "v1.6.0"
+}

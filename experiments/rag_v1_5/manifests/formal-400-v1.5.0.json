@@ -1,0 +1,102 @@
+{
+  "dataset": {
+    "answerable_anchor_clause_count": 400,
+    "answerable_count": 320,
+    "approved_count": 400,
+    "book_counts": {
+      "jin_gui_yao_lue": 200,
+      "shang_han_lun": 200
+    },
+    "cross_split_clause_overlap_count": 0,
+    "path": "data/rag_v1_5/formal/evaluation/formal-400.jsonl",
+    "prior_overlap_count": 0,
+    "question_count": 400,
+    "sha256": "1C344CB271B24D14366AA0389AE192FDA99388D51724E56260D50497D7902230",
+    "split_counts": {
+      "formal_dev": 200,
+      "formal_test": 200
+    },
+    "unanswerable_count": 80
+  },
+  "distribution": {
+    "jin_gui_yao_lue": {
+      "formal_dev": {
+        "formula_composition_or_use": 20,
+        "multi_evidence": 20,
+        "single_clause_fact": 30,
+        "source_location": 10,
+        "unanswerable": 20
+      },
+      "formal_test": {
+        "formula_composition_or_use": 20,
+        "multi_evidence": 20,
+        "single_clause_fact": 30,
+        "source_location": 10,
+        "unanswerable": 20
+      }
+    },
+    "shang_han_lun": {
+      "formal_dev": {
+        "formula_composition_or_use": 20,
+        "multi_evidence": 20,
+        "single_clause_fact": 30,
+        "source_location": 10,
+        "unanswerable": 20
+      },
+      "formal_test": {
+        "formula_composition_or_use": 20,
+        "multi_evidence": 20,
+        "single_clause_fact": 30,
+        "source_location": 10,
+        "unanswerable": 20
+      }
+    }
+  },
+  "frozen_at": "2026-06-15T09:34:51.784789+00:00",
+  "inputs": {
+    "evidence": {
+      "path": "data/rag_v1_5/processed/evidence.jsonl",
+      "sha256": "9DBD2ED476F4AD7B89D628CACF6A2F963987C77276F8CFFC8E8FE1BE29F7FF4B"
+    },
+    "evidence_groups": {
+      "path": "data/rag_v1_5/formal/evaluation/formal-evidence-groups.jsonl",
+      "sha256": "AEC716E0555B665F949FB77F74F2FB92F0854ADAEFB790C9F57CA9F91CC8F1A7"
+    },
+    "exclusions": {
+      "path": "data/rag_v1_5/formal/evaluation/formal-exclusions.json",
+      "sha256": "13AB8BACDB29D8218F59ED74434EA644D76EC95FF30A4C4F6B367B7C39A4FA85"
+    },
+    "pilot_manifest": {
+      "path": "experiments/rag_v1_5/manifests/pilot-40-v1.5.0.json",
+      "sha256": "1A8A783DB2BE32A4048D06DE670A03A7C954502B37542CD2AEC0D4548FF88F90"
+    },
+    "prereg_manifest": {
+      "path": "experiments/rag_v1_5/manifests/formal-prereg-v1.5.0.json",
+      "sha256": "5DFF217581C574B67E776302A97857D14FE88886B5F7DBD9DB92F9D33F33A1E6"
+    },
+    "review_csv_sha256": "0A6D62B0F24B336315A02B79F5B12CF7AC1B3F4035A05440C4A707999950049D",
+    "review_summary": {
+      "path": "data/rag_v1_5/formal/evaluation/formal-review-summary.json",
+      "sha256": "CF009CED792DF966A445695022E077FE34B08B38889447A9B2476601E197BA6D"
+    },
+    "smoke_manifest": {
+      "path": "experiments/rag_v1_5/manifests/smoke-10-v1.5.0.json",
+      "sha256": "20EC4D5909F10C09FFDC2E9D740C1C15D6FCE255918CC2EE542C2CA07B41CC81"
+    }
+  },
+  "privacy": {
+    "full_corpus_committed": false,
+    "full_questions_committed": false,
+    "ids_and_hashes_only": true,
+    "raw_private_content_included": false
+  },
+  "review": {
+    "first_pass_count": 400,
+    "rejected_count": 0,
+    "revision_count": 0,
+    "second_pass_count": 40,
+    "second_required_count": 40
+  },
+  "status": "ready",
+  "version": "v1.5.0"
+}
