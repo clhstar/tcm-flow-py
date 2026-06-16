@@ -1,0 +1,28 @@
+{
+  "answer_methods": [
+    "B0",
+    "B4",
+    "P",
+    "P-no-parent"
+  ],
+  "base_url_origin": "https://api.deepseek.com",
+  "generated_at": "2026-06-16T06:21:57.631867Z",
+  "inputs": {
+    "retrieval_test_matrix_sha256": "3117710A141BD04AA638F72361F2D91E8884E12535587AF0E1FCD79842EA2D3C"
+  },
+  "max_tokens": 256,
+  "model_name": "deepseek-chat",
+  "privacy": {
+    "api_key_included": false,
+    "generated_content_included": false,
+    "qa_content_included": false,
+    "raw_content_included": false
+  },
+  "prompt_sha256": "52EF16AC75311F4AA520D44AECC6862300E88336BEAE16A26170B7EF75F8D1CB",
+  "repeats": 1,
+  "stage": "public_tcm_qg_formal_answer_preregistered",
+  "status": "ready",
+  "temperature": 0,
+  "test_policy": "single_frozen_run",
+  "version": "v1.6.0"
+}

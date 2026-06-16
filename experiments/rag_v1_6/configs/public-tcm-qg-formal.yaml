@@ -1,0 +1,43 @@
+version: v1.6.0
+seed: 20260616
+inputs:
+  source_manifest: experiments/rag_v1_6/manifests/public-tcm-qg-source-v1.6.0.json
+  dataset_manifest: experiments/rag_v1_6/manifests/public-tcm-qg-dataset-v1.6.0.json
+  dataset_path: data/rag_v1_6/public_tcm_qg/processed/public-tcm-qg.jsonl
+  chunk_manifest: data/rag_v1_6/public_tcm_qg/chunks/manifest.json
+retrieval:
+  bm25_top_k: 20
+  dense_top_k: 20
+  rrf_k: 60
+  reranker_candidate_k: 40
+  final_top_k: 10
+  answer_context_top_k: 5
+embedding:
+  model: BAAI/bge-m3
+  revision: 5617a9f61b028005a4858fdac845db406aefb181
+  device: cuda
+  use_fp16: true
+  batch_size: 4
+  max_length: 1024
+reranker:
+  model: BAAI/bge-reranker-v2-m3
+  revision: 953dc6f6f85a1b2dbfca4c34a2796e7dde08d41e
+  device: cuda
+  use_fp16: true
+  batch_size: 2
+  max_length: 1024
+answer:
+  methods: [B0, B4, P, P-no-parent]
+  temperature: 0
+  repeats: 1
+  max_tokens: 256
+  max_workers: 8
+statistics:
+  bootstrap_seed: 20260616
+  bootstrap_resamples: 10000
+  confidence_level: 0.95
+  resample_unit: source_doc_id
+human_review:
+  main_review_questions: 160
+  second_review_rate: 0.10
+  parent_ablation_focus_questions: 120

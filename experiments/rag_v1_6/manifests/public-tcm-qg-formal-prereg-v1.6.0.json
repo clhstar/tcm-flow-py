@@ -1,0 +1,140 @@
+{
+  "answer_methods": [
+    "B0",
+    "B4",
+    "P",
+    "P-no-parent"
+  ],
+  "answer_model": {
+    "base_url_origin": "https://api.deepseek.com",
+    "model_name": "deepseek-chat"
+  },
+  "answer_parameters": {
+    "max_tokens": 256,
+    "repeats": 1,
+    "temperature": 0,
+    "test_policy": "single_frozen_run"
+  },
+  "generated_at": "2026-06-16T03:19:02.410332Z",
+  "inputs": {
+    "chunk_manifest_sha256": "AABAA8E4BC99A26811D6243AB518B409B5B4365D8EF0477C37962799D935D648",
+    "config_sha256": "773BCB24AC51A7E95DD84E1AF176BA7A72505DF48635764B8787F3CB2771AE9E",
+    "dataset_manifest_sha256": "97DF11F3DDA98323EF47ED9962280C6E8A821CC5E3BF3816D1167421CA513CA6",
+    "dataset_sha256": "0F5DDE83FA6E3DEC342714458E7F2E0EB1F65E6684E024E673D383EE3962FDBF",
+    "source_manifest_sha256": "11673F5B05D930D7D905138FE3730DBBC22FE4841A57B2CFE3075ADDB68F1CDE"
+  },
+  "privacy": {
+    "api_key_included": false,
+    "generated_content_included": false,
+    "qa_content_included": false,
+    "raw_content_included": false
+  },
+  "retrieval_config_count": 7,
+  "retrieval_configs": [
+    {
+      "config_id": "b1-public-bm25",
+      "context_policy": "chunk",
+      "method_role": "B1",
+      "retrieval_mode": "bm25",
+      "strategy": "b4",
+      "uses_bm25": true,
+      "uses_dense": false,
+      "uses_reranker": false
+    },
+    {
+      "config_id": "b2-public-dense",
+      "context_policy": "chunk",
+      "method_role": "B2",
+      "retrieval_mode": "dense",
+      "strategy": "b4",
+      "uses_bm25": false,
+      "uses_dense": true,
+      "uses_reranker": false
+    },
+    {
+      "config_id": "b3-public-hybrid",
+      "context_policy": "chunk",
+      "method_role": "B3",
+      "retrieval_mode": "hybrid_rrf",
+      "strategy": "b4",
+      "uses_bm25": true,
+      "uses_dense": true,
+      "uses_reranker": false
+    },
+    {
+      "config_id": "b4-public-hybrid-rerank",
+      "context_policy": "chunk",
+      "method_role": "B4",
+      "retrieval_mode": "hybrid_rrf_rerank",
+      "strategy": "b4",
+      "uses_bm25": true,
+      "uses_dense": true,
+      "uses_reranker": true
+    },
+    {
+      "config_id": "p-public-hybrid-rerank",
+      "context_policy": "parent",
+      "method_role": "P",
+      "retrieval_mode": "hybrid_rrf_rerank",
+      "strategy": "child",
+      "uses_bm25": true,
+      "uses_dense": true,
+      "uses_reranker": true
+    },
+    {
+      "config_id": "p-public-no-parent",
+      "context_policy": "child",
+      "method_role": "P-no-parent",
+      "ranking_must_match": "p-public-hybrid-rerank",
+      "retrieval_mode": "hybrid_rrf_rerank",
+      "strategy": "child",
+      "uses_bm25": true,
+      "uses_dense": true,
+      "uses_reranker": true
+    },
+    {
+      "config_id": "p-public-no-reranker",
+      "context_policy": "parent",
+      "method_role": "P",
+      "retrieval_mode": "hybrid_rrf",
+      "strategy": "child",
+      "uses_bm25": true,
+      "uses_dense": true,
+      "uses_reranker": false
+    }
+  ],
+  "seed": 20260616,
+  "stage": "public_tcm_qg_formal_preregistered",
+  "status": "ready",
+  "success_gates": {
+    "failed": {
+      "allowed_thesis_claim": "Report failure analysis; do not package as success.",
+      "required": [
+        "parent_ablation_only conditions are not met"
+      ]
+    },
+    "parent_ablation_only": {
+      "allowed_thesis_claim": "Parent context contributes over child-only retrieval, but the complete method is not claimed to beat B4.",
+      "required": [
+        "P_vs_P_no_parent_char_f1_delta > 0",
+        "P_vs_P_no_parent_char_f1_95ci_lower > 0",
+        "P_vs_P_no_parent_citation_recall_delta > 0",
+        "P_vs_P_no_parent_citation_recall_95ci_lower > 0"
+      ]
+    },
+    "strong_success": {
+      "allowed_thesis_claim": "Parent-Child RAG is stably better than ordinary chunk RAG on public TCM-QG.",
+      "required": [
+        "P_vs_B4_char_f1_delta > 0",
+        "P_vs_B4_char_f1_95ci_lower > 0",
+        "P_vs_B4_citation_recall_delta >= 0",
+        "P_vs_B4_unsupported_answer_rate_delta <= 0",
+        "P_vs_P_no_parent_char_f1_delta > 0",
+        "P_vs_P_no_parent_char_f1_95ci_lower > 0",
+        "P_vs_P_no_parent_citation_recall_delta > 0",
+        "P_vs_P_no_parent_citation_recall_95ci_lower > 0"
+      ]
+    }
+  },
+  "version": "v1.6.0"
+}

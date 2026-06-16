@@ -1,0 +1,38 @@
+version: v1.6.0
+seed: 20260616
+source:
+  path: train.json
+  expected_sha256: 5C79F24114AA01184F19247689D18D412BCBB39CDDE3292A80FAC0DBBDBC7CB6
+  public_dataset_name: Tianchi TCM-QG
+  public_dataset_url: https://tianchi.aliyun.com/dataset/86895
+  local_record_count: 5881
+  local_qa_pair_count: 18478
+filtering:
+  min_text_chars: 40
+  max_text_chars: 1500
+  require_answer_substring: true
+  dedupe: true
+split:
+  seed: 20260616
+  unit: source_doc_id
+  train_pool_rate: 0.70
+  dev_rate: 0.15
+  test_rate: 0.15
+retrieval:
+  backend: jieba_bm25_plus_overlap_rerank
+  bm25_top_k: 40
+  final_top_k: 10
+  answer_context_top_k: 5
+chunking:
+  b4_chunk_size: 500
+  b4_chunk_overlap: 80
+  child_chunk_size: 160
+  child_chunk_overlap: 40
+answer:
+  mode: extractive_oracle_proxy
+  repeats: 1
+  methods: [B0, B4, P, P-no-parent]
+statistics:
+  bootstrap_seed: 20260616
+  bootstrap_resamples: 10000
+  confidence_level: 0.95

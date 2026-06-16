@@ -1,0 +1,20 @@
+{
+  "generated_at": "2026-06-16T05:38:52.177411Z",
+  "inputs": {
+    "dev_matrix_summary_sha256": "E1FCD14970198F5C909A82E6603AAA9303D92E1185B4602BFE36266298635832",
+    "index_manifest_sha256": "DD166D6B721918098EEAB2BA092A218B7638B9786E7F1D3D5050CFF32267C762",
+    "prereg_manifest_sha256": "8035FE7906913CB2BCC9B0918C9E6BA28395D61A943B921E565BB7B30CA3F313",
+    "test_matrix_summary_sha256": "3117710A141BD04AA638F72361F2D91E8884E12535587AF0E1FCD79842EA2D3C",
+    "test_retrieval_report_sha256": "B9A22C912E895B5C9DF8352EAD0D04B3A86B56FC819CBF73CFE20B32E17E75D4"
+  },
+  "privacy": {
+    "qa_content_included": false,
+    "raw_content_included": false,
+    "retrieval_rows_committed": false
+  },
+  "retrieval_report_written": true,
+  "retrieval_test_completed": true,
+  "stage": "public_tcm_qg_formal_retrieval_runs_frozen",
+  "status": "ready",
+  "version": "v1.6.0"
+}

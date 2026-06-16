@@ -1,0 +1,67 @@
+{
+  "backend": "bm25_dense_rrf_rerank_ready",
+  "embedding_model": "BAAI/bge-m3",
+  "embedding_revision": "5617a9f61b028005a4858fdac845db406aefb181",
+  "generated_at": "2026-06-16T03:34:24.796653Z",
+  "inputs": {
+    "chunk_manifest_sha256": "AABAA8E4BC99A26811D6243AB518B409B5B4365D8EF0477C37962799D935D648",
+    "prereg_manifest_sha256": "8035FE7906913CB2BCC9B0918C9E6BA28395D61A943B921E565BB7B30CA3F313"
+  },
+  "privacy": {
+    "committed_full_index": false,
+    "raw_text_included": false
+  },
+  "stage": "public_tcm_qg_formal_indexes_built",
+  "status": "ready",
+  "strategies": {
+    "b4": {
+      "backend": "bm25_dense_rrf_rerank_ready",
+      "embedding_model": "BAAI/bge-m3",
+      "embedding_revision": "5617a9f61b028005a4858fdac845db406aefb181",
+      "files": {
+        "bm25_tokens": {
+          "bytes": 11736385,
+          "path": "bm25_tokens.jsonl",
+          "sha256": "D7A5D36C5CD1D131BCF9E56081F622E3901E8A30329070216BE464B910B5800A"
+        },
+        "dense": {
+          "bytes": 24850560,
+          "path": "dense.npy",
+          "sha256": "7C636BF5AD5A41BC7420B488ECF0554BD066C7253C2056214CF07F960BCC6334"
+        },
+        "rows": {
+          "bytes": 14159926,
+          "path": "rows.jsonl",
+          "sha256": "0A97DEB808188D1A5D5CD003DB4FF85EC4E6CBC6C80445FFD89222A77315BF94"
+        }
+      },
+      "manifest_sha256": "D6C559AFB10AC5FED576160C738B7CAEF107FC9549BC71F2D6CDFB6CEBD92520",
+      "row_count": 6067
+    },
+    "child": {
+      "backend": "bm25_dense_rrf_rerank_ready",
+      "embedding_model": "BAAI/bge-m3",
+      "embedding_revision": "5617a9f61b028005a4858fdac845db406aefb181",
+      "files": {
+        "bm25_tokens": {
+          "bytes": 14981903,
+          "path": "bm25_tokens.jsonl",
+          "sha256": "09342E0A762B6866F12C33D932B91E44D3044140805B82DF2D0149B680DEA51C"
+        },
+        "dense": {
+          "bytes": 74170496,
+          "path": "dense.npy",
+          "sha256": "3592255EC71E5EC7F68F2082E61CD177DE3986B1E9C75358C7041557C68F98D4"
+        },
+        "rows": {
+          "bytes": 33756718,
+          "path": "rows.jsonl",
+          "sha256": "EF7E54EAB9F3CC2D7CDBDC08CCB393BFDF39FACBDEA6EF947F10353564748541"
+        }
+      },
+      "manifest_sha256": "4BFBCCFD796E799D47779FF1BD52C803400F8513C956C5421898F5B20E071678",
+      "row_count": 18108
+    }
+  },
+  "version": "v1.6.0"
+}
