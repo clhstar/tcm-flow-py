@@ -1,0 +1,92 @@
+import json
+import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
+
+from app.rag.ancient_books.pipeline import build_corpus, doctor_corpus
+
+
+class PipelineTests(unittest.TestCase):
+    def test_build_corpus_writes_deterministic_single_book_artifacts(self):
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            source = root / "source"
+            source.mkdir()
+            body = (
+                "<目录>卷一\\头痛\n"
+                "<篇名>头痛\n"
+                "属性：因风者恶风。\n"
+            )
+            (source / "637-景岳全书.txt").write_bytes(body.encode("cp936"))
+            config = {
+                "version": "v1.0.0",
+                "source_encoding": "cp936",
+                "symptoms": {"头痛": ["头痛"]},
+                "exclude_title_patterns": [],
+                "books": [{
+                    "book_id": "jing_yue_quan_shu",
+                    "title": "景岳全书",
+                    "source_file": "637-景岳全书.txt",
+                    "symptom_scan": True,
+                    "method_sections": [],
+                    "fixed_sections": [],
+                }],
+            }
+            first_output = root / "first"
+            second_output = root / "second"
+
+            manifest = build_corpus(
+                config=config,
+                source_root=source,
+                curated_root=None,
+                output_dir=first_output,
+            )
+            build_corpus(
+                config=config,
+                source_root=source,
+                curated_root=None,
+                output_dir=second_output,
+            )
+
+            self.assertEqual(manifest["status"], "ready")
+            self.assertEqual(manifest["book_count"], 1)
+            self.assertEqual(
+                manifest["sources"][0]["source_file"],
+                "637-景岳全书.txt",
+            )
+            for filename in (
+                "sections.jsonl",
+                "parents.jsonl",
+                "chunks.jsonl",
+                "manifest.json",
+            ):
+                self.assertEqual(
+                    (first_output / filename).read_bytes(),
+                    (second_output / filename).read_bytes(),
+                )
+            rows = [
+                json.loads(line)
+                for line in (first_output / "chunks.jsonl")
+                .read_text(encoding="utf-8")
+                .splitlines()
+            ]
+            self.assertEqual(rows[0]["symptom_tags"], ["头痛"])
+
+            doctor = doctor_corpus(first_output)
+            self.assertEqual(
+                doctor,
+                {
+                    "status": "ready",
+                    "source_hash_mismatch_count": 0,
+                    "artifact_hash_mismatch_count": 0,
+                    "count_mismatch_count": 0,
+                    "duplicate_parent_count": 0,
+                    "duplicate_chunk_count": 0,
+                    "orphan_chunk_count": 0,
+                    "excluded_content_match_count": 0,
+                },
+            )
+
+
+if __name__ == "__main__":
+    unittest.main()

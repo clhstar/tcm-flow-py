@@ -34,51 +34,6 @@ books:
     source_file: 637-景岳全书.txt
     symptom_scan: true
     method_sections: [十问篇（九）]
-  - book_id: yi_men_fa_lv
-    title: 医门法律
-    source_file: 207-医门法律.txt
-    symptom_scan: false
-    method_sections:
-      - 望色论（附律一条）
-      - 闻声论（附律二条）
-      - 辨息论（附律一条）
-      - 问病论（附律一条）
-      - 切脉论（附律一条）
-      - 合色脉论（附律一条）
-  - book_id: zheng_yin_mai_zhi
-    title: 症因脉治
-    source_file: 257-症因脉治.txt
-    symptom_scan: true
-  - book_id: lei_zheng_zhi_cai
-    title: 类证治裁
-    source_file: 602-类证治裁.txt
-    symptom_scan: true
-  - book_id: zheng_zhi_hui_bu
-    title: 证治汇补
-    source_file: 289-证治汇补.txt
-    symptom_scan: true
-  - book_id: jin_gui_yao_lue
-    title: 金匮要略方论
-    source_file: 499-金匮要略方论.txt
-    symptom_scan: false
-    fixed_sections:
-      - 肺痿肺痈咳嗽上气病脉证治第七
-      - 胸痹心痛短气病脉证治第九
-      - 腹满寒疝宿食病脉证治第十
-      - 痰饮咳嗽病脉证并治第十二
-      - 惊悸吐衄下血胸满瘀血病脉证治第十六
-      - 呕吐哕下利病脉证治第十七
-  - book_id: huang_di_nei_jing_su_wen
-    title: 黄帝内经素问
-    source_file: 437-黄帝内经素问.txt
-    symptom_scan: false
-    fixed_sections:
-      - 移精变气论篇第十三
-      - 诊要经终论篇第十六
-      - 脉要精微论篇第十七
-      - 平人气象论篇第十八
-      - 咳论篇第三十八
-      - 举痛论篇第三十九
 
 models:
   embedding:

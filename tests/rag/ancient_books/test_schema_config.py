@@ -231,8 +231,9 @@ class ProductionConfigTests(unittest.TestCase):
         self.assertEqual(config["source_encoding"], "cp936")
         self.assertEqual(
             {book["book_id"] for book in config["books"]},
-            EXPECTED_BOOK_IDS,
+            {"jing_yue_quan_shu"},
         )
+        self.assertEqual(EXPECTED_BOOK_IDS, frozenset({"jing_yue_quan_shu"}))
         self.assertEqual(
             config["symptoms"],
             {
@@ -267,42 +268,10 @@ class ProductionConfigTests(unittest.TestCase):
             ],
         )
         books = {book["book_id"]: book for book in config["books"]}
+        self.assertEqual(len(books), 1)
         self.assertEqual(books["jing_yue_quan_shu"]["title"], "景岳全书")
         self.assertNotIn("book_title", books["jing_yue_quan_shu"])
         self.assertEqual(books["jing_yue_quan_shu"]["method_sections"], ["十问篇（九）"])
-        self.assertEqual(
-            books["yi_men_fa_lv"]["method_sections"],
-            [
-                "望色论（附律一条）",
-                "闻声论（附律二条）",
-                "辨息论（附律一条）",
-                "问病论（附律一条）",
-                "切脉论（附律一条）",
-                "合色脉论（附律一条）",
-            ],
-        )
-        self.assertEqual(
-            books["jin_gui_yao_lue"]["fixed_sections"],
-            [
-                "肺痿肺痈咳嗽上气病脉证治第七",
-                "胸痹心痛短气病脉证治第九",
-                "腹满寒疝宿食病脉证治第十",
-                "痰饮咳嗽病脉证并治第十二",
-                "惊悸吐衄下血胸满瘀血病脉证治第十六",
-                "呕吐哕下利病脉证治第十七",
-            ],
-        )
-        self.assertEqual(
-            books["huang_di_nei_jing_su_wen"]["fixed_sections"],
-            [
-                "移精变气论篇第十三",
-                "诊要经终论篇第十六",
-                "脉要精微论篇第十七",
-                "平人气象论篇第十八",
-                "咳论篇第三十八",
-                "举痛论篇第三十九",
-            ],
-        )
         self.assertEqual(
             [
                 (book["source_file"], book["symptom_scan"])
@@ -310,12 +279,6 @@ class ProductionConfigTests(unittest.TestCase):
             ],
             [
                 ("637-景岳全书.txt", True),
-                ("207-医门法律.txt", False),
-                ("257-症因脉治.txt", True),
-                ("602-类证治裁.txt", True),
-                ("289-证治汇补.txt", True),
-                ("499-金匮要略方论.txt", False),
-                ("437-黄帝内经素问.txt", False),
             ],
         )
         self.assertEqual(config["models"]["embedding"]["device"], "cuda")
@@ -342,16 +305,22 @@ class ProductionConfigTests(unittest.TestCase):
             },
         )
 
-    def test_rejects_config_without_exactly_seven_expected_books(self):
+    def test_rejects_config_with_any_book_other_than_jing_yue_quan_shu(self):
         data = copy.deepcopy(self.load_yaml_data())
-        data["books"] = data["books"][:-1]
+        extra_book = copy.deepcopy(data["books"][0])
+        extra_book.update(
+            book_id="yi_men_fa_lv",
+            title="医门法律",
+            source_file="207-医门法律.txt",
+        )
+        data["books"].append(extra_book)
 
-        with self.assertRaisesRegex(ValueError, "exactly 7 books|恰好 7 本"):
+        with self.assertRaisesRegex(ValueError, "exactly 1 book|恰好 1 本"):
             load_production_config(self.write_temporary_config(data))
 
     def test_rejects_duplicate_book_ids(self):
         data = copy.deepcopy(self.load_yaml_data())
-        data["books"][-1]["book_id"] = data["books"][0]["book_id"]
+        data["books"].append(copy.deepcopy(data["books"][0]))
 
         with self.assertRaisesRegex(ValueError, "duplicate book IDs|重复"):
             load_production_config(self.write_temporary_config(data))

@@ -6,17 +6,7 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
 
-EXPECTED_BOOK_IDS = frozenset(
-    {
-        "jing_yue_quan_shu",
-        "yi_men_fa_lv",
-        "zheng_yin_mai_zhi",
-        "lei_zheng_zhi_cai",
-        "zheng_zhi_hui_bu",
-        "jin_gui_yao_lue",
-        "huang_di_nei_jing_su_wen",
-    }
-)
+EXPECTED_BOOK_IDS = frozenset({"jing_yue_quan_shu"})
 
 NonEmptyString = Annotated[str, Field(min_length=1)]
 AliasList = Annotated[list[NonEmptyString], Field(min_length=1)]
@@ -73,17 +63,13 @@ class ProductionConfig(StrictConfigModel):
     source_encoding: Literal["cp936"]
     symptoms: dict[NonEmptyString, AliasList] = Field(min_length=10, max_length=10)
     exclude_title_patterns: list[NonEmptyString] = Field(min_length=1)
-    books: list[BookConfig] = Field(min_length=7, max_length=7)
+    books: list[BookConfig] = Field(min_length=1, max_length=1)
     models: ModelsConfig
     retrieval: RetrievalConfig
 
 def _validate_books(raw_books: object) -> None:
     if not isinstance(raw_books, list):
-        raise ValueError("production config books must be a list of exactly 7 books")
-    if len(raw_books) != 7:
-        raise ValueError(
-            f"production config must contain exactly 7 books; found {len(raw_books)}"
-        )
+        raise ValueError("production config books must be a list of exactly 1 book")
 
     book_ids = [
         book.get("book_id") if isinstance(book, dict) else None for book in raw_books
@@ -96,6 +82,11 @@ def _validate_books(raw_books: object) -> None:
 
     if len(book_ids) != len(set(book_ids)):
         raise ValueError("production config contains duplicate book IDs")
+
+    if len(raw_books) != 1:
+        raise ValueError(
+            f"production config must contain exactly 1 book; found {len(raw_books)}"
+        )
 
     actual_book_ids = set(book_ids)
     if actual_book_ids != EXPECTED_BOOK_IDS:
