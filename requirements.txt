@@ -13,3 +13,9 @@ langchain-text-splitters
 
 rank-bm25
 jieba
+
+numpy==2.2.6
+PyYAML==6.0.3
+FlagEmbedding==1.4.0
+huggingface_hub==0.36.2
+transformers==4.57.6
