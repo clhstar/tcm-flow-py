@@ -170,17 +170,22 @@ def load_curated_sections(
             source=str(path),
             filename=path.name,
         )
+        duplicate_counts: dict[tuple[str, str, str, str], int] = {}
 
-        for occurrence, document in enumerate(documents):
+        for document in documents:
             topic = str(document.metadata["topic"])
             section_title = str(document.metadata["section"])
+            body_hash = _sha256(document.page_content.encode("utf-8"))
+            duplicate_key = (path.name, topic, section_title, body_hash)
+            duplicate_ordinal = duplicate_counts.get(duplicate_key, 0)
+            duplicate_counts[duplicate_key] = duplicate_ordinal + 1
             section_id = _stable_id(
                 "curated",
                 path.name,
                 topic,
                 section_title,
-                occurrence,
-                document.page_content,
+                body_hash,
+                duplicate_ordinal,
             )
             sections.append(
                 SelectedSection(

@@ -393,6 +393,73 @@ class CuratedMarkdownTests(unittest.TestCase):
 
         self.assertEqual(sections, [])
 
+    def test_unrelated_leading_headings_do_not_change_existing_ids(self):
+        original_text = (
+            "# Existing topic\n"
+            "## Existing section\n"
+            "Existing content.\n"
+        )
+        leading_text = (
+            "# Unrelated topic\n"
+            "## Unrelated section\n"
+            "Unrelated content.\n"
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "curated.md"
+            path.write_text(original_text, encoding="utf-8")
+            original_sections = load_curated_sections(
+                Path(temp_dir), SYMPTOM_ALIASES
+            )
+
+            path.write_text(leading_text + original_text, encoding="utf-8")
+            sections_with_leading = load_curated_sections(
+                Path(temp_dir), SYMPTOM_ALIASES
+            )
+
+        original_ids = {
+            (section.chapter, section.section, section.original_text):
+            section.section_id
+            for section in original_sections
+        }
+        ids_with_leading = {
+            (section.chapter, section.section, section.original_text):
+            section.section_id
+            for section in sections_with_leading
+            if section.chapter == "Existing topic"
+        }
+        self.assertEqual(ids_with_leading, original_ids)
+
+    def test_identical_curated_sections_get_unique_stable_ids(self):
+        repeated_section = (
+            "# Repeated topic\n"
+            "## Repeated section\n"
+            "Identical content.\n"
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "curated.md"
+            path.write_text(repeated_section * 2, encoding="utf-8")
+
+            first_parse = load_curated_sections(
+                Path(temp_dir), SYMPTOM_ALIASES
+            )
+            second_parse = load_curated_sections(
+                Path(temp_dir), SYMPTOM_ALIASES
+            )
+
+        first_ids = [
+            section.section_id
+            for section in first_parse
+            if section.section == "Repeated section"
+        ]
+        second_ids = [
+            section.section_id
+            for section in second_parse
+            if section.section == "Repeated section"
+        ]
+        self.assertEqual(len(first_ids), 2)
+        self.assertEqual(len(set(first_ids)), 2)
+        self.assertEqual(first_ids, second_ids)
+
 
 if __name__ == "__main__":
     unittest.main()
