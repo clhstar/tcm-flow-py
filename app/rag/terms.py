@@ -1,4 +1,17 @@
-TCM_TERMS = [
+from app.rag.ancient_books.query import (
+    SEARCH_ALIASES,
+    detect_chief_symptom,
+    rewrite_query,
+)
+
+
+TCM_TERMS = list(
+    dict.fromkeys(
+        term
+        for terms in SEARCH_ALIASES.values()
+        for term in terms
+    )
+) + [
     # 症状
     "胃胀",
     "胃脘胀满",
@@ -36,47 +49,7 @@ TCM_TERMS = [
 ]
 
 
-QUERY_EXPANSIONS = {
-    "胃胀": [
-        "胃脘胀满",
-        "饭后加重",
-        "嗳气",
-        "反酸",
-        "烧心",
-        "恶心",
-        "大便不成形",
-        "饮食不节",
-        "情志不畅",
-        "脾胃虚弱",
-        "气机不畅",
-        "问诊要点",
-        "日常调护",
-    ],
-    "失眠": [
-        "入睡困难",
-        "易醒",
-        "多梦",
-        "早醒",
-        "心悸",
-        "健忘",
-        "心脾两虚",
-        "肝郁化火",
-        "心肾不交",
-        "痰热扰心",
-        "问诊要点",
-    ],
-    "头痛": [
-        "头痛部位",
-        "头痛性质",
-        "持续时间",
-        "诱因",
-        "呕吐",
-        "意识异常",
-        "肢体无力",
-        "言语不清",
-        "危险信号",
-    ],
-}
+QUERY_EXPANSIONS = SEARCH_ALIASES
 
 
 def deduplicate_keep_order(items: list[str]) -> list[str]:
@@ -112,22 +85,7 @@ def rewrite_tcm_query(query: str) -> str:
     """
     将用户口语化问题扩展成更适合中医知识库检索的 query。
     """
-    expansions = []
-
-    for keyword, extra_terms in QUERY_EXPANSIONS.items():
-        if keyword in query:
-            expansions.extend(extra_terms)
-
-    # 如果用户没明确提到知识库里的标准词，也可以根据常见表达做简单补充
-    if "饭后" in query and "胃胀" not in query:
-        expansions.extend(QUERY_EXPANSIONS.get("胃胀", []))
-
-    if "睡不着" in query and "失眠" not in query:
-        expansions.extend(QUERY_EXPANSIONS.get("失眠", []))
-
-    all_terms = deduplicate_keep_order([query] + expansions)
-
-    return " ".join(all_terms)
+    return rewrite_query(query)
 
 
 def detect_topic(query: str) -> str | None:
@@ -135,14 +93,4 @@ def detect_topic(query: str) -> str | None:
     根据 query 粗略识别主题。
     后面 metadata 过滤可以用。
     """
-    for topic in QUERY_EXPANSIONS.keys():
-        if topic in query:
-            return topic
-
-    if "饭后" in query or "嗳气" in query or "反酸" in query:
-        return "胃胀"
-
-    if "睡不着" in query or "多梦" in query or "易醒" in query:
-        return "失眠"
-
-    return None
+    return detect_chief_symptom(query)
