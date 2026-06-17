@@ -14,15 +14,19 @@ _EXCLUDED_SUBTITLES = {
 }
 _SENTENCE_PATTERN = re.compile(r"([^。！？!?；;\n]*)([。！？!?；;\n]+|$)")
 _DOSE_PATTERN = re.compile(
-    r"(?:[（(][^）)]*(?:钱|两|分|枚)[^）)]*[）)])"
-    r"|(?:\d+(?:\.\d+)?|[一二三四五六七八九十百半]+)\s*(?:钱|两|分|枚)"
+    r"(?:[（(][^）)]*(?:毫升|钱|两|分|枚|升|合|斗|撮|铢|斤|克|片|粒|盏)"
+    r"[^）)]*[）)])"
+    r"|(?:\d+(?:\.\d+)?|[一二三四五六七八九十百半]+)\s*"
+    r"(?:毫升|钱|两|分|枚|升|合|斗|撮|铢|斤|克|片|粒|盏)"
 )
 _FORMULA_NAME_PATTERN = re.compile(
     r"^[\u3400-\u9fff]{1,12}(?:汤|散|丸|饮|膏|丹)(?:方)?$"
 )
 _PREPARATION_PATTERN = re.compile(
-    r"为末|为丸|水煎|主之|治|服|煎|"
-    r"(?:空心|食前|食后|温水|白汤|米汤|姜汤|酒|姜汁)下|送下|下之"
+    r"为末|为丸|水煎|主之|治|服|煎|煮|熬|炙|炒|焙|研|捣|浸|泡|"
+    r"上[一二三四五六七八九十百\d]+味|"
+    r"(?:空心|食前|食后|温水|白汤|米汤|姜汤|酒|姜汁)下|送下|下之|"
+    r"(?:[一二三四五六七八九十百\d]+上)?[一二三四五六七八九十百\d]+下"
 )
 _DIAGNOSTIC_CUES = ("因", "者", "痛", "恶", "喜", "脉", "证", "症")
 _COMMON_HERBS = (
@@ -87,6 +91,62 @@ _COMMON_HERBS = (
     "牡蛎",
     "酸枣仁",
     "远志",
+    "天麻",
+    "钩藤",
+    "葛根",
+    "升麻",
+    "荆芥",
+    "前胡",
+    "紫苏",
+    "藿香",
+    "佩兰",
+    "金银花",
+    "蒲公英",
+    "板蓝根",
+    "玄参",
+    "木通",
+    "通草",
+    "滑石",
+    "薏苡仁",
+    "五味子",
+    "山茱萸",
+    "杜仲",
+    "续断",
+    "肉桂",
+    "吴茱萸",
+    "丁香",
+    "小茴香",
+    "郁金",
+    "延胡索",
+    "丹参",
+    "益母草",
+    "地龙",
+    "全蝎",
+    "蜈蚣",
+    "僵蚕",
+    "磁石",
+    "朱砂",
+    "琥珀",
+    "瓜蒌",
+    "竹茹",
+    "旋覆花",
+    "代赭石",
+    "款冬花",
+    "紫菀",
+    "百部",
+    "白前",
+    "苏子",
+    "莱菔子",
+    "麦芽",
+    "山楂",
+    "神曲",
+    "鸡内金",
+    "阿胶",
+    "何首乌",
+    "白扁豆",
+    "山药",
+    "莲子",
+    "芡实",
 )
 
 
@@ -125,15 +185,17 @@ def _filter_sentence(body: str, terminator: str) -> str:
     unsafe = [_is_unsafe_clause(clause) for clause in clauses]
     if not any(unsafe):
         return body + terminator
-    retained = [
-        clause.strip()
-        for clause, is_unsafe in zip(clauses, unsafe)
-        if not is_unsafe
+    retained_indices = [
+        index for index, is_unsafe in enumerate(unsafe) if not is_unsafe
     ]
-    if not retained:
+    if not retained_indices:
         return ""
-    punctuation = terminator if terminator else ""
-    return "，".join(retained) + punctuation
+
+    separators = re.findall(r"[，,]", body)
+    retained = clauses[retained_indices[0]]
+    for index in retained_indices[1:]:
+        retained += separators[index - 1] + clauses[index]
+    return retained + terminator
 
 
 def filter_retrievable_text(text: str) -> str:

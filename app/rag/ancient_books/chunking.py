@@ -27,7 +27,8 @@ def _body_signature(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-def _evidence_role(title: str) -> EvidenceRole:
+def _evidence_role(section: SelectedSection) -> EvidenceRole:
+    title = section.section
     if any(marker in title for marker in _DIAGNOSTIC_METHOD_TITLES):
         return "diagnostic_method"
     if "脉案" in title:
@@ -36,6 +37,8 @@ def _evidence_role(title: str) -> EvidenceRole:
         return "differential"
     if "病机" in title:
         return "pathogenesis"
+    if section.source_type == "curated_markdown":
+        return "symptom_feature"
     return "syndrome_pattern"
 
 
@@ -46,25 +49,14 @@ def _bounded_sentence_groups(text: str, limit: int) -> list[str]:
         if match.group(0)
     ]
     groups: list[str] = []
-    current = ""
-
     for sentence in sentence_units:
         if len(sentence) > limit:
-            if current:
-                groups.append(current)
-                current = ""
             groups.extend(
                 sentence[offset : offset + limit]
                 for offset in range(0, len(sentence), limit)
             )
-        elif len(current) + len(sentence) <= limit:
-            current += sentence
         else:
-            groups.append(current)
-            current = sentence
-
-    if current:
-        groups.append(current)
+            groups.append(sentence)
     return groups
 
 
@@ -75,7 +67,7 @@ def build_parent_child(
     if not filtered_text:
         return [], []
 
-    role = _evidence_role(section.section)
+    role = _evidence_role(section)
     parent_bodies = _bounded_sentence_groups(filtered_text, 1000)
     parent_duplicate_counts: dict[str, int] = {}
     parents: list[EvidenceParent] = []

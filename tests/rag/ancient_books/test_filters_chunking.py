@@ -10,10 +10,11 @@ def make_section(
     *,
     section: str = "头痛证治",
     section_id: str = "section-001",
+    source_type: str = "ancient_book",
 ) -> SelectedSection:
     return SelectedSection(
         section_id=section_id,
-        source_type="ancient_book",
+        source_type=source_type,
         book_id="sample_book",
         book_title="测试医书",
         source_file="sample.txt",
@@ -50,6 +51,24 @@ class RetrievableTextFilterTests(unittest.TestCase):
 
         self.assertEqual(filter_retrievable_text(text), "头痛连及胁下。")
 
+    def test_additional_herbs_ancient_doses_and_preparation_are_removed(self):
+        text = (
+            "因风者恶风。天麻、钩藤。苦酒（一升半）。"
+            "上二味，煮三沸，三上三下。"
+        )
+
+        self.assertEqual(filter_retrievable_text(text), "因风者恶风。")
+
+    def test_removing_unsafe_clause_preserves_safe_ascii_punctuation(self):
+        text = "甲,乙，川芎茶调散。"
+
+        self.assertEqual(filter_retrievable_text(text), "甲,乙。")
+
+    def test_safe_ascii_punctuation_text_is_returned_verbatim(self):
+        text = "甲,乙"
+
+        self.assertEqual(filter_retrievable_text(text), text)
+
     def test_new_safe_subtitle_resumes_retention_after_excluded_subtitle(self):
         text = (
             "\\x方剂\\x 白术、茯苓各二钱，水煎。"
@@ -77,7 +96,7 @@ class ParentChildChunkingTests(unittest.TestCase):
         parents, children = build_parent_child(make_section(text))
 
         self.assertGreater(len(parents), 1)
-        self.assertGreater(len(children), len(parents))
+        self.assertGreaterEqual(len(children), len(parents))
         self.assertTrue(all(len(parent.original_text) <= 1000 for parent in parents))
         self.assertTrue(all(len(child.text) <= 300 for child in children))
         parent_ids = {parent.parent_id for parent in parents}
@@ -102,14 +121,21 @@ class ParentChildChunkingTests(unittest.TestCase):
             parent_children = [child for child in children if child.parent_id == parent.parent_id]
             self.assertEqual("".join(child.text for child in parent_children), parent.original_text)
 
-    def test_unrelated_leading_parent_does_not_shift_existing_parent_ids(self):
-        first = "甲" * 999 + "。"
-        second = "乙" * 999 + "。"
-        original_parents, _ = build_parent_child(make_section(first + second))
+    def test_unrelated_leading_sentence_does_not_shift_existing_parent_ids(self):
+        first = "甲" * 749 + "。"
+        second = "乙" * 249 + "。"
+        third = "丙" * 249 + "。"
+        original_parents, _ = build_parent_child(
+            make_section(first + second + third)
+        )
         leading_parents, _ = build_parent_child(
-            make_section("无" * 999 + "。" + first + second)
+            make_section("无" * 99 + "。" + first + second + third)
         )
 
+        self.assertEqual(
+            [parent.original_text for parent in original_parents],
+            [first, second, third],
+        )
         original_ids = {parent.original_text: parent.parent_id for parent in original_parents}
         leading_ids = {
             parent.original_text: parent.parent_id
@@ -132,27 +158,32 @@ class ParentChildChunkingTests(unittest.TestCase):
         self.assertEqual(first_parent_ids, [parent.parent_id for parent in second_parents])
         self.assertEqual(first_child_ids, [child.chunk_id for child in second_children])
 
-    def test_section_titles_map_to_expected_evidence_roles(self):
-        cases = {
-            "十问篇": "diagnostic_method",
-            "问病论": "diagnostic_method",
-            "望色诀": "diagnostic_method",
-            "闻声篇": "diagnostic_method",
-            "辨息论": "diagnostic_method",
-            "切脉法": "diagnostic_method",
-            "合色脉法": "diagnostic_method",
-            "问诊要诀": "diagnostic_method",
-            "头痛脉案": "case",
-            "头痛脉候": "differential",
-            "危险证候": "differential",
-            "头痛病机": "pathogenesis",
-            "头痛证治": "syndrome_pattern",
-        }
+    def test_section_titles_and_source_type_cover_all_evidence_roles(self):
+        cases = (
+            ("十问篇", "ancient_book", "diagnostic_method"),
+            ("问病论", "ancient_book", "diagnostic_method"),
+            ("望色诀", "ancient_book", "diagnostic_method"),
+            ("闻声篇", "ancient_book", "diagnostic_method"),
+            ("辨息论", "ancient_book", "diagnostic_method"),
+            ("切脉法", "ancient_book", "diagnostic_method"),
+            ("合色脉法", "ancient_book", "diagnostic_method"),
+            ("问诊要诀", "ancient_book", "diagnostic_method"),
+            ("头痛脉案", "ancient_book", "case"),
+            ("头痛脉候", "ancient_book", "differential"),
+            ("危险证候", "ancient_book", "differential"),
+            ("头痛病机", "ancient_book", "pathogenesis"),
+            ("头痛证治", "ancient_book", "syndrome_pattern"),
+            ("头痛表现", "curated_markdown", "symptom_feature"),
+        )
 
-        for title, expected_role in cases.items():
-            with self.subTest(title=title):
+        for title, source_type, expected_role in cases:
+            with self.subTest(title=title, source_type=source_type):
                 parents, children = build_parent_child(
-                    make_section("因风者恶风。", section=title)
+                    make_section(
+                        "因风者恶风。",
+                        section=title,
+                        source_type=source_type,
+                    )
                 )
                 self.assertEqual([parent.evidence_role for parent in parents], [expected_role])
                 self.assertEqual([child.evidence_role for child in children], [expected_role])
