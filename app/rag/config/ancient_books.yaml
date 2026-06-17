@@ -1,0 +1,115 @@
+version: v1.0.0
+source_encoding: cp936
+
+symptoms:
+  - name: 头痛
+    aliases: [头痛, 头风]
+  - name: 眩晕
+    aliases: [眩晕, 眩运, 头眩]
+  - name: 咳嗽
+    aliases: [咳嗽, 咳逆]
+  - name: 喘促
+    aliases: [喘, 喘逆, 喘症, 上气, 短气]
+  - name: 心悸
+    aliases: [心悸, 惊悸, 怔忡, 怔仲]
+  - name: 不寐
+    aliases: [不寐, 不得卧, 失眠]
+  - name: 胃脘痛
+    aliases: [胃脘痛, 胃脘, 心痛]
+  - name: 腹痛
+    aliases: [腹痛, 腹满, 心腹痛]
+  - name: 泄泻
+    aliases: [泄泻, 下利]
+  - name: 便秘
+    aliases: [便秘, 秘结, 大便不通]
+
+exclude_title_patterns:
+  - 产后
+  - 妊娠
+  - 经期
+  - 小儿
+  - 妇人
+  - 女科
+  - 幼科
+  - 外科
+  - 疹
+  - 痘
+  - 附方
+  - 论列方
+  - 选方
+
+books:
+  - book_id: jing_yue_quan_shu
+    book_title: 景岳全书
+    source_file: 637-景岳全书.txt
+    symptom_scan: true
+    method_sections: [十问篇（九）]
+  - book_id: yi_men_fa_lv
+    book_title: 医门法律
+    source_file: 207-医门法律.txt
+    symptom_scan: false
+    method_sections:
+      - 望色论（附律一条）
+      - 闻声论（附律二条）
+      - 辨息论（附律一条）
+      - 问病论（附律一条）
+      - 切脉论（附律一条）
+      - 合色脉论（附律一条）
+  - book_id: zheng_yin_mai_zhi
+    book_title: 症因脉治
+    source_file: 257-症因脉治.txt
+    symptom_scan: true
+  - book_id: lei_zheng_zhi_cai
+    book_title: 类证治裁
+    source_file: 602-类证治裁.txt
+    symptom_scan: true
+  - book_id: zheng_zhi_hui_bu
+    book_title: 证治汇补
+    source_file: 289-证治汇补.txt
+    symptom_scan: true
+  - book_id: jin_gui_yao_lue
+    book_title: 金匮要略方论
+    source_file: 499-金匮要略方论.txt
+    symptom_scan: false
+    fixed_sections:
+      - 肺痿肺痈咳嗽上气病脉证治第七
+      - 胸痹心痛短气病脉证治第九
+      - 腹满寒疝宿食病脉证治第十
+      - 痰饮咳嗽病脉证并治第十二
+      - 惊悸吐衄下血胸满瘀血病脉证治第十六
+      - 呕吐哕下利病脉证治第十七
+  - book_id: huang_di_nei_jing_su_wen
+    book_title: 黄帝内经素问
+    source_file: 437-黄帝内经素问.txt
+    symptom_scan: false
+    fixed_sections:
+      - 移精变气论篇第十三
+      - 诊要经终论篇第十六
+      - 脉要精微论篇第十七
+      - 平人气象论篇第十八
+      - 咳论篇第三十八
+      - 举痛论篇第三十九
+
+models:
+  embedding:
+    model: BAAI/bge-m3
+    revision: 5617a9f61b028005a4858fdac845db406aefb181
+    device: cuda
+    use_fp16: true
+    batch_size: 4
+    max_length: 1024
+  reranker:
+    model: BAAI/bge-reranker-v2-m3
+    revision: 953dc6f6f85a1b2dbfca4c34a2796e7dde08d41e
+    device: cuda
+    use_fp16: true
+    batch_size: 2
+    max_length: 1024
+    normalize_score: true
+
+retrieval:
+  bm25_top_k: 20
+  dense_top_k: 20
+  rrf_k: 60
+  reranker_candidate_k: 40
+  final_top_k: 5
