@@ -19,16 +19,23 @@ SYMPTOM_ALIASES = {
 }
 
 
-def make_section(title: str, section_id: str) -> SelectedSection:
+def make_section(
+    title: str,
+    section_id: str,
+    *,
+    source_file: str = "sample.txt",
+    volume: str = "卷一",
+    chapter: str = "杂证",
+) -> SelectedSection:
     return SelectedSection(
         section_id=section_id,
         source_type="ancient_book",
         book_id="sample_book",
         book_title="测试医书",
-        source_file="sample.txt",
+        source_file=source_file,
         source_hash="A" * 64,
-        volume="卷一",
-        chapter="杂证",
+        volume=volume,
+        chapter=chapter,
         section=title,
         symptom_tags=[],
         original_text=f"{title}正文",
@@ -92,6 +99,75 @@ class TaggedBookParserTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             path, _ = self.write_cp936_book(Path(temp_dir), text)
 
+            first_parse = parse_tagged_book(
+                path,
+                book_id="jing_yue_quan_shu",
+                book_title="景岳全书",
+                encoding="cp936",
+            )
+            second_parse = parse_tagged_book(
+                path,
+                book_id="jing_yue_quan_shu",
+                book_title="景岳全书",
+                encoding="cp936",
+            )
+
+        first_ids = [section.section_id for section in first_parse]
+        self.assertEqual(len(first_ids), 2)
+        self.assertEqual(len(set(first_ids)), 2)
+        self.assertEqual(
+            first_ids,
+            [section.section_id for section in second_parse],
+        )
+
+    def test_unrelated_leading_section_does_not_change_existing_ids(self):
+        original_text = (
+            "<目录>卷一\\头痛\n"
+            "<篇名>头痛论治\n"
+            "属性：第一段。\n"
+            "<目录>卷二\\咳嗽\n"
+            "<篇名>咳嗽论治\n"
+            "属性：第二段。\n"
+        )
+        leading_text = (
+            "<目录>卷首\\总论\n"
+            "<篇名>诊法总论\n"
+            "属性：前置无关正文。\n"
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path, _ = self.write_cp936_book(Path(temp_dir), original_text)
+            original_sections = parse_tagged_book(
+                path,
+                book_id="jing_yue_quan_shu",
+                book_title="景岳全书",
+                encoding="cp936",
+            )
+            path.write_bytes((leading_text + original_text).encode("cp936"))
+            sections_with_leading = parse_tagged_book(
+                path,
+                book_id="jing_yue_quan_shu",
+                book_title="景岳全书",
+                encoding="cp936",
+            )
+
+        original_ids = {
+            section.section: section.section_id for section in original_sections
+        }
+        ids_with_leading = {
+            section.section: section.section_id
+            for section in sections_with_leading
+            if section.section in original_ids
+        }
+        self.assertEqual(ids_with_leading, original_ids)
+
+    def test_identical_duplicate_sections_get_unique_stable_ids(self):
+        repeated_section = (
+            "<目录>卷一\\头痛\n"
+            "<篇名>头痛论治\n"
+            "属性：完全相同正文。\n"
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path, _ = self.write_cp936_book(Path(temp_dir), repeated_section * 2)
             first_parse = parse_tagged_book(
                 path,
                 book_id="jing_yue_quan_shu",
@@ -209,6 +285,70 @@ class SectionSelectionTests(unittest.TestCase):
 
         self.assertEqual(selected[0].symptom_tags, [])
 
+    def test_missing_method_section_raises_with_title(self):
+        missing_title = "十问篇（九）"
+
+        with self.assertRaisesRegex(ValueError, missing_title):
+            select_sections(
+                [make_section("头痛论治", "s1")],
+                symptom_aliases=SYMPTOM_ALIASES,
+                method_sections=[missing_title],
+                fixed_sections=[],
+                symptom_scan=True,
+                exclude_title_patterns=[],
+            )
+
+    def test_missing_fixed_section_raises_with_title(self):
+        missing_title = "肺痿肺痈咳嗽上气病脉证治第七"
+
+        with self.assertRaisesRegex(ValueError, missing_title):
+            select_sections(
+                [make_section("头痛论治", "s1")],
+                symptom_aliases=SYMPTOM_ALIASES,
+                method_sections=[],
+                fixed_sections=[missing_title],
+                symptom_scan=True,
+                exclude_title_patterns=[],
+            )
+
+    def test_whitelisted_title_in_multiple_structures_is_ambiguous(self):
+        title = "十问篇（九）"
+        sections = [
+            make_section(title, "method-1", volume="卷一", chapter="问诊"),
+            make_section(title, "method-2", volume="卷二", chapter="问诊"),
+        ]
+
+        with self.assertRaisesRegex(ValueError, title):
+            select_sections(
+                sections,
+                symptom_aliases=SYMPTOM_ALIASES,
+                method_sections=[title],
+                fixed_sections=[],
+                symptom_scan=False,
+                exclude_title_patterns=[],
+            )
+
+    def test_whitelisted_duplicate_fragments_in_same_structure_are_valid(self):
+        title = "十问篇（九）"
+        sections = [
+            make_section(title, "method-1", volume="卷一", chapter="问诊"),
+            make_section(title, "method-2", volume="卷一", chapter="问诊"),
+        ]
+
+        selected = select_sections(
+            sections,
+            symptom_aliases=SYMPTOM_ALIASES,
+            method_sections=[title],
+            fixed_sections=[],
+            symptom_scan=False,
+            exclude_title_patterns=[],
+        )
+
+        self.assertEqual(
+            [section.section_id for section in selected],
+            ["method-1", "method-2"],
+        )
+
 
 class CuratedMarkdownTests(unittest.TestCase):
     def test_loads_sorted_utf8_markdown_as_selected_sections(self):
@@ -217,13 +357,12 @@ class CuratedMarkdownTests(unittest.TestCase):
             "a.md": "# 头风\n## 头痛问诊\n先问疼痛部位。\n",
         }
         with tempfile.TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir)
-            raw_dir = root / "data" / "raw"
+            raw_dir = Path(temp_dir) / "data" / "raw"
             raw_dir.mkdir(parents=True)
             for filename, text in files.items():
                 (raw_dir / filename).write_bytes(text.encode("utf-8"))
 
-            sections = load_curated_sections(root, SYMPTOM_ALIASES)
+            sections = load_curated_sections(raw_dir, SYMPTOM_ALIASES)
 
         self.assertEqual(
             [(section.source_file, section.section) for section in sections],

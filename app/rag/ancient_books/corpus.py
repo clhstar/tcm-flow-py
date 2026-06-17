@@ -45,6 +45,7 @@ def parse_tagged_book(
     source_hash = _sha256(raw_bytes)
     directory_matches = list(DIRECTORY_PATTERN.finditer(text))
     sections: list[SelectedSection] = []
+    duplicate_counts: dict[tuple[str, str, str, str], int] = {}
 
     for occurrence, directory_match in enumerate(directory_matches):
         block_end = (
@@ -70,12 +71,16 @@ def parse_tagged_book(
         ]
         volume = hierarchy[0] if hierarchy else ""
         chapter = hierarchy[-1] if len(hierarchy) > 1 else ""
+        body_hash = _sha256(original_text.encode("utf-8"))
+        duplicate_key = (book_id, directory, title, body_hash)
+        duplicate_ordinal = duplicate_counts.get(duplicate_key, 0)
+        duplicate_counts[duplicate_key] = duplicate_ordinal + 1
         section_id = _stable_id(
             book_id,
             directory,
             title,
-            occurrence,
-            original_text,
+            body_hash,
+            duplicate_ordinal,
         )
         sections.append(
             SelectedSection(
@@ -104,11 +109,26 @@ def select_sections(
     symptom_scan: bool,
     exclude_title_patterns: Iterable[str],
 ) -> list[SelectedSection]:
+    section_list = list(sections)
     exact_titles = {*method_sections, *fixed_sections}
     excluded_patterns = tuple(exclude_title_patterns)
     selected: list[SelectedSection] = []
 
-    for section in sections:
+    for title in exact_titles:
+        matching_structures = {
+            (section.source_file, section.volume, section.chapter)
+            for section in section_list
+            if section.section == title
+        }
+        if not matching_structures:
+            raise ValueError(f"selected section title not found: {title}")
+        if len(matching_structures) > 1:
+            raise ValueError(
+                "selected section title is ambiguous across structures: "
+                f"{title}: {sorted(matching_structures)}"
+            )
+
+    for section in section_list:
         title = section.section
         symptom_tags = _title_symptom_tags(title, symptom_aliases)
         is_exact_selection = title in exact_titles
@@ -139,10 +159,9 @@ def load_curated_sections(
     root: Path,
     symptom_aliases: Mapping[str, Sequence[str]],
 ) -> list[SelectedSection]:
-    raw_dir = root / "data" / "raw"
     sections: list[SelectedSection] = []
 
-    for path in sorted(raw_dir.glob("*.md"), key=lambda item: item.name):
+    for path in sorted(root.glob("*.md"), key=lambda item: item.name):
         raw_bytes = path.read_bytes()
         text = raw_bytes.decode("utf-8", errors="strict")
         source_hash = _sha256(raw_bytes)
