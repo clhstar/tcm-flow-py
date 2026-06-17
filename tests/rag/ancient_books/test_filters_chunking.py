@@ -106,6 +106,14 @@ class RetrievableTextFilterTests(unittest.TestCase):
 
 
 class ParentChildChunkingTests(unittest.TestCase):
+    @staticmethod
+    def anchor_texts_by_parent(children):
+        anchor_texts = {}
+        for child in children:
+            anchor_texts.setdefault(child.parent_id, "")
+            anchor_texts[child.parent_id] += child.text
+        return anchor_texts
+
     def test_empty_or_fully_filtered_section_produces_no_chunks(self):
         for text in (" ", "川芎茶调散。白芷、羌活各二钱，为末。"):
             with self.subTest(text=text):
@@ -146,24 +154,33 @@ class ParentChildChunkingTests(unittest.TestCase):
         first = "甲" * 749 + "。"
         second = "乙" * 249 + "。"
         third = "丙" * 249 + "。"
-        original_parents, _ = build_parent_child(
+        _, original_children = build_parent_child(
             make_section(first + second + third)
         )
-        leading_parents, _ = build_parent_child(
+        _, leading_children = build_parent_child(
             make_section("无" * 99 + "。" + first + second + third)
         )
 
-        self.assertEqual(
-            [parent.original_text for parent in original_parents],
-            [first, second, third],
-        )
-        original_ids = {parent.original_text: parent.parent_id for parent in original_parents}
-        leading_ids = {
-            parent.original_text: parent.parent_id
-            for parent in leading_parents
-            if parent.original_text in original_ids
-        }
-        self.assertEqual(leading_ids, original_ids)
+        original_anchors = self.anchor_texts_by_parent(original_children)
+        leading_anchors = self.anchor_texts_by_parent(leading_children)
+        original_ids = {text: parent_id for parent_id, text in original_anchors.items()}
+        leading_ids = {text: parent_id for parent_id, text in leading_anchors.items()}
+        for anchor in (first, second, third):
+            self.assertEqual(leading_ids[anchor], original_ids[anchor])
+
+    def test_parent_restores_neighbor_context_but_child_contains_only_anchor(self):
+        text = "头痛恶风。遇冷加重。"
+
+        parents, children = build_parent_child(make_section(text))
+
+        self.assertEqual(len(parents), 2)
+        self.assertEqual([parent.original_text for parent in parents], [text, text])
+        self.assertEqual([child.text for child in children], ["头痛恶风。", "遇冷加重。"])
+        for parent, child in zip(parents, children):
+            self.assertEqual(parent.parent_id, child.parent_id)
+            self.assertNotEqual(parent.original_text, child.text)
+            self.assertLessEqual(len(parent.original_text), 1000)
+            self.assertLessEqual(len(child.text), 300)
 
     def test_repeated_identical_bodies_get_unique_stable_ids(self):
         repeated_parent = "同" * 999 + "。"
@@ -228,10 +245,12 @@ class ParentChildChunkingTests(unittest.TestCase):
 
         parents, _ = build_parent_child(make_section(text))
 
-        self.assertEqual("".join(parent.original_text for parent in parents), text)
-        self.assertEqual(
-            " ".join(parent.normalized_text for parent in parents),
-            "因风者恶风, 因火者齿痛。 脉浮则病在表。",
+        self.assertTrue(all(parent.original_text == text for parent in parents))
+        self.assertTrue(
+            all(
+                parent.normalized_text == "因风者恶风, 因火者齿痛。 脉浮则病在表。"
+                for parent in parents
+            )
         )
 
 

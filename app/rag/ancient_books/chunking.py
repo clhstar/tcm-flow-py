@@ -60,6 +60,37 @@ def _bounded_sentence_groups(text: str, limit: int) -> list[str]:
     return groups
 
 
+def _context_window(anchors: list[str], anchor_index: int, limit: int) -> str:
+    start = anchor_index
+    end = anchor_index
+    total_length = len(anchors[anchor_index])
+    left = anchor_index - 1
+    right = anchor_index + 1
+
+    while left >= 0 or right < len(anchors):
+        expanded = False
+        if left >= 0:
+            if total_length + len(anchors[left]) <= limit:
+                start = left
+                total_length += len(anchors[left])
+                left -= 1
+                expanded = True
+            else:
+                left = -1
+        if right < len(anchors):
+            if total_length + len(anchors[right]) <= limit:
+                end = right
+                total_length += len(anchors[right])
+                right += 1
+                expanded = True
+            else:
+                right = len(anchors)
+        if not expanded:
+            break
+
+    return "".join(anchors[start : end + 1])
+
+
 def build_parent_child(
     section: SelectedSection,
 ) -> tuple[list[EvidenceParent], list[RetrievalChunk]]:
@@ -68,13 +99,14 @@ def build_parent_child(
         return [], []
 
     role = _evidence_role(section)
-    parent_bodies = _bounded_sentence_groups(filtered_text, 1000)
+    anchor_bodies = _bounded_sentence_groups(filtered_text, 1000)
     parent_duplicate_counts: dict[str, int] = {}
     parents: list[EvidenceParent] = []
     children: list[RetrievalChunk] = []
 
-    for parent_body in parent_bodies:
-        parent_signature = _body_signature(parent_body)
+    for anchor_index, anchor_body in enumerate(anchor_bodies):
+        parent_body = _context_window(anchor_bodies, anchor_index, 1000)
+        parent_signature = _body_signature(anchor_body)
         parent_ordinal = parent_duplicate_counts.get(parent_signature, 0)
         parent_duplicate_counts[parent_signature] = parent_ordinal + 1
         parent_id = _stable_id(
@@ -102,7 +134,7 @@ def build_parent_child(
         )
 
         child_duplicate_counts: dict[str, int] = {}
-        for child_body in _bounded_sentence_groups(parent_body, 300):
+        for child_body in _bounded_sentence_groups(anchor_body, 300):
             child_signature = _body_signature(child_body)
             child_ordinal = child_duplicate_counts.get(child_signature, 0)
             child_duplicate_counts[child_signature] = child_ordinal + 1
