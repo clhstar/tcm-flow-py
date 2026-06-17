@@ -51,7 +51,7 @@ class EvidenceParent(SourceHashMixin, StrictModel):
     volume: str
     chapter: str
     section: NonEmptyString
-    symptom_tags: list[str]
+    symptom_tags: list[NonEmptyString]
     evidence_role: EvidenceRole
     original_text: NonEmptyString
     normalized_text: NonEmptyString
@@ -62,7 +62,7 @@ class RetrievalChunk(StrictModel):
     parent_id: NonEmptyString
     text: str = Field(min_length=1, max_length=300)
     source_type: SourceType
-    symptom_tags: list[str]
+    symptom_tags: list[NonEmptyString]
     evidence_role: EvidenceRole
 
 
@@ -75,10 +75,10 @@ class RetrievalHit(StrictModel):
     source_type: SourceType
     book_title: NonEmptyString
     source_file: NonEmptyString
-    volume: NonEmptyString
-    chapter: NonEmptyString
+    volume: str
+    chapter: str
     section: NonEmptyString
-    symptom_tags: list[NonEmptyString] = Field(min_length=1)
+    symptom_tags: list[NonEmptyString]
     evidence_role: EvidenceRole
     retrieval_sources: list[NonEmptyString] = Field(min_length=1)
     bm25_rank: int | None = Field(default=None, ge=1)

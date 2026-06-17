@@ -159,6 +159,55 @@ class AncientBookSchemaTests(unittest.TestCase):
         self.assertIsNone(hit.rrf_score)
         self.assertIsNone(hit.reranker_score)
 
+    def test_retrieval_hit_allows_empty_hierarchy_and_symptom_tags(self):
+        data = retrieval_hit_data()
+        data.update(volume="", chapter="", symptom_tags=[])
+
+        hit = RetrievalHit.model_validate(data)
+
+        self.assertEqual(hit.volume, "")
+        self.assertEqual(hit.chapter, "")
+        self.assertEqual(hit.symptom_tags, [])
+
+    def test_schema_models_reject_empty_symptom_tag_values(self):
+        selected_section = selected_section_data()
+        selected_section["symptom_tags"] = [""]
+
+        evidence_parent = {
+            "parent_id": "parent-001",
+            **{
+                key: value
+                for key, value in selected_section_data().items()
+                if key != "section_id"
+            },
+            "symptom_tags": [""],
+            "evidence_role": "diagnostic_method",
+            "normalized_text": "normalized evidence",
+        }
+
+        retrieval_chunk = {
+            "chunk_id": "chunk-001",
+            "parent_id": "parent-001",
+            "text": "retrieval text",
+            "source_type": "curated_markdown",
+            "symptom_tags": [""],
+            "evidence_role": "symptom_feature",
+        }
+
+        retrieval_hit = retrieval_hit_data()
+        retrieval_hit["symptom_tags"] = [""]
+
+        invalid_models = (
+            (SelectedSection, selected_section),
+            (EvidenceParent, evidence_parent),
+            (RetrievalChunk, retrieval_chunk),
+            (RetrievalHit, retrieval_hit),
+        )
+        for model, data in invalid_models:
+            with self.subTest(model=model.__name__):
+                with self.assertRaises(ValidationError):
+                    model.model_validate(data)
+
 
 class ProductionConfigTests(unittest.TestCase):
     def load_yaml_data(self) -> dict[str, object]:
@@ -313,6 +362,18 @@ class ProductionConfigTests(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, "40-character hexadecimal commit hash"):
             load_production_config(self.write_temporary_config(data))
+
+    def test_rejects_unhashable_book_ids_with_clear_validation_error(self):
+        for invalid_book_id in (["jing_yue_quan_shu"], {"id": "jing_yue_quan_shu"}):
+            with self.subTest(book_id=invalid_book_id):
+                data = copy.deepcopy(self.load_yaml_data())
+                data["books"][0]["book_id"] = invalid_book_id
+
+                with self.assertRaisesRegex(
+                    (ValueError, ValidationError),
+                    "book_id",
+                ):
+                    load_production_config(self.write_temporary_config(data))
 
 
 if __name__ == "__main__":

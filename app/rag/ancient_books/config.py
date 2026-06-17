@@ -88,6 +88,12 @@ def _validate_books(raw_books: object) -> None:
     book_ids = [
         book.get("book_id") if isinstance(book, dict) else None for book in raw_books
     ]
+    for index, book_id in enumerate(book_ids):
+        if not isinstance(book_id, str) or not book_id:
+            raise ValueError(
+                f"production config books[{index}].book_id must be a non-empty string"
+            )
+
     if len(book_ids) != len(set(book_ids)):
         raise ValueError("production config contains duplicate book IDs")
 
