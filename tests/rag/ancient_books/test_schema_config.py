@@ -93,6 +93,25 @@ class AncientBookSchemaTests(unittest.TestCase):
         with self.assertRaises(ValidationError):
             EvidenceParent.model_validate(data)
 
+    def test_evidence_parent_allows_empty_hierarchy_and_symptom_tags(self):
+        data = {
+            "parent_id": "parent-001",
+            **{
+                key: value
+                for key, value in selected_section_data().items()
+                if key != "section_id"
+            },
+            "evidence_role": "diagnostic_method",
+            "normalized_text": "凡诊头痛者，当先辨其表里虚实。",
+        }
+        data.update(volume="", chapter="", symptom_tags=[])
+
+        parent = EvidenceParent.model_validate(data)
+
+        self.assertEqual(parent.volume, "")
+        self.assertEqual(parent.chapter, "")
+        self.assertEqual(parent.symptom_tags, [])
+
     def test_retrieval_chunk_rejects_text_longer_than_300_characters(self):
         with self.assertRaises(ValidationError):
             RetrievalChunk(
@@ -103,6 +122,18 @@ class AncientBookSchemaTests(unittest.TestCase):
                 symptom_tags=["头痛"],
                 evidence_role="symptom_feature",
             )
+
+    def test_retrieval_chunk_allows_empty_symptom_tags(self):
+        chunk = RetrievalChunk(
+            chunk_id="chunk-001",
+            parent_id="parent-001",
+            text="无已标注症状的检索片段。",
+            source_type="curated_markdown",
+            symptom_tags=[],
+            evidence_role="symptom_feature",
+        )
+
+        self.assertEqual(chunk.symptom_tags, [])
 
     def test_retrieval_hit_rejects_e6_citation(self):
         data = retrieval_hit_data()

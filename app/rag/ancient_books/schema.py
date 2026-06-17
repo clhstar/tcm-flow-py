@@ -48,10 +48,10 @@ class EvidenceParent(SourceHashMixin, StrictModel):
     book_id: NonEmptyString
     book_title: NonEmptyString
     source_file: NonEmptyString
-    volume: NonEmptyString
-    chapter: NonEmptyString
+    volume: str
+    chapter: str
     section: NonEmptyString
-    symptom_tags: list[NonEmptyString] = Field(min_length=1)
+    symptom_tags: list[str]
     evidence_role: EvidenceRole
     original_text: NonEmptyString
     normalized_text: NonEmptyString
@@ -62,7 +62,7 @@ class RetrievalChunk(StrictModel):
     parent_id: NonEmptyString
     text: str = Field(min_length=1, max_length=300)
     source_type: SourceType
-    symptom_tags: list[NonEmptyString] = Field(min_length=1)
+    symptom_tags: list[str]
     evidence_role: EvidenceRole
 
 
