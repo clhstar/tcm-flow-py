@@ -12,7 +12,7 @@ _EXCLUDED_SUBTITLES = {
     "服法",
     "煎服法",
 }
-_SENTENCE_PATTERN = re.compile(r"([^。！？!?；;\n]*)([。！？!?；;\n]+|$)")
+_SENTENCE_PATTERN = re.compile(r"([^。！？!?；;]*)([。！？!?；;]+|$)")
 _DOSE_PATTERN = re.compile(
     r"(?:[（(][^）)]*(?:毫升|钱|两|分|枚|升|合|斗|撮|铢|斤|克|片|粒|盏)"
     r"[^）)]*[）)])"
@@ -21,6 +21,9 @@ _DOSE_PATTERN = re.compile(
 )
 _FORMULA_NAME_PATTERN = re.compile(
     r"^[\u3400-\u9fff]{1,12}(?:汤|散|丸|饮|膏|丹)(?:方)?$"
+)
+_EMBEDDED_FORMULA_PATTERN = re.compile(
+    r"[\u3400-\u9fff]{1,12}(?:汤|散|丸|膏|丹)(?:方)?"
 )
 _MODIFIED_FORMULA_PATTERN = re.compile(
     r"^[\u3400-\u9fff]{1,12}(?:汤|散|丸|膏|丹)(?:方)?"
@@ -32,6 +35,11 @@ _PREPARATION_PATTERN = re.compile(
     r"(?:空心|食前|食后|温水|白汤|米汤|姜汤|酒|姜汁)下|送下|下之|"
     r"(?:[一二三四五六七八九十百\d]+上)?[一二三四五六七八九十百\d]+下"
 )
+_TREATMENT_CUE_PATTERN = re.compile(
+    r"宜(?:用|服|投)|当用|可用|止用|用之|服用|方用|治以|"
+    r"加味|加减|化裁|速灸|针灸|针刺"
+)
+_TREATMENT_NOUN_PATTERN = re.compile(r"药|方剂|处方|用方|古方|灸")
 _DIAGNOSTIC_CUES = ("因", "者", "恶", "喜", "脉", "证", "症")
 _COMMON_HERBS = (
     "人参",
@@ -182,15 +190,22 @@ def _is_unsafe_clause(clause: str) -> bool:
     candidate = clause.strip(" \t\r\n，,、：:")
     if not candidate:
         return True
-    if _DOSE_PATTERN.search(candidate) or _PREPARATION_PATTERN.search(candidate):
+    compact = re.sub(r"\s+", "", candidate)
+    if _DOSE_PATTERN.search(compact) or _PREPARATION_PATTERN.search(compact):
         return True
-    if _MODIFIED_FORMULA_PATTERN.search(candidate):
+    if _TREATMENT_CUE_PATTERN.search(compact):
         return True
-    if _FORMULA_NAME_PATTERN.fullmatch(candidate) and not any(
-        cue in candidate for cue in _DIAGNOSTIC_CUES
+    if _TREATMENT_NOUN_PATTERN.search(compact):
+        return True
+    if _MODIFIED_FORMULA_PATTERN.search(compact):
+        return True
+    if _EMBEDDED_FORMULA_PATTERN.search(compact):
+        return True
+    if _FORMULA_NAME_PATTERN.fullmatch(compact) and not any(
+        cue in compact for cue in _DIAGNOSTIC_CUES
     ):
         return True
-    return _herb_count(candidate) >= 2
+    return _herb_count(compact) >= 1
 
 
 def _filter_sentence(body: str, terminator: str) -> str:
@@ -231,3 +246,19 @@ def filter_retrievable_text(text: str) -> str:
         if sentence:
             filtered.append(sentence)
     return "".join(filtered).strip()
+
+
+def contains_excluded_content(text: str) -> bool:
+    """Return whether text still contains treatment, formula, drug, or dose content."""
+
+    if not text or not text.strip():
+        return False
+    safe_regions = _remove_excluded_subtitles(text)
+    if safe_regions != text:
+        return True
+    for match in _SENTENCE_PATTERN.finditer(text):
+        body, _ = match.groups()
+        for clause in re.split(r"[，,]", body):
+            if clause.strip() and _is_unsafe_clause(clause):
+                return True
+    return False

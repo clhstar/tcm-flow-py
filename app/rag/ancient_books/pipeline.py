@@ -8,7 +8,7 @@ from pydantic import BaseModel
 
 from .chunking import build_parent_child
 from .corpus import load_curated_sections, parse_tagged_book, select_sections
-from .filters import filter_retrievable_text
+from .filters import contains_excluded_content
 from .schema import EvidenceParent, RetrievalChunk, SelectedSection
 
 
@@ -221,8 +221,7 @@ def doctor_corpus(output_dir: Path) -> dict:
             chunk.parent_id not in known_parent_ids for chunk in chunks
         ),
         "excluded_content_match_count": sum(
-            filter_retrievable_text(parent.original_text) != parent.original_text
-            for parent in parents
+            contains_excluded_content(parent.original_text) for parent in parents
         ),
     }
     if any(value for key, value in result.items() if key != "status"):

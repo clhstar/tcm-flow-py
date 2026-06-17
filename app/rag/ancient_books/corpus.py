@@ -132,8 +132,11 @@ def select_sections(
         title = section.section
         symptom_tags = _title_symptom_tags(title, symptom_aliases)
         is_exact_selection = title in exact_titles
+        hierarchy = "\n".join(
+            (section.volume, section.chapter, section.section)
+        )
         is_excluded_scan = any(
-            pattern and pattern in title for pattern in excluded_patterns
+            pattern and pattern in hierarchy for pattern in excluded_patterns
         )
         is_symptom_selection = (
             symptom_scan and bool(symptom_tags) and not is_excluded_scan

@@ -258,6 +258,33 @@ class SectionSelectionTests(unittest.TestCase):
         self.assertEqual(selected[0].symptom_tags, [])
         self.assertEqual(selected[1].symptom_tags, ["头痛"])
 
+    def test_symptom_scan_excludes_specialty_markers_in_full_hierarchy(self):
+        sections = [
+            make_section(
+                "泄泻",
+                "pediatrics",
+                volume="卷之四十五烈集·痘疹诠",
+                chapter="痘疮（下）",
+            ),
+            make_section(
+                "泄泻",
+                "internal",
+                volume="卷之二十四心集·杂证谟",
+                chapter="泄泻",
+            ),
+        ]
+
+        selected = select_sections(
+            sections,
+            symptom_aliases={"泄泻": ["泄泻"]},
+            method_sections=[],
+            fixed_sections=[],
+            symptom_scan=True,
+            exclude_title_patterns=["痘", "小儿", "妇人", "产后"],
+        )
+
+        self.assertEqual([section.section_id for section in selected], ["internal"])
+
     def test_fixed_sections_are_tagged_when_symptom_scan_is_disabled(self):
         title = "肺痿肺痈咳嗽上气病脉证治第七"
 

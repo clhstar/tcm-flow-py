@@ -1,7 +1,10 @@
 import unittest
 
 from app.rag.ancient_books.chunking import build_parent_child
-from app.rag.ancient_books.filters import filter_retrievable_text
+from app.rag.ancient_books.filters import (
+    contains_excluded_content,
+    filter_retrievable_text,
+)
 from app.rag.ancient_books.schema import SelectedSection
 
 
@@ -66,6 +69,32 @@ class RetrievableTextFilterTests(unittest.TestCase):
         text = "头痛连及胁下。治头痛。每日服。空心下。慢火煎。"
 
         self.assertEqual(filter_retrievable_text(text), "头痛连及胁下。")
+
+    def test_embedded_formula_single_herb_and_soft_line_break_are_removed(self):
+        text = (
+            "头痛因风而作，遇冷则甚。"
+            "若甚者宜四君子\n汤。"
+            "兼热者可用黄连。"
+            "脉浮则病在表。"
+        )
+
+        filtered = filter_retrievable_text(text)
+
+        self.assertEqual(filtered, "头痛因风而作，遇冷则甚。脉浮则病在表。")
+        self.assertEqual(filter_retrievable_text(filtered), filtered)
+
+    def test_generic_treatment_instructions_are_removed_and_detectable(self):
+        text = (
+            "泄泻久者多属虚寒。"
+            "若脾虚者止用敦阜糕。"
+            "倘药未及效，仍宜速灸气海。"
+        )
+
+        filtered = filter_retrievable_text(text)
+
+        self.assertEqual(filtered, "泄泻久者多属虚寒。")
+        self.assertTrue(contains_excluded_content(text))
+        self.assertFalse(contains_excluded_content(filtered))
 
     def test_additional_herbs_ancient_doses_and_preparation_are_removed(self):
         text = (
