@@ -64,6 +64,7 @@ dist/
 body.json
 tmp/
 temp/
+.worktrees/
 
 # Mini-DeerFlow generated data
 
