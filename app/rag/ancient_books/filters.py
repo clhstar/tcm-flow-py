@@ -28,7 +28,7 @@ _PREPARATION_PATTERN = re.compile(
     r"(?:空心|食前|食后|温水|白汤|米汤|姜汤|酒|姜汁)下|送下|下之|"
     r"(?:[一二三四五六七八九十百\d]+上)?[一二三四五六七八九十百\d]+下"
 )
-_DIAGNOSTIC_CUES = ("因", "者", "痛", "恶", "喜", "脉", "证", "症")
+_DIAGNOSTIC_CUES = ("因", "者", "恶", "喜", "脉", "证", "症")
 _COMMON_HERBS = (
     "人参",
     "党参",
@@ -158,12 +158,20 @@ def _remove_excluded_subtitles(text: str) -> str:
     for match in _SUBTITLE_PATTERN.finditer(text):
         if not excluded:
             retained.append(text[cursor : match.start()])
-        excluded = match.group("title").strip() in _EXCLUDED_SUBTITLES
+        title = match.group("title").strip()
+        excluded = any(keyword in title for keyword in _EXCLUDED_SUBTITLES)
         cursor = match.end()
+        if not excluded:
+            while cursor < len(text) and text[cursor].isspace():
+                cursor += 1
 
     if not excluded:
         retained.append(text[cursor:])
     return "".join(retained)
+
+
+def _herb_count(text: str) -> int:
+    return sum(herb in text for herb in _COMMON_HERBS)
 
 
 def _is_unsafe_clause(clause: str) -> bool:
@@ -176,13 +184,17 @@ def _is_unsafe_clause(clause: str) -> bool:
         cue in candidate for cue in _DIAGNOSTIC_CUES
     ):
         return True
-    herb_count = sum(herb in candidate for herb in _COMMON_HERBS)
-    return herb_count >= 2
+    return _herb_count(candidate) >= 2
 
 
 def _filter_sentence(body: str, terminator: str) -> str:
     clauses = re.split(r"[，,]", body)
-    unsafe = [_is_unsafe_clause(clause) for clause in clauses]
+    sentence_herb_count = sum(_herb_count(clause) for clause in clauses)
+    unsafe = [
+        _is_unsafe_clause(clause)
+        or (sentence_herb_count >= 2 and _herb_count(clause) > 0)
+        for clause in clauses
+    ]
     if not any(unsafe):
         return body + terminator
     retained_indices = [

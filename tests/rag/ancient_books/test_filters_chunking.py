@@ -46,6 +46,14 @@ class RetrievableTextFilterTests(unittest.TestCase):
 
         self.assertEqual(filter_retrievable_text(text), "")
 
+    def test_short_formula_name_filters_to_empty(self):
+        self.assertEqual(filter_retrievable_text("止痛散。"), "")
+
+    def test_herb_list_with_chinese_commas_is_removed(self):
+        text = "因风者恶风。天麻，钩藤。"
+
+        self.assertEqual(filter_retrievable_text(text), "因风者恶风。")
+
     def test_treatment_instructions_are_removed_but_diagnostic_location_remains(self):
         text = "头痛连及胁下。治头痛。每日服。空心下。慢火煎。"
 
@@ -78,6 +86,19 @@ class RetrievableTextFilterTests(unittest.TestCase):
         filtered = filter_retrievable_text(text)
 
         self.assertEqual(filtered, "因寒者喜热饮，因热者喜冷饮。")
+
+    def test_excluded_subtitle_keywords_match_inside_longer_titles(self):
+        for title in ("附方一", "用药补遗"):
+            with self.subTest(title=title):
+                text = (
+                    f"禁区前。\\x{title}\\x 此段虽无药名也应排除。"
+                    "\\x辨证\\x 因寒者喜热饮。"
+                )
+
+                self.assertEqual(
+                    filter_retrievable_text(text),
+                    "禁区前。因寒者喜热饮。",
+                )
 
     def test_empty_and_whitespace_inputs_return_empty(self):
         self.assertEqual(filter_retrievable_text(""), "")
