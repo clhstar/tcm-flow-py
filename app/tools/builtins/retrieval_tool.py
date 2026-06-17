@@ -24,8 +24,8 @@ def retrieve_tcm_knowledge(query: str, mode: str = "hybrid") -> str:
 
     payload = retrieve_tcm_docs(
         query=query,
-        k=3,
-        candidate_k=8,
+        k=5,
+        candidate_k=20,
         mode=mode,
     )
 
@@ -33,42 +33,28 @@ def retrieve_tcm_knowledge(query: str, mode: str = "hybrid") -> str:
         {
             "tool": "retrieve_tcm_knowledge",
             "retrieval_mode": payload.get("retrieval_mode"),
+            "status": payload.get("status"),
+            "degraded": payload.get("degraded"),
+            "degraded_reason": payload.get("degraded_reason"),
+            "chief_symptom": payload.get("chief_symptom"),
             "original_query": payload.get("original_query"),
             "rewritten_query": payload.get("rewritten_query"),
             "allowed_terms": payload.get("allowed_terms"),
-            "vector_results": [
-                {
-                    "filename": item.get("filename"),
-                    "topic": item.get("topic"),
-                    "section": item.get("section"),
-                    "chunk_id": item.get("chunk_id"),
-                    "vector_rank": item.get("vector_rank"),
-                    "distance_score": item.get("distance_score"),
-                }
-                for item in payload.get("vector_results", [])
-            ],
-            "bm25_results": [
-                {
-                    "filename": item.get("filename"),
-                    "topic": item.get("topic"),
-                    "section": item.get("section"),
-                    "chunk_id": item.get("chunk_id"),
-                    "bm25_rank": item.get("bm25_rank"),
-                    "bm25_score": item.get("bm25_score"),
-                }
-                for item in payload.get("bm25_results", [])
-            ],
             "final_results": [
                 {
-                    "filename": item.get("filename"),
-                    "topic": item.get("topic"),
+                    "citation_id": item.get("citation_id"),
+                    "source_type": item.get("source_type"),
+                    "book_title": item.get("book_title"),
+                    "source_file": item.get("source_file"),
+                    "volume": item.get("volume"),
+                    "chapter": item.get("chapter"),
                     "section": item.get("section"),
+                    "evidence_role": item.get("evidence_role"),
+                    "parent_id": item.get("parent_id"),
                     "chunk_id": item.get("chunk_id"),
                     "retrieval_sources": item.get("retrieval_sources"),
-                    "vector_rank": item.get("vector_rank"),
+                    "dense_rank": item.get("dense_rank"),
                     "bm25_rank": item.get("bm25_rank"),
-                    "keyword_hits": item.get("keyword_hits"),
-                    "fusion_score": item.get("fusion_score"),
                 }
                 for item in payload.get("results", [])
             ],

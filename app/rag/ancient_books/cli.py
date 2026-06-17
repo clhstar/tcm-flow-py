@@ -45,8 +45,8 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main() -> None:
-    args = build_parser().parse_args()
+def main(argv: list[str] | None = None) -> None:
+    args = build_parser().parse_args(argv)
     if args.command == "build-corpus":
         config = load_production_config(args.config)
         manifest = build_corpus(
