@@ -12,6 +12,16 @@ from .filters import contains_excluded_content
 from .schema import EvidenceParent, RetrievalChunk, SelectedSection
 
 
+FORBIDDEN_COMMIT_KEYS = {
+    "original_text",
+    "normalized_text",
+    "content",
+    "matched_child",
+    "question",
+    "answer",
+}
+
+
 def sha256_file(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest().upper()
 
@@ -45,6 +55,36 @@ def write_json(path: Path, payload: dict) -> None:
         encoding="utf-8",
         newline="\n",
     )
+
+
+def assert_content_free(value) -> None:
+    if isinstance(value, dict):
+        forbidden = FORBIDDEN_COMMIT_KEYS.intersection(value)
+        if forbidden:
+            raise ValueError(
+                f"可提交 Manifest 包含正文键: {sorted(forbidden)}"
+            )
+        for child in value.values():
+            assert_content_free(child)
+    elif isinstance(value, list):
+        for child in value:
+            assert_content_free(child)
+
+
+def export_manifests(
+    *,
+    corpus_manifest: dict,
+    index_manifest: dict,
+    output_dir: Path,
+) -> None:
+    payloads = {
+        "corpus-selection-v1.0.0.json": corpus_manifest,
+        "index-v1.0.0.json": index_manifest,
+    }
+    for payload in payloads.values():
+        assert_content_free(payload)
+    for filename, payload in payloads.items():
+        write_json(output_dir / filename, payload)
 
 
 def _duplicate_count(values: list[str]) -> int:

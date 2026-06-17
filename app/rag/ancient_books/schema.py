@@ -65,6 +65,13 @@ class RetrievalChunk(StrictModel):
     symptom_tags: list[NonEmptyString]
     evidence_role: EvidenceRole
 
+    @field_validator("text")
+    @classmethod
+    def reject_whitespace_only_text(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("retrieval chunk text cannot be whitespace-only")
+        return value
+
 
 class RetrievalHit(StrictModel):
     citation_id: CitationId

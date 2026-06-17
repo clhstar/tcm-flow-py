@@ -1,5 +1,9 @@
 # TCM-Flow Ancient Books Production RAG Implementation Plan
 
+> **Scope amendment (2026-06-17):** The production corpus is restricted to
+> `637-景岳全书.txt`. Earlier seven-book steps below are retained as historical planning
+> context but are superseded by the single-book production configuration and operator guide.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (- [ ]) syntax for tracking.
 
 **Goal:** Integrate a production ancient-books RAG pipeline for ten adult internal-medicine symptoms into the existing retrieve_tcm_knowledge tool without adding a new formal experiment.

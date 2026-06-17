@@ -1,0 +1,647 @@
+{
+  "book_count": 1,
+  "by_evidence_role": {
+    "diagnostic_method": 296,
+    "syndrome_pattern": 1992
+  },
+  "by_source_type": {
+    "ancient_book": 2288
+  },
+  "by_symptom": {
+    "不寐": 162,
+    "便秘": 217,
+    "咳嗽": 293,
+    "喘促": 174,
+    "头痛": 148,
+    "心悸": 93,
+    "泄泻": 292,
+    "眩晕": 151,
+    "腹痛": 462
+  },
+  "chunk_count": 2288,
+  "files": {
+    "chunks": {
+      "bytes": 576866,
+      "path": "chunks.jsonl",
+      "sha256": "88B8237A77ED41D5EAEDEF06C0750B5ED4B61443F05BFADB0B29B202F953625D"
+    },
+    "parents": {
+      "bytes": 10804221,
+      "path": "parents.jsonl",
+      "sha256": "98995BE65C20CD7624CCFFC93466E4255372E9B417CEA8EC9FFBE8534177E456"
+    },
+    "sections": {
+      "bytes": 180833,
+      "path": "sections.jsonl",
+      "sha256": "670B6017BF6DE6F3BE9E67605013F2FFA22AA70F5AFE92BBC5D0893B21F80E05"
+    }
+  },
+  "parent_count": 2288,
+  "section_count": 77,
+  "sources": [
+    {
+      "book_id": "jing_yue_quan_shu",
+      "selected_section_count": 77,
+      "selected_sections": [
+        {
+          "chapter": "传忠录（上）",
+          "section": "十问篇（九）",
+          "symptom_tags": [],
+          "volume": "卷之一入集"
+        },
+        {
+          "chapter": "传忠录（上）",
+          "section": "十问篇（九）",
+          "symptom_tags": [],
+          "volume": "卷之一入集"
+        },
+        {
+          "chapter": "传忠录（上）",
+          "section": "十问篇（九）",
+          "symptom_tags": [],
+          "volume": "卷之一入集"
+        },
+        {
+          "chapter": "传忠录（上）",
+          "section": "十问篇（九）",
+          "symptom_tags": [],
+          "volume": "卷之一入集"
+        },
+        {
+          "chapter": "传忠录（上）",
+          "section": "十问篇（九）",
+          "symptom_tags": [],
+          "volume": "卷之一入集"
+        },
+        {
+          "chapter": "传忠录（上）",
+          "section": "十问篇（九）",
+          "symptom_tags": [],
+          "volume": "卷之一入集"
+        },
+        {
+          "chapter": "传忠录（上）",
+          "section": "十问篇（九）",
+          "symptom_tags": [],
+          "volume": "卷之一入集"
+        },
+        {
+          "chapter": "传忠录（上）",
+          "section": "十问篇（九）",
+          "symptom_tags": [],
+          "volume": "卷之一入集"
+        },
+        {
+          "chapter": "传忠录（上）",
+          "section": "十问篇（九）",
+          "symptom_tags": [],
+          "volume": "卷之一入集"
+        },
+        {
+          "chapter": "传忠录（上）",
+          "section": "十问篇（九）",
+          "symptom_tags": [],
+          "volume": "卷之一入集"
+        },
+        {
+          "chapter": "传忠录（上）",
+          "section": "十问篇（九）",
+          "symptom_tags": [],
+          "volume": "卷之一入集"
+        },
+        {
+          "chapter": "秘结",
+          "section": "经义",
+          "symptom_tags": [
+            "便秘"
+          ],
+          "volume": "卷之三十四天集·杂证谟"
+        },
+        {
+          "chapter": "秘结",
+          "section": "论外备用方",
+          "symptom_tags": [
+            "便秘"
+          ],
+          "volume": "卷之三十四天集·杂证谟"
+        },
+        {
+          "chapter": "秘结",
+          "section": "论治（共七条）",
+          "symptom_tags": [
+            "便秘"
+          ],
+          "volume": "卷之三十四天集·杂证谟"
+        },
+        {
+          "chapter": "秘结",
+          "section": "论证（共二条）",
+          "symptom_tags": [
+            "便秘"
+          ],
+          "volume": "卷之三十四天集·杂证谟"
+        },
+        {
+          "chapter": "秘结",
+          "section": "述古（共四条）",
+          "symptom_tags": [
+            "便秘"
+          ],
+          "volume": "卷之三十四天集·杂证谟"
+        },
+        {
+          "chapter": "秘结",
+          "section": "阳结新按",
+          "symptom_tags": [
+            "便秘"
+          ],
+          "volume": "卷之三十四天集·杂证谟"
+        },
+        {
+          "chapter": "秘结",
+          "section": "阴结新按",
+          "symptom_tags": [
+            "便秘"
+          ],
+          "volume": "卷之三十四天集·杂证谟"
+        },
+        {
+          "chapter": "心腹痛",
+          "section": "括痧新按",
+          "symptom_tags": [
+            "腹痛"
+          ],
+          "volume": "卷之二十五心集·杂证谟"
+        },
+        {
+          "chapter": "心腹痛",
+          "section": "简易方",
+          "symptom_tags": [
+            "腹痛"
+          ],
+          "volume": "卷之二十五心集·杂证谟"
+        },
+        {
+          "chapter": "心腹痛",
+          "section": "经义",
+          "symptom_tags": [
+            "腹痛"
+          ],
+          "volume": "卷之二十五心集·杂证谟"
+        },
+        {
+          "chapter": "心腹痛",
+          "section": "腹痛灸法",
+          "symptom_tags": [
+            "腹痛"
+          ],
+          "volume": "卷之二十五心集·杂证谟"
+        },
+        {
+          "chapter": "心腹痛",
+          "section": "论外备用方",
+          "symptom_tags": [
+            "腹痛"
+          ],
+          "volume": "卷之二十五心集·杂证谟"
+        },
+        {
+          "chapter": "心腹痛",
+          "section": "论治（共十五条）",
+          "symptom_tags": [
+            "腹痛"
+          ],
+          "volume": "卷之二十五心集·杂证谟"
+        },
+        {
+          "chapter": "心腹痛",
+          "section": "论痛脉",
+          "symptom_tags": [
+            "腹痛"
+          ],
+          "volume": "卷之二十五心集·杂证谟"
+        },
+        {
+          "chapter": "心腹痛",
+          "section": "论证（共四条）",
+          "symptom_tags": [
+            "腹痛"
+          ],
+          "volume": "卷之二十五心集·杂证谟"
+        },
+        {
+          "chapter": "心腹痛",
+          "section": "述古（共二条）",
+          "symptom_tags": [
+            "腹痛"
+          ],
+          "volume": "卷之二十五心集·杂证谟"
+        },
+        {
+          "chapter": "心腹痛",
+          "section": "附按",
+          "symptom_tags": [
+            "腹痛"
+          ],
+          "volume": "卷之二十五心集·杂证谟"
+        },
+        {
+          "chapter": "心腹痛",
+          "section": "食停小腹新按",
+          "symptom_tags": [
+            "腹痛"
+          ],
+          "volume": "卷之二十五心集·杂证谟"
+        },
+        {
+          "chapter": "头痛",
+          "section": "灸法",
+          "symptom_tags": [
+            "头痛"
+          ],
+          "volume": "卷之二十六必集·杂证谟"
+        },
+        {
+          "chapter": "头痛",
+          "section": "简易方",
+          "symptom_tags": [
+            "头痛"
+          ],
+          "volume": "卷之二十六必集·杂证谟"
+        },
+        {
+          "chapter": "头痛",
+          "section": "经义",
+          "symptom_tags": [
+            "头痛"
+          ],
+          "volume": "卷之二十六必集·杂证谟"
+        },
+        {
+          "chapter": "头痛",
+          "section": "论外备用方",
+          "symptom_tags": [
+            "头痛"
+          ],
+          "volume": "卷之二十六必集·杂证谟"
+        },
+        {
+          "chapter": "头痛",
+          "section": "论治（共五条）",
+          "symptom_tags": [
+            "头痛"
+          ],
+          "volume": "卷之二十六必集·杂证谟"
+        },
+        {
+          "chapter": "头痛",
+          "section": "论证（共二条）",
+          "symptom_tags": [
+            "头痛"
+          ],
+          "volume": "卷之二十六必集·杂证谟"
+        },
+        {
+          "chapter": "头痛",
+          "section": "述古（共三条）",
+          "symptom_tags": [
+            "头痛"
+          ],
+          "volume": "卷之二十六必集·杂证谟"
+        },
+        {
+          "chapter": "泄泻",
+          "section": "分痢治法（共二条）",
+          "symptom_tags": [
+            "泄泻"
+          ],
+          "volume": "卷之二十四心集·杂证谟"
+        },
+        {
+          "chapter": "泄泻",
+          "section": "经义",
+          "symptom_tags": [
+            "泄泻"
+          ],
+          "volume": "卷之二十四心集·杂证谟"
+        },
+        {
+          "chapter": "泄泻",
+          "section": "论外备用方",
+          "symptom_tags": [
+            "泄泻"
+          ],
+          "volume": "卷之二十四心集·杂证谟"
+        },
+        {
+          "chapter": "泄泻",
+          "section": "论证（共三条）",
+          "symptom_tags": [
+            "泄泻"
+          ],
+          "volume": "卷之二十四心集·杂证谟"
+        },
+        {
+          "chapter": "泄泻",
+          "section": "诸泄泻论治（共九条）",
+          "symptom_tags": [
+            "泄泻"
+          ],
+          "volume": "卷之二十四心集·杂证谟"
+        },
+        {
+          "chapter": "泄泻",
+          "section": "述古（共六条）",
+          "symptom_tags": [
+            "泄泻"
+          ],
+          "volume": "卷之二十四心集·杂证谟"
+        },
+        {
+          "chapter": "痢疾",
+          "section": "论腹痛",
+          "symptom_tags": [
+            "腹痛"
+          ],
+          "volume": "卷之二十四心集·杂证谟"
+        },
+        {
+          "chapter": "伤寒典（下）",
+          "section": "胸胁腹满（四十四）",
+          "symptom_tags": [
+            "腹痛"
+          ],
+          "volume": "卷之八须集"
+        },
+        {
+          "chapter": "伤寒典（下）",
+          "section": "腹痛（五十二）",
+          "symptom_tags": [
+            "腹痛"
+          ],
+          "volume": "卷之八须集"
+        },
+        {
+          "chapter": "眩运",
+          "section": "吐法新按",
+          "symptom_tags": [
+            "眩晕"
+          ],
+          "volume": "卷之十七理集·杂证谟"
+        },
+        {
+          "chapter": "眩运",
+          "section": "经义",
+          "symptom_tags": [
+            "眩晕"
+          ],
+          "volume": "卷之十七理集·杂证谟"
+        },
+        {
+          "chapter": "眩运",
+          "section": "论外备用方",
+          "symptom_tags": [
+            "眩晕"
+          ],
+          "volume": "卷之十七理集·杂证谟"
+        },
+        {
+          "chapter": "眩运",
+          "section": "论治（共三条）",
+          "symptom_tags": [
+            "眩晕"
+          ],
+          "volume": "卷之十七理集·杂证谟"
+        },
+        {
+          "chapter": "眩运",
+          "section": "论证（共四条）",
+          "symptom_tags": [
+            "眩晕"
+          ],
+          "volume": "卷之十七理集·杂证谟"
+        },
+        {
+          "chapter": "眩运",
+          "section": "述古",
+          "symptom_tags": [
+            "眩晕"
+          ],
+          "volume": "卷之十七理集·杂证谟"
+        },
+        {
+          "chapter": "咳嗽",
+          "section": "内伤嗽证治（共七条）",
+          "symptom_tags": [
+            "咳嗽"
+          ],
+          "volume": "卷之十九明集·杂证谟"
+        },
+        {
+          "chapter": "咳嗽",
+          "section": "外感嗽证治（共五条）",
+          "symptom_tags": [
+            "咳嗽"
+          ],
+          "volume": "卷之十九明集·杂证谟"
+        },
+        {
+          "chapter": "咳嗽",
+          "section": "灸法",
+          "symptom_tags": [
+            "咳嗽"
+          ],
+          "volume": "卷之十九明集·杂证谟"
+        },
+        {
+          "chapter": "咳嗽",
+          "section": "经义",
+          "symptom_tags": [
+            "咳嗽"
+          ],
+          "volume": "卷之十九明集·杂证谟"
+        },
+        {
+          "chapter": "咳嗽",
+          "section": "论外备用方",
+          "symptom_tags": [
+            "咳嗽"
+          ],
+          "volume": "卷之十九明集·杂证谟"
+        },
+        {
+          "chapter": "咳嗽",
+          "section": "论证（共四条）",
+          "symptom_tags": [
+            "咳嗽"
+          ],
+          "volume": "卷之十九明集·杂证谟"
+        },
+        {
+          "chapter": "咳嗽",
+          "section": "辨古",
+          "symptom_tags": [
+            "咳嗽"
+          ],
+          "volume": "卷之十九明集·杂证谟"
+        },
+        {
+          "chapter": "咳嗽",
+          "section": "述古（共六条）",
+          "symptom_tags": [
+            "咳嗽"
+          ],
+          "volume": "卷之十九明集·杂证谟"
+        },
+        {
+          "chapter": "喘促",
+          "section": "实喘证治（共七条）",
+          "symptom_tags": [
+            "喘促"
+          ],
+          "volume": "卷之十九明集·杂证谟"
+        },
+        {
+          "chapter": "喘促",
+          "section": "灸法",
+          "symptom_tags": [
+            "喘促"
+          ],
+          "volume": "卷之十九明集·杂证谟"
+        },
+        {
+          "chapter": "喘促",
+          "section": "经义",
+          "symptom_tags": [
+            "喘促"
+          ],
+          "volume": "卷之十九明集·杂证谟"
+        },
+        {
+          "chapter": "喘促",
+          "section": "虚喘证治（共七条）",
+          "symptom_tags": [
+            "喘促"
+          ],
+          "volume": "卷之十九明集·杂证谟"
+        },
+        {
+          "chapter": "喘促",
+          "section": "论外备用方",
+          "symptom_tags": [
+            "喘促"
+          ],
+          "volume": "卷之十九明集·杂证谟"
+        },
+        {
+          "chapter": "喘促",
+          "section": "论证",
+          "symptom_tags": [
+            "喘促"
+          ],
+          "volume": "卷之十九明集·杂证谟"
+        },
+        {
+          "chapter": "喘促",
+          "section": "述古（共二条）",
+          "symptom_tags": [
+            "喘促"
+          ],
+          "volume": "卷之十九明集·杂证谟"
+        },
+        {
+          "chapter": "三消干渴",
+          "section": "下消不寐新按",
+          "symptom_tags": [
+            "不寐"
+          ],
+          "volume": "卷之十八理集·杂证谟"
+        },
+        {
+          "chapter": "不寐",
+          "section": "经义",
+          "symptom_tags": [
+            "不寐"
+          ],
+          "volume": "卷之十八理集·杂证谟"
+        },
+        {
+          "chapter": "不寐",
+          "section": "论外备用方",
+          "symptom_tags": [
+            "不寐"
+          ],
+          "volume": "卷之十八理集·杂证谟"
+        },
+        {
+          "chapter": "不寐",
+          "section": "论治（共二条）",
+          "symptom_tags": [
+            "不寐"
+          ],
+          "volume": "卷之十八理集·杂证谟"
+        },
+        {
+          "chapter": "不寐",
+          "section": "论证（共三条）",
+          "symptom_tags": [
+            "不寐"
+          ],
+          "volume": "卷之十八理集·杂证谟"
+        },
+        {
+          "chapter": "不寐",
+          "section": "述古",
+          "symptom_tags": [
+            "不寐"
+          ],
+          "volume": "卷之十八理集·杂证谟"
+        },
+        {
+          "chapter": "怔忡惊恐",
+          "section": "经义",
+          "symptom_tags": [
+            "心悸"
+          ],
+          "volume": "卷之十八理集·杂证谟"
+        },
+        {
+          "chapter": "怔忡惊恐",
+          "section": "论外备用方",
+          "symptom_tags": [
+            "心悸"
+          ],
+          "volume": "卷之十八理集·杂证谟"
+        },
+        {
+          "chapter": "怔忡惊恐",
+          "section": "论怔忡",
+          "symptom_tags": [
+            "心悸"
+          ],
+          "volume": "卷之十八理集·杂证谟"
+        },
+        {
+          "chapter": "怔忡惊恐",
+          "section": "论惊恐",
+          "symptom_tags": [
+            "心悸"
+          ],
+          "volume": "卷之十八理集·杂证谟"
+        },
+        {
+          "chapter": "怔忡惊恐",
+          "section": "论治（共三条）",
+          "symptom_tags": [
+            "心悸"
+          ],
+          "volume": "卷之十八理集·杂证谟"
+        }
+      ],
+      "source_file": "637-景岳全书.txt",
+      "source_sha256": "F693829ECFB755A903B719C27F804F5B541F7A3D1A681392E921F3B0E2E012C1"
+    }
+  ],
+  "status": "ready",
+  "version": "v1.0.0"
+}

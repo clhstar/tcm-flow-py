@@ -187,6 +187,14 @@ class ParentChildChunkingTests(unittest.TestCase):
             parent_children = [child for child in children if child.parent_id == parent.parent_id]
             self.assertEqual("".join(child.text for child in parent_children), parent.original_text)
 
+    def test_whitespace_only_long_sentence_slice_does_not_create_child(self):
+        text = "症" * 1000 + " " * 1000 + "证。"
+
+        _, children = build_parent_child(make_section(text))
+
+        self.assertTrue(children)
+        self.assertTrue(all(child.text.strip() for child in children))
+
     def test_unrelated_leading_sentence_does_not_shift_existing_parent_ids(self):
         first = "甲" * 749 + "。"
         second = "乙" * 249 + "。"

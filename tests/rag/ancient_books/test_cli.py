@@ -3,10 +3,65 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from app.rag.ancient_books.pipeline import build_corpus, doctor_corpus
+from app.rag.ancient_books.cli import SMOKE_QUERIES, run_smoke
+from app.rag.ancient_books.pipeline import (
+    build_corpus,
+    doctor_corpus,
+    export_manifests,
+)
 
 
 class PipelineTests(unittest.TestCase):
+    def test_export_manifests_rejects_raw_content_keys(self):
+        with TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir)
+            with self.assertRaisesRegex(ValueError, "content"):
+                export_manifests(
+                    corpus_manifest={"status": "ready", "content": "raw"},
+                    index_manifest={"status": "ready"},
+                    output_dir=output_dir,
+                )
+            self.assertEqual(list(output_dir.iterdir()), [])
+
+    def test_smoke_submits_all_ten_queries_and_rejects_degradation(self):
+        class FakeEngine:
+            def __init__(self):
+                self.calls = []
+
+            def retrieve(self, query, *, chief_symptom, mode, top_k):
+                self.calls.append((chief_symptom, query, mode, top_k))
+                return {
+                    "status": "ok",
+                    "degraded": False,
+                    "results": [{"symptom_tags": [chief_symptom]}],
+                }
+
+        engine = FakeEngine()
+        result = run_smoke(engine)
+
+        self.assertEqual(result["status"], "ready")
+        self.assertEqual(result["query_count"], 10)
+        self.assertEqual(result["ok_count"], 10)
+        self.assertEqual(result["insufficient_symptoms"], [])
+        self.assertEqual(
+            [(symptom, query) for symptom, query, _, _ in engine.calls],
+            list(SMOKE_QUERIES.items()),
+        )
+
+        class DegradedEngine(FakeEngine):
+            def retrieve(self, query, *, chief_symptom, mode, top_k):
+                result = super().retrieve(
+                    query,
+                    chief_symptom=chief_symptom,
+                    mode=mode,
+                    top_k=top_k,
+                )
+                result["degraded"] = True
+                return result
+
+        with self.assertRaisesRegex(RuntimeError, "降级"):
+            run_smoke(DegradedEngine())
+
     def test_build_corpus_writes_deterministic_single_book_artifacts(self):
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

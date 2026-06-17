@@ -52,10 +52,11 @@ def _bounded_sentence_groups(text: str, limit: int) -> list[str]:
     for sentence in sentence_units:
         if len(sentence) > limit:
             groups.extend(
-                sentence[offset : offset + limit]
+                chunk
                 for offset in range(0, len(sentence), limit)
+                if (chunk := sentence[offset : offset + limit]).strip()
             )
-        else:
+        elif sentence.strip():
             groups.append(sentence)
     return groups
 

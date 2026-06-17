@@ -135,6 +135,17 @@ class AncientBookSchemaTests(unittest.TestCase):
 
         self.assertEqual(chunk.symptom_tags, [])
 
+    def test_retrieval_chunk_rejects_whitespace_only_text(self):
+        with self.assertRaises(ValidationError):
+            RetrievalChunk(
+                chunk_id="chunk-blank",
+                parent_id="parent-001",
+                text=" \n\t",
+                source_type="ancient_book",
+                symptom_tags=["头痛"],
+                evidence_role="symptom_feature",
+            )
+
     def test_retrieval_hit_rejects_e6_citation(self):
         data = retrieval_hit_data()
         data["citation_id"] = "E6"

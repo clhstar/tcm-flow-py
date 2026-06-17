@@ -130,11 +130,11 @@ def select_sections(
 
     for section in section_list:
         title = section.section
-        symptom_tags = _title_symptom_tags(title, symptom_aliases)
         is_exact_selection = title in exact_titles
         hierarchy = "\n".join(
             (section.volume, section.chapter, section.section)
         )
+        symptom_tags = _title_symptom_tags(hierarchy, symptom_aliases)
         is_excluded_scan = any(
             pattern and pattern in hierarchy for pattern in excluded_patterns
         )

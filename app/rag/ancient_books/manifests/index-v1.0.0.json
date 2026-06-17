@@ -1,0 +1,28 @@
+{
+  "corpus_manifest_sha256": "0815DF359360F82C0A27A363162A6C7883E75C2E35630DDD85B0795EBF6B434E",
+  "embedding_model": {
+    "model": "BAAI/bge-m3",
+    "revision": "5617a9f61b028005a4858fdac845db406aefb181"
+  },
+  "files": {
+    "bm25_tokens": {
+      "bytes": 385610,
+      "path": "bm25_tokens.jsonl",
+      "sha256": "54448553578A67174FBBC4F0268710FAF13AC655C833D93DA14FE0D966111BAF"
+    },
+    "dense": {
+      "bytes": 9371776,
+      "path": "dense.npy",
+      "sha256": "4EFA14C9313EC9A027216BEB53DA758742491D0BF0593F542C7FDF029A21867F"
+    },
+    "rows": {
+      "bytes": 576866,
+      "path": "rows.jsonl",
+      "sha256": "EAF7FB1D68DB2FFFCA9A5923135B151CF7E297BBDBDA9959A78B3D3666B92A2E"
+    }
+  },
+  "row_count": 2288,
+  "status": "ready",
+  "vector_dimension": 1024,
+  "version": "v1.0.0"
+}

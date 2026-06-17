@@ -285,6 +285,26 @@ class SectionSelectionTests(unittest.TestCase):
 
         self.assertEqual([section.section_id for section in selected], ["internal"])
 
+    def test_symptom_scan_tags_section_from_chapter_hierarchy(self):
+        section = make_section(
+            "论证",
+            "headache-evidence",
+            volume="卷之十七理集·杂证谟",
+            chapter="头痛",
+        )
+
+        selected = select_sections(
+            [section],
+            symptom_aliases={"头痛": ["头痛", "头风"]},
+            method_sections=[],
+            fixed_sections=[],
+            symptom_scan=True,
+            exclude_title_patterns=[],
+        )
+
+        self.assertEqual(len(selected), 1)
+        self.assertEqual(selected[0].symptom_tags, ["头痛"])
+
     def test_fixed_sections_are_tagged_when_symptom_scan_is_disabled(self):
         title = "肺痿肺痈咳嗽上气病脉证治第七"
 
