@@ -49,6 +49,14 @@ class RetrievableTextFilterTests(unittest.TestCase):
     def test_short_formula_name_filters_to_empty(self):
         self.assertEqual(filter_retrievable_text("止痛散。"), "")
 
+    def test_modified_formula_name_filters_to_empty(self):
+        self.assertEqual(filter_retrievable_text("川芎茶调散加减。"), "")
+
+    def test_pathological_fluid_term_is_not_treated_as_formula(self):
+        text = "痰饮咳嗽。"
+
+        self.assertEqual(filter_retrievable_text(text), text)
+
     def test_herb_list_with_chinese_commas_is_removed(self):
         text = "因风者恶风。天麻，钩藤。"
 

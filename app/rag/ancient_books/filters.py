@@ -22,6 +22,10 @@ _DOSE_PATTERN = re.compile(
 _FORMULA_NAME_PATTERN = re.compile(
     r"^[\u3400-\u9fff]{1,12}(?:汤|散|丸|饮|膏|丹)(?:方)?$"
 )
+_MODIFIED_FORMULA_PATTERN = re.compile(
+    r"^[\u3400-\u9fff]{1,12}(?:汤|散|丸|膏|丹)(?:方)?"
+    r"(?:加减|加味|主之|治|服|合用|化裁)"
+)
 _PREPARATION_PATTERN = re.compile(
     r"为末|为丸|水煎|主之|治|服|煎|煮|熬|炙|炒|焙|研|捣|浸|泡|"
     r"上[一二三四五六七八九十百\d]+味|"
@@ -179,6 +183,8 @@ def _is_unsafe_clause(clause: str) -> bool:
     if not candidate:
         return True
     if _DOSE_PATTERN.search(candidate) or _PREPARATION_PATTERN.search(candidate):
+        return True
+    if _MODIFIED_FORMULA_PATTERN.search(candidate):
         return True
     if _FORMULA_NAME_PATTERN.fullmatch(candidate) and not any(
         cue in candidate for cue in _DIAGNOSTIC_CUES
