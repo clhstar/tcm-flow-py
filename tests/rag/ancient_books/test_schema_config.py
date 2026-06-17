@@ -59,6 +59,16 @@ def retrieval_hit_data() -> dict[str, object]:
 
 
 class AncientBookSchemaTests(unittest.TestCase):
+    def test_selected_section_allows_empty_hierarchy_and_symptom_tags(self):
+        data = selected_section_data()
+        data.update(volume="", chapter="", symptom_tags=[])
+
+        section = SelectedSection.model_validate(data)
+
+        self.assertEqual(section.volume, "")
+        self.assertEqual(section.chapter, "")
+        self.assertEqual(section.symptom_tags, [])
+
     def test_selected_section_normalizes_source_hash_and_forbids_extra_fields(self):
         section = SelectedSection.model_validate(selected_section_data())
         self.assertEqual(section.source_hash, "A" * 64)
@@ -101,12 +111,22 @@ class AncientBookSchemaTests(unittest.TestCase):
         with self.assertRaises(ValidationError):
             RetrievalHit.model_validate(data)
 
-    def test_retrieval_hit_requires_explicit_ranking_scores(self):
+    def test_retrieval_hit_allows_omitted_ranking_scores(self):
         data = retrieval_hit_data()
-        del data["rrf_score"]
+        for field in (
+            "bm25_rank",
+            "dense_rank",
+            "rrf_score",
+            "reranker_score",
+        ):
+            del data[field]
 
-        with self.assertRaises(ValidationError):
-            RetrievalHit.model_validate(data)
+        hit = RetrievalHit.model_validate(data)
+
+        self.assertIsNone(hit.bm25_rank)
+        self.assertIsNone(hit.dense_rank)
+        self.assertIsNone(hit.rrf_score)
+        self.assertIsNone(hit.reranker_score)
 
 
 class ProductionConfigTests(unittest.TestCase):
@@ -123,14 +143,18 @@ class ProductionConfigTests(unittest.TestCase):
         )
         return path
 
-    def test_loads_repository_production_yaml(self):
+    def test_loads_repository_production_yaml_as_plain_dict(self):
         config = load_production_config(CONFIG_PATH)
 
-        self.assertEqual(config.version, "v1.0.0")
-        self.assertEqual(config.source_encoding, "cp936")
-        self.assertEqual({book.book_id for book in config.books}, EXPECTED_BOOK_IDS)
+        self.assertIsInstance(config, dict)
+        self.assertEqual(config["version"], "v1.0.0")
+        self.assertEqual(config["source_encoding"], "cp936")
         self.assertEqual(
-            {symptom.name: symptom.aliases for symptom in config.symptoms},
+            {book["book_id"] for book in config["books"]},
+            EXPECTED_BOOK_IDS,
+        )
+        self.assertEqual(
+            config["symptoms"],
             {
                 "头痛": ["头痛", "头风"],
                 "眩晕": ["眩晕", "眩运", "头眩"],
@@ -145,7 +169,7 @@ class ProductionConfigTests(unittest.TestCase):
             },
         )
         self.assertEqual(
-            config.exclude_title_patterns,
+            config["exclude_title_patterns"],
             [
                 "产后",
                 "妊娠",
@@ -162,10 +186,12 @@ class ProductionConfigTests(unittest.TestCase):
                 "选方",
             ],
         )
-        books = {book.book_id: book for book in config.books}
-        self.assertEqual(books["jing_yue_quan_shu"].method_sections, ["十问篇（九）"])
+        books = {book["book_id"]: book for book in config["books"]}
+        self.assertEqual(books["jing_yue_quan_shu"]["title"], "景岳全书")
+        self.assertNotIn("book_title", books["jing_yue_quan_shu"])
+        self.assertEqual(books["jing_yue_quan_shu"]["method_sections"], ["十问篇（九）"])
         self.assertEqual(
-            books["yi_men_fa_lv"].method_sections,
+            books["yi_men_fa_lv"]["method_sections"],
             [
                 "望色论（附律一条）",
                 "闻声论（附律二条）",
@@ -176,7 +202,7 @@ class ProductionConfigTests(unittest.TestCase):
             ],
         )
         self.assertEqual(
-            books["jin_gui_yao_lue"].fixed_sections,
+            books["jin_gui_yao_lue"]["fixed_sections"],
             [
                 "肺痿肺痈咳嗽上气病脉证治第七",
                 "胸痹心痛短气病脉证治第九",
@@ -187,7 +213,7 @@ class ProductionConfigTests(unittest.TestCase):
             ],
         )
         self.assertEqual(
-            books["huang_di_nei_jing_su_wen"].fixed_sections,
+            books["huang_di_nei_jing_su_wen"]["fixed_sections"],
             [
                 "移精变气论篇第十三",
                 "诊要经终论篇第十六",
@@ -198,7 +224,10 @@ class ProductionConfigTests(unittest.TestCase):
             ],
         )
         self.assertEqual(
-            [(book.source_file, book.symptom_scan) for book in config.books],
+            [
+                (book["source_file"], book["symptom_scan"])
+                for book in config["books"]
+            ],
             [
                 ("637-景岳全书.txt", True),
                 ("207-医门法律.txt", False),
@@ -209,21 +238,21 @@ class ProductionConfigTests(unittest.TestCase):
                 ("437-黄帝内经素问.txt", False),
             ],
         )
-        self.assertEqual(config.models.embedding.device, "cuda")
-        self.assertTrue(config.models.embedding.use_fp16)
-        self.assertEqual(config.models.embedding.batch_size, 4)
+        self.assertEqual(config["models"]["embedding"]["device"], "cuda")
+        self.assertTrue(config["models"]["embedding"]["use_fp16"])
+        self.assertEqual(config["models"]["embedding"]["batch_size"], 4)
         self.assertEqual(
-            config.models.embedding.revision,
+            config["models"]["embedding"]["revision"],
             "5617a9f61b028005a4858fdac845db406aefb181",
         )
-        self.assertEqual(config.models.reranker.batch_size, 2)
-        self.assertTrue(config.models.reranker.normalize_score)
+        self.assertEqual(config["models"]["reranker"]["batch_size"], 2)
+        self.assertTrue(config["models"]["reranker"]["normalize_score"])
         self.assertEqual(
-            config.models.reranker.revision,
+            config["models"]["reranker"]["revision"],
             "953dc6f6f85a1b2dbfca4c34a2796e7dde08d41e",
         )
         self.assertEqual(
-            config.retrieval.model_dump(),
+            config["retrieval"],
             {
                 "bm25_top_k": 20,
                 "dense_top_k": 20,

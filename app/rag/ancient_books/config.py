@@ -1,9 +1,9 @@
 import re
 from pathlib import Path
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field
 
 
 EXPECTED_BOOK_IDS = frozenset(
@@ -19,6 +19,7 @@ EXPECTED_BOOK_IDS = frozenset(
 )
 
 NonEmptyString = Annotated[str, Field(min_length=1)]
+AliasList = Annotated[list[NonEmptyString], Field(min_length=1)]
 COMMIT_HASH_PATTERN = re.compile(r"^[0-9a-fA-F]{40}$")
 
 
@@ -26,14 +27,9 @@ class StrictConfigModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-class SymptomConfig(StrictConfigModel):
-    name: NonEmptyString
-    aliases: list[NonEmptyString] = Field(min_length=1)
-
-
 class BookConfig(StrictConfigModel):
     book_id: NonEmptyString
-    book_title: NonEmptyString
+    title: NonEmptyString
     source_file: NonEmptyString
     symptom_scan: bool
     method_sections: list[NonEmptyString] = Field(default_factory=list)
@@ -75,19 +71,11 @@ class RetrievalConfig(StrictConfigModel):
 class ProductionConfig(StrictConfigModel):
     version: Literal["v1.0.0"]
     source_encoding: Literal["cp936"]
-    symptoms: list[SymptomConfig] = Field(min_length=10, max_length=10)
+    symptoms: dict[NonEmptyString, AliasList] = Field(min_length=10, max_length=10)
     exclude_title_patterns: list[NonEmptyString] = Field(min_length=1)
     books: list[BookConfig] = Field(min_length=7, max_length=7)
     models: ModelsConfig
     retrieval: RetrievalConfig
-
-    @model_validator(mode="after")
-    def validate_unique_symptoms(self) -> "ProductionConfig":
-        names = [symptom.name for symptom in self.symptoms]
-        if len(names) != len(set(names)):
-            raise ValueError("symptom names must be unique")
-        return self
-
 
 def _validate_books(raw_books: object) -> None:
     if not isinstance(raw_books, list):
@@ -127,7 +115,7 @@ def _validate_model_revisions(raw_models: object) -> None:
             )
 
 
-def load_production_config(path: Path) -> ProductionConfig:
+def load_production_config(path: Path) -> dict[str, Any]:
     """Load and validate a UTF-8 production ancient-book configuration."""
 
     raw_config = yaml.safe_load(path.read_text(encoding="utf-8"))
@@ -136,4 +124,4 @@ def load_production_config(path: Path) -> ProductionConfig:
 
     _validate_books(raw_config.get("books"))
     _validate_model_revisions(raw_config.get("models"))
-    return ProductionConfig.model_validate(raw_config)
+    return ProductionConfig.model_validate(raw_config).model_dump()

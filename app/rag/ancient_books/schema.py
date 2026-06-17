@@ -35,10 +35,10 @@ class SelectedSection(SourceHashMixin, StrictModel):
     book_id: NonEmptyString
     book_title: NonEmptyString
     source_file: NonEmptyString
-    volume: NonEmptyString
-    chapter: NonEmptyString
+    volume: str
+    chapter: str
     section: NonEmptyString
-    symptom_tags: list[NonEmptyString] = Field(min_length=1)
+    symptom_tags: list[NonEmptyString]
     original_text: NonEmptyString
 
 
@@ -81,7 +81,7 @@ class RetrievalHit(StrictModel):
     symptom_tags: list[NonEmptyString] = Field(min_length=1)
     evidence_role: EvidenceRole
     retrieval_sources: list[NonEmptyString] = Field(min_length=1)
-    bm25_rank: int | None = Field(ge=1)
-    dense_rank: int | None = Field(ge=1)
-    rrf_score: float = Field(ge=0)
-    reranker_score: float
+    bm25_rank: int | None = Field(default=None, ge=1)
+    dense_rank: int | None = Field(default=None, ge=1)
+    rrf_score: float | None = Field(default=None, ge=0)
+    reranker_score: float | None = None
