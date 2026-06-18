@@ -1,4 +1,7 @@
+from app.config import get_settings
 from app.runtime.stream import StreamBridge
+from app.store.postgres_run_manager import PostgresRunManager
+from app.store.postgres_thread_store import PostgresThreadStore
 from app.store.run_manager import RunManager
 from app.store.thread_store import ThreadStore
 
@@ -13,10 +16,31 @@ class AppState:
     - bridge 管理 SSE 流
     """
 
-    def __init__(self):
-        self.thread_store = ThreadStore()
-        self.run_manager = RunManager()
-        self.bridge = StreamBridge()
+    def __init__(self, *, thread_store, run_manager, bridge: StreamBridge):
+        self.thread_store = thread_store
+        self.run_manager = run_manager
+        self.bridge = bridge
 
 
-state = AppState()
+def build_state(pool=None) -> AppState:
+    settings = get_settings()
+    wants_postgres = (
+        settings.checkpoint_backend == "postgres"
+        or settings.rag_engine == "database"
+    )
+    if wants_postgres:
+        if pool is None:
+            raise ValueError("Postgres runtime state requires a database pool")
+        return AppState(
+            thread_store=PostgresThreadStore(pool),
+            run_manager=PostgresRunManager(pool),
+            bridge=StreamBridge(),
+        )
+    return AppState(
+        thread_store=ThreadStore(),
+        run_manager=RunManager(),
+        bridge=StreamBridge(),
+    )
+
+
+state = build_state(pool=None)
