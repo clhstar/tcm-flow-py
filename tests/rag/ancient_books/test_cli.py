@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from app.rag.ancient_books.cli import SMOKE_QUERIES, run_smoke
+from app.rag.ancient_books.cli import SMOKE_QUERIES, build_parser, run_smoke
 from app.rag.ancient_books.pipeline import (
     build_corpus,
     doctor_corpus,
@@ -141,6 +141,13 @@ class PipelineTests(unittest.TestCase):
                     "excluded_content_match_count": 0,
                 },
             )
+
+    def test_build_corpus_cli_does_not_load_curated_markdown_by_default(self):
+        args = build_parser().parse_args(
+            ["build-corpus", "--source-root", "data/source"]
+        )
+
+        self.assertIsNone(args.curated_root)
 
 
 if __name__ == "__main__":

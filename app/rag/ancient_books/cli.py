@@ -73,7 +73,7 @@ def build_parser() -> argparse.ArgumentParser:
     corpus.add_argument("--source-root", type=Path, required=True)
     corpus.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
     corpus.add_argument("--output-dir", type=Path, default=DEFAULT_CORPUS_DIR)
-    corpus.add_argument("--curated-root", type=Path, default=Path("data/raw"))
+    corpus.add_argument("--curated-root", type=Path, default=None)
 
     doctor = subparsers.add_parser("doctor")
     doctor.add_argument("--corpus-dir", type=Path, default=DEFAULT_CORPUS_DIR)
