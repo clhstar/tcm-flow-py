@@ -4,15 +4,14 @@ from typing import Any
 from dotenv import load_dotenv
 from langchain.agents import create_agent
 from langchain_openai import ChatOpenAI
-from langgraph.checkpoint.memory import InMemorySaver
 
 from app.agents.lead_agent.prompt import SYSTEM_PROMPT
+from app.checkpoints.factory import get_checkpointer
+from app.config import get_settings
 from app.tools.tools import get_available_tools
 from app.middlewares.clarification_middleware import ClarificationMiddleware
 
 load_dotenv()
-
-_checkpointer = InMemorySaver()
 
 
 def make_lead_agent(context: dict[str, Any] | None = None):
@@ -28,6 +27,7 @@ def make_lead_agent(context: dict[str, Any] | None = None):
     """
 
     context = context or {}
+    settings = get_settings()
 
     model_name = context.get("model_name") or os.getenv("OPENAI_MODEL", "gpt-4o-mini")
     base_url = os.getenv("OPENAI_BASE_URL")
@@ -44,7 +44,7 @@ def make_lead_agent(context: dict[str, Any] | None = None):
         model=model,
         tools=tools,
         system_prompt=SYSTEM_PROMPT,
-        checkpointer=_checkpointer,
+        checkpointer=get_checkpointer(settings),
         middleware=[ClarificationMiddleware()],
     )
 
