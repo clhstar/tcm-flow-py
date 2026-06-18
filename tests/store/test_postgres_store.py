@@ -140,6 +140,21 @@ class PostgresStoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(record.thread_id, "00000000-0000-0000-0000-000000000001")
         self.assertEqual(record.values, {"conversation": []})
 
+    def test_thread_row_conversion_decodes_json_metadata_text(self):
+        row = NoGetRow(
+            {
+                "thread_id": "00000000-0000-0000-0000-000000000001",
+                "created_at": "2026-06-18T00:00:00",
+                "updated_at": "2026-06-18T00:00:01",
+                "status": "idle",
+                "metadata": '{"conversation": []}',
+            }
+        )
+
+        record = _thread_from_row(row)
+
+        self.assertEqual(record.values, {"conversation": []})
+
     def test_run_row_conversion_does_not_require_get(self):
         row = NoGetRow(
             {

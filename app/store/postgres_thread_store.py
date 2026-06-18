@@ -10,6 +10,14 @@ def _isoformat(value) -> str:
     return value.isoformat() if hasattr(value, "isoformat") else str(value)
 
 
+def _metadata_from_value(value) -> dict[str, Any]:
+    if value is None:
+        return {}
+    if isinstance(value, str):
+        return dict(json.loads(value))
+    return dict(value)
+
+
 def _thread_from_row(row) -> ThreadRecord | None:
     if row is None:
         return None
@@ -18,7 +26,7 @@ def _thread_from_row(row) -> ThreadRecord | None:
         created_at=_isoformat(row["created_at"]),
         updated_at=_isoformat(row["updated_at"]),
         status=row["status"],
-        values=dict(row["metadata"] or {}),
+        values=_metadata_from_value(row["metadata"]),
     )
 
 
