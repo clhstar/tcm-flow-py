@@ -24,11 +24,7 @@ class AppState:
 
 def build_state(pool=None) -> AppState:
     settings = get_settings()
-    wants_postgres = (
-        settings.checkpoint_backend == "postgres"
-        or settings.rag_engine == "database"
-    )
-    if wants_postgres:
+    if settings.checkpoint_backend == "postgres":
         if pool is None:
             raise ValueError("Postgres runtime state requires a database pool")
         return AppState(
@@ -43,4 +39,20 @@ def build_state(pool=None) -> AppState:
     )
 
 
-state = build_state(pool=None)
+def _memory_state() -> AppState:
+    return AppState(
+        thread_store=ThreadStore(),
+        run_manager=RunManager(),
+        bridge=StreamBridge(),
+    )
+
+
+state = _memory_state()
+
+
+def configure_state(pool=None) -> AppState:
+    configured = build_state(pool=pool)
+    state.thread_store = configured.thread_store
+    state.run_manager = configured.run_manager
+    state.bridge = configured.bridge
+    return state
