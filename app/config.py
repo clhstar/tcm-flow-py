@@ -7,7 +7,12 @@ def _bool_env(name: str, default: bool) -> bool:
     raw = os.getenv(name)
     if raw is None:
         return default
-    return raw.strip().lower() in {"1", "true", "yes", "on"}
+    value = raw.strip().lower()
+    if value in {"1", "true", "yes", "on"}:
+        return True
+    if value in {"0", "false", "no", "off"}:
+        return False
+    raise ValueError(f"{name} must be a boolean value")
 
 
 def _int_env(name: str, default: int) -> int:
@@ -32,13 +37,16 @@ class AppSettings:
     def from_env(cls) -> "AppSettings":
         checkpoint_backend = os.getenv("CHECKPOINT_BACKEND", "memory").strip().lower()
         rag_engine = os.getenv("RAG_ENGINE", "file").strip().lower()
+        postgres_pool_size = _int_env("POSTGRES_POOL_SIZE", 10)
         if checkpoint_backend not in {"memory", "postgres"}:
             raise ValueError("CHECKPOINT_BACKEND must be memory or postgres")
         if rag_engine not in {"file", "database"}:
             raise ValueError("RAG_ENGINE must be file or database")
+        if postgres_pool_size <= 0:
+            raise ValueError("POSTGRES_POOL_SIZE must be positive")
         return cls(
             database_url=os.getenv("DATABASE_URL"),
-            postgres_pool_size=_int_env("POSTGRES_POOL_SIZE", 10),
+            postgres_pool_size=postgres_pool_size,
             checkpoint_backend=checkpoint_backend,
             rag_engine=rag_engine,
             rag_fallback_file_engine=_bool_env("RAG_FALLBACK_FILE_ENGINE", True),

@@ -6,6 +6,9 @@ from app.config import AppSettings, get_settings, reset_settings_cache
 
 
 class SettingsTests(unittest.TestCase):
+    def setUp(self):
+        reset_settings_cache()
+
     def tearDown(self):
         reset_settings_cache()
 
@@ -43,6 +46,16 @@ class SettingsTests(unittest.TestCase):
         self.assertEqual(settings.elasticsearch_rag_index_alias, "tcm_rag_chunks_test")
         self.assertEqual(settings.elasticsearch_analyzer, "ik_max_word")
 
+    def test_invalid_boolean_value_is_rejected(self):
+        with patch.dict(os.environ, {"RAG_FALLBACK_FILE_ENGINE": "flase"}, clear=True):
+            with self.assertRaisesRegex(ValueError, "RAG_FALLBACK_FILE_ENGINE"):
+                AppSettings.from_env()
+
+    def test_pool_size_must_be_positive(self):
+        with patch.dict(os.environ, {"POSTGRES_POOL_SIZE": "0"}, clear=True):
+            with self.assertRaisesRegex(ValueError, "POSTGRES_POOL_SIZE"):
+                AppSettings.from_env()
+
     def test_cached_settings_can_be_reset_for_tests(self):
         with patch.dict(os.environ, {"RAG_ENGINE": "database"}, clear=True):
             first = get_settings()
@@ -51,6 +64,7 @@ class SettingsTests(unittest.TestCase):
             reset_settings_cache()
             refreshed = get_settings()
 
+        self.assertEqual(first.rag_engine, "database")
         self.assertIs(first, cached)
         self.assertEqual(refreshed.rag_engine, "file")
 
