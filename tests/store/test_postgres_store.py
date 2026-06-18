@@ -1,5 +1,6 @@
 import json
 import unittest
+from datetime import timezone
 from uuid import UUID
 
 from app.store.postgres_run_manager import PostgresRunManager, _run_from_row
@@ -80,8 +81,11 @@ class PostgresStoreTests(unittest.IsolatedAsyncioTestCase):
 
         UUID(record.thread_id)
         self.assertEqual(record.status, "idle")
-        sql = pool.connection.fetchrow_calls[0][0].lower()
+        sql, args = pool.connection.fetchrow_calls[0]
+        sql = sql.lower()
         self.assertIn("insert into app_threads", sql)
+        self.assertIsInstance(args[0], UUID)
+        self.assertIs(args[1].tzinfo, timezone.utc)
 
     async def test_thread_store_update_values_writes_metadata_json(self):
         pool = FakePool()
@@ -94,7 +98,9 @@ class PostgresStoreTests(unittest.IsolatedAsyncioTestCase):
 
         sql, args = pool.connection.execute_calls[0]
         self.assertIn("metadata = metadata ||", sql.lower())
+        self.assertIsInstance(args[0], UUID)
         self.assertEqual(json.loads(args[1]), {"conversation": []})
+        self.assertIs(args[2].tzinfo, timezone.utc)
 
     async def test_run_manager_create_returns_run_record(self):
         pool = FakePool()
@@ -108,6 +114,11 @@ class PostgresStoreTests(unittest.IsolatedAsyncioTestCase):
         UUID(record.run_id)
         self.assertEqual(record.status, "pending")
         self.assertEqual(record.assistant_id, "lead_agent")
+        sql, args = pool.connection.fetchrow_calls[0]
+        self.assertIn("insert into app_runs", sql.lower())
+        self.assertIsInstance(args[0], UUID)
+        self.assertIsInstance(args[1], UUID)
+        self.assertIs(args[3].tzinfo, timezone.utc)
 
     async def test_run_manager_set_status_writes_error(self):
         pool = FakePool()
@@ -121,8 +132,10 @@ class PostgresStoreTests(unittest.IsolatedAsyncioTestCase):
 
         sql, args = pool.connection.execute_calls[0]
         self.assertIn("update app_runs", sql.lower())
+        self.assertIsInstance(args[0], UUID)
         self.assertEqual(args[1], "error")
         self.assertEqual(args[2], "boom")
+        self.assertIs(args[3].tzinfo, timezone.utc)
 
     def test_thread_row_conversion_does_not_require_get(self):
         row = NoGetRow(

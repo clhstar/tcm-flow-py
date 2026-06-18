@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app.store.models import RunRecord
 
@@ -27,7 +27,7 @@ class PostgresRunManager:
         self.pool = pool
 
     async def create(self, thread_id: str, assistant_id: str) -> RunRecord:
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         run_id = uuid.uuid4()
         async with self.pool.acquire() as connection:
             row = await connection.fetchrow(
@@ -76,5 +76,5 @@ class PostgresRunManager:
                 uuid.UUID(run_id),
                 status,
                 error,
-                datetime.utcnow(),
+                datetime.now(timezone.utc),
             )

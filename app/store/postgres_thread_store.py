@@ -1,6 +1,6 @@
 import json
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from app.store.models import ThreadRecord
@@ -35,7 +35,7 @@ class PostgresThreadStore:
         self.pool = pool
 
     async def create(self) -> ThreadRecord:
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         thread_id = uuid.uuid4()
         async with self.pool.acquire() as connection:
             row = await connection.fetchrow(
@@ -85,7 +85,7 @@ class PostgresThreadStore:
                 """,
                 uuid.UUID(thread_id),
                 status,
-                datetime.utcnow(),
+                datetime.now(timezone.utc),
             )
 
     async def update_values(self, thread_id: str, values: dict[str, Any]):
@@ -98,5 +98,5 @@ class PostgresThreadStore:
                 """,
                 uuid.UUID(thread_id),
                 json.dumps(values, ensure_ascii=False),
-                datetime.utcnow(),
+                datetime.now(timezone.utc),
             )
