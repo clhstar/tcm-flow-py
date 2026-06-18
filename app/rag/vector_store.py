@@ -126,9 +126,3 @@ def get_production_engine(
 
 def clear_production_engine_cache() -> None:
     _get_production_engine_cached.cache_clear()
-
-
-def get_vector_store() -> ProductionRetrievalEngine:
-    """Compatibility alias for callers that imported the old vector-store factory."""
-
-    return get_production_engine()

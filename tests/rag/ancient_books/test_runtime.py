@@ -129,7 +129,6 @@ class RuntimeTests(unittest.TestCase):
             build_corpus(
                 config=config,
                 source_root=source,
-                curated_root=None,
                 output_dir=corpus_dir,
             )
             build_index(

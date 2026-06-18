@@ -1,8 +1,4 @@
-from app.rag.ancient_books.query import (
-    SEARCH_ALIASES,
-    detect_chief_symptom,
-    rewrite_query,
-)
+from app.rag.ancient_books.query import SEARCH_ALIASES
 
 
 TCM_TERMS = list(
@@ -79,18 +75,3 @@ def extract_terms(text: str) -> list[str]:
             matched.append(term)
 
     return deduplicate_keep_order(matched)
-
-
-def rewrite_tcm_query(query: str) -> str:
-    """
-    将用户口语化问题扩展成更适合中医知识库检索的 query。
-    """
-    return rewrite_query(query)
-
-
-def detect_topic(query: str) -> str | None:
-    """
-    根据 query 粗略识别主题。
-    后面 metadata 过滤可以用。
-    """
-    return detect_chief_symptom(query)

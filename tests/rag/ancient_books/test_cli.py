@@ -93,13 +93,11 @@ class PipelineTests(unittest.TestCase):
             manifest = build_corpus(
                 config=config,
                 source_root=source,
-                curated_root=None,
                 output_dir=first_output,
             )
             build_corpus(
                 config=config,
                 source_root=source,
-                curated_root=None,
                 output_dir=second_output,
             )
 
@@ -142,12 +140,12 @@ class PipelineTests(unittest.TestCase):
                 },
             )
 
-    def test_build_corpus_cli_does_not_load_curated_markdown_by_default(self):
+    def test_build_corpus_cli_has_no_curated_markdown_argument(self):
         args = build_parser().parse_args(
             ["build-corpus", "--source-root", "data/source"]
         )
 
-        self.assertIsNone(args.curated_root)
+        self.assertFalse(hasattr(args, "curated_root"))
 
 
 if __name__ == "__main__":

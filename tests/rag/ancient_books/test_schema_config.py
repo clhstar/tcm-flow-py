@@ -118,7 +118,7 @@ class AncientBookSchemaTests(unittest.TestCase):
                 chunk_id="chunk-001",
                 parent_id="parent-001",
                 text="医" * 301,
-                source_type="curated_markdown",
+                source_type="ancient_book",
                 symptom_tags=["头痛"],
                 evidence_role="symptom_feature",
             )
@@ -128,7 +128,7 @@ class AncientBookSchemaTests(unittest.TestCase):
             chunk_id="chunk-001",
             parent_id="parent-001",
             text="无已标注症状的检索片段。",
-            source_type="curated_markdown",
+            source_type="ancient_book",
             symptom_tags=[],
             evidence_role="symptom_feature",
         )
@@ -200,7 +200,7 @@ class AncientBookSchemaTests(unittest.TestCase):
             "chunk_id": "chunk-001",
             "parent_id": "parent-001",
             "text": "retrieval text",
-            "source_type": "curated_markdown",
+            "source_type": "ancient_book",
             "symptom_tags": [""],
             "evidence_role": "symptom_feature",
         }

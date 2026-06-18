@@ -256,7 +256,6 @@ class ParentChildChunkingTests(unittest.TestCase):
             ("危险证候", "ancient_book", "differential"),
             ("头痛病机", "ancient_book", "pathogenesis"),
             ("头痛证治", "ancient_book", "syndrome_pattern"),
-            ("头痛表现", "curated_markdown", "symptom_feature"),
         )
 
         for title, source_type, expected_role in cases:

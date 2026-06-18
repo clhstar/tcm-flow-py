@@ -3,7 +3,7 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
-SourceType = Literal["ancient_book", "curated_markdown"]
+SourceType = Literal["ancient_book"]
 EvidenceRole = Literal[
     "diagnostic_method",
     "symptom_feature",

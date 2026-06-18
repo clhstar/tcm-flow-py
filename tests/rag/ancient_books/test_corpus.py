@@ -3,11 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from app.rag.ancient_books.corpus import (
-    load_curated_sections,
-    parse_tagged_book,
-    select_sections,
-)
+from app.rag.ancient_books.corpus import parse_tagged_book, select_sections
 from app.rag.ancient_books.schema import SelectedSection
 
 
@@ -395,117 +391,6 @@ class SectionSelectionTests(unittest.TestCase):
             [section.section_id for section in selected],
             ["method-1", "method-2"],
         )
-
-
-class CuratedMarkdownTests(unittest.TestCase):
-    def test_loads_sorted_utf8_markdown_as_selected_sections(self):
-        files = {
-            "b.md": "# 咳嗽\n## 问诊要点\n辨咳嗽新久。\n",
-            "a.md": "# 头风\n## 头痛问诊\n先问疼痛部位。\n",
-        }
-        with tempfile.TemporaryDirectory() as temp_dir:
-            raw_dir = Path(temp_dir) / "data" / "raw"
-            raw_dir.mkdir(parents=True)
-            for filename, text in files.items():
-                (raw_dir / filename).write_bytes(text.encode("utf-8"))
-
-            sections = load_curated_sections(raw_dir, SYMPTOM_ALIASES)
-
-        self.assertEqual(
-            [(section.source_file, section.section) for section in sections],
-            [
-                ("a.md", "概述"),
-                ("a.md", "头痛问诊"),
-                ("b.md", "概述"),
-                ("b.md", "问诊要点"),
-            ],
-        )
-        first = sections[1]
-        self.assertEqual(first.source_type, "curated_markdown")
-        self.assertEqual(first.book_title, "人工整理知识")
-        self.assertEqual(first.volume, "")
-        self.assertEqual(first.chapter, "头风")
-        self.assertEqual(first.section, "头痛问诊")
-        self.assertEqual(first.symptom_tags, ["头痛"])
-        self.assertEqual(first.original_text, "## 头痛问诊\n先问疼痛部位。")
-        self.assertEqual(
-            first.source_hash,
-            hashlib.sha256(files["a.md"].encode("utf-8")).hexdigest().upper(),
-        )
-        self.assertTrue(all(section.book_id == "curated_markdown" for section in sections))
-
-    def test_empty_curated_directory_returns_empty_list(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            sections = load_curated_sections(Path(temp_dir), SYMPTOM_ALIASES)
-
-        self.assertEqual(sections, [])
-
-    def test_unrelated_leading_headings_do_not_change_existing_ids(self):
-        original_text = (
-            "# Existing topic\n"
-            "## Existing section\n"
-            "Existing content.\n"
-        )
-        leading_text = (
-            "# Unrelated topic\n"
-            "## Unrelated section\n"
-            "Unrelated content.\n"
-        )
-        with tempfile.TemporaryDirectory() as temp_dir:
-            path = Path(temp_dir) / "curated.md"
-            path.write_text(original_text, encoding="utf-8")
-            original_sections = load_curated_sections(
-                Path(temp_dir), SYMPTOM_ALIASES
-            )
-
-            path.write_text(leading_text + original_text, encoding="utf-8")
-            sections_with_leading = load_curated_sections(
-                Path(temp_dir), SYMPTOM_ALIASES
-            )
-
-        original_ids = {
-            (section.chapter, section.section, section.original_text):
-            section.section_id
-            for section in original_sections
-        }
-        ids_with_leading = {
-            (section.chapter, section.section, section.original_text):
-            section.section_id
-            for section in sections_with_leading
-            if section.chapter == "Existing topic"
-        }
-        self.assertEqual(ids_with_leading, original_ids)
-
-    def test_identical_curated_sections_get_unique_stable_ids(self):
-        repeated_section = (
-            "# Repeated topic\n"
-            "## Repeated section\n"
-            "Identical content.\n"
-        )
-        with tempfile.TemporaryDirectory() as temp_dir:
-            path = Path(temp_dir) / "curated.md"
-            path.write_text(repeated_section * 2, encoding="utf-8")
-
-            first_parse = load_curated_sections(
-                Path(temp_dir), SYMPTOM_ALIASES
-            )
-            second_parse = load_curated_sections(
-                Path(temp_dir), SYMPTOM_ALIASES
-            )
-
-        first_ids = [
-            section.section_id
-            for section in first_parse
-            if section.section == "Repeated section"
-        ]
-        second_ids = [
-            section.section_id
-            for section in second_parse
-            if section.section == "Repeated section"
-        ]
-        self.assertEqual(len(first_ids), 2)
-        self.assertEqual(len(set(first_ids)), 2)
-        self.assertEqual(first_ids, second_ids)
 
 
 if __name__ == "__main__":

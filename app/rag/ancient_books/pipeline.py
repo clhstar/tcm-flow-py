@@ -1,3 +1,21 @@
+"""
+读取配置
+  ↓
+解析古籍
+  ↓
+筛选章节
+  ↓
+生成 Parent / Child
+  ↓
+写 sections.jsonl / parents.jsonl / chunks.jsonl
+  ↓
+生成 manifest.json
+  ↓
+校验语料是否完整
+  ↓
+导出可提交的 manifest
+"""
+
 import hashlib
 import json
 from collections import Counter
@@ -7,7 +25,7 @@ from typing import Iterable
 from pydantic import BaseModel
 
 from .chunking import build_parent_child
-from .corpus import load_curated_sections, parse_tagged_book, select_sections
+from .corpus import parse_tagged_book, select_sections
 from .filters import contains_excluded_content
 from .schema import EvidenceParent, RetrievalChunk, SelectedSection
 
@@ -143,7 +161,6 @@ def build_corpus(
     *,
     config: dict,
     source_root: Path,
-    curated_root: Path | None,
     output_dir: Path,
 ) -> dict:
     sections: list[SelectedSection] = []
@@ -184,9 +201,6 @@ def build_corpus(
                 ],
             }
         )
-
-    if curated_root is not None:
-        sections.extend(load_curated_sections(curated_root, config["symptoms"]))
 
     parents: list[EvidenceParent] = []
     chunks: list[RetrievalChunk] = []
