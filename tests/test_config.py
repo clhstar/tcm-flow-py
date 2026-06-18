@@ -14,9 +14,11 @@ class SettingsTests(unittest.TestCase):
             settings = AppSettings.from_env()
 
         self.assertEqual(settings.checkpoint_backend, "memory")
+        self.assertEqual(settings.postgres_pool_size, 10)
         self.assertEqual(settings.rag_engine, "file")
         self.assertTrue(settings.rag_fallback_file_engine)
         self.assertEqual(settings.elasticsearch_rag_index_alias, "tcm_rag_chunks_current")
+        self.assertEqual(settings.elasticsearch_analyzer, "standard")
 
     def test_database_configuration_is_loaded_from_environment(self):
         env = {
@@ -38,6 +40,7 @@ class SettingsTests(unittest.TestCase):
         self.assertEqual(settings.rag_engine, "database")
         self.assertFalse(settings.rag_fallback_file_engine)
         self.assertEqual(settings.elasticsearch_url, "http://localhost:9200")
+        self.assertEqual(settings.elasticsearch_rag_index_alias, "tcm_rag_chunks_test")
         self.assertEqual(settings.elasticsearch_analyzer, "ik_max_word")
 
     def test_cached_settings_can_be_reset_for_tests(self):
