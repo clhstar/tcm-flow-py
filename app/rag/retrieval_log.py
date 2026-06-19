@@ -4,8 +4,15 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from app.config import get_settings
+
 LOG_DIR = Path("data/logs")
 LOG_FILE = LOG_DIR / "retrieval.jsonl"
+
+
+def select_log_backend() -> str:
+    settings = get_settings()
+    return "postgres" if settings.rag_engine == "database" else "jsonl"
 
 
 def write_retrieval_log(payload: dict[str, Any]):
