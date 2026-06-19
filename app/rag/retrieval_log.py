@@ -8,6 +8,10 @@ LOG_DIR = Path("data/logs")
 LOG_FILE = LOG_DIR / "retrieval.jsonl"
 
 
+def select_log_backend() -> str:
+    return "postgres"
+
+
 def write_retrieval_log(payload: dict[str, Any]):
     LOG_DIR.mkdir(parents=True, exist_ok=True)
 

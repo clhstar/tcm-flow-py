@@ -33,7 +33,7 @@ PAYLOAD = {
 }
 
 
-class RagToolTests(unittest.TestCase):
+class RagToolTests(unittest.IsolatedAsyncioTestCase):
     def test_formatter_emits_citation_and_single_book_source(self):
         text = format_retrieval_results(PAYLOAD)
 
@@ -43,12 +43,12 @@ class RagToolTests(unittest.TestCase):
         self.assertIn("parent_id=p1", text)
         self.assertNotIn("处方", text)
 
-    @patch("app.tools.builtins.retrieval_tool.retrieve_tcm_docs")
+    @patch("app.tools.builtins.retrieval_tool.aretrieve_tcm_docs")
     @patch("app.tools.builtins.retrieval_tool.write_retrieval_log")
-    def test_tool_keeps_name_and_logs_stable_evidence_ids(self, log, retrieve):
+    async def test_tool_keeps_name_and_logs_stable_evidence_ids(self, log, retrieve):
         retrieve.return_value = PAYLOAD
 
-        result = retrieve_tcm_knowledge.invoke(
+        result = await retrieve_tcm_knowledge.ainvoke(
             {"query": "头痛恶风", "mode": "hybrid"}
         )
 

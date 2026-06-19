@@ -4,8 +4,15 @@ from pathlib import Path
 
 from .config import load_production_config
 from .indexing import build_index
-from .models import BgeM3Encoder, prepare_models
+from .models import (
+    BgeM3Encoder,
+    BgeReranker,
+    prepare_models,
+    snapshot_files,
+    snapshot_tree_sha256,
+)
 from .pipeline import build_corpus, doctor_corpus, export_manifests, sha256_file
+from .runtime import ProductionRetrievalEngine, load_index
 
 
 DEFAULT_CONFIG = Path("app/rag/config/ancient_books.yaml")
@@ -63,6 +70,75 @@ def run_smoke(engine) -> dict:
         "insufficient_symptoms": insufficient_symptoms,
         "degraded_count": 0,
     }
+
+
+class _UnavailableModel:
+    def __init__(self, reason: str):
+        self.reason = reason
+
+    def encode(self, texts):
+        raise RuntimeError(self.reason)
+
+    def score(self, pairs):
+        raise RuntimeError(self.reason)
+
+
+def _load_model_record(manifest: dict, *, role: str, expected: dict) -> tuple[Path, dict]:
+    record = manifest.get(role)
+    if not isinstance(record, dict):
+        raise ValueError(f"model manifest missing {role}")
+    if record.get("model") != expected["model"]:
+        raise ValueError(f"{role} model does not match production config")
+    if record.get("revision") != expected["revision"]:
+        raise ValueError(f"{role} revision does not match production config")
+    path = Path(record["local_path"]).resolve()
+    if not path.is_dir():
+        raise FileNotFoundError(f"missing local model snapshot: {path}")
+    actual_hash = snapshot_tree_sha256(snapshot_files(path))
+    if actual_hash != record.get("snapshot_tree_sha256"):
+        raise ValueError(f"{role} local model snapshot hash does not match manifest")
+    return path, record
+
+
+def build_local_smoke_engine(
+    *,
+    index_dir: Path = DEFAULT_INDEX_DIR,
+    corpus_dir: Path = DEFAULT_CORPUS_DIR,
+    config_path: Path = DEFAULT_CONFIG,
+    models_manifest_path: Path = DEFAULT_MODELS_MANIFEST,
+) -> ProductionRetrievalEngine:
+    index = load_index(index_dir, corpus_dir)
+    config = load_production_config(config_path)
+
+    try:
+        model_manifest = json.loads(models_manifest_path.read_text(encoding="utf-8"))
+        embedding_path, _ = _load_model_record(
+            model_manifest,
+            role="embedding",
+            expected=config["models"]["embedding"],
+        )
+        encoder = BgeM3Encoder(embedding_path, config["models"]["embedding"])
+    except Exception as error:
+        encoder = _UnavailableModel(f"Dense model unavailable: {error}")
+
+    try:
+        if "model_manifest" not in locals():
+            model_manifest = json.loads(models_manifest_path.read_text(encoding="utf-8"))
+        reranker_path, _ = _load_model_record(
+            model_manifest,
+            role="reranker",
+            expected=config["models"]["reranker"],
+        )
+        reranker = BgeReranker(reranker_path, config["models"]["reranker"])
+    except Exception as error:
+        reranker = _UnavailableModel(f"Reranker model unavailable: {error}")
+
+    return ProductionRetrievalEngine(
+        index=index,
+        encoder=encoder,
+        reranker=reranker,
+        settings=config["retrieval"],
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -182,9 +258,7 @@ def main(argv: list[str] | None = None) -> None:
         return
 
     if args.command == "smoke":
-        from app.rag.vector_store import get_production_engine
-
-        result = run_smoke(get_production_engine())
+        result = run_smoke(build_local_smoke_engine())
         print(" ".join(f"{key}={value}" for key, value in result.items()))
         return
 

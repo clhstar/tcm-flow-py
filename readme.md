@@ -5,7 +5,18 @@
 pip install -r requirements.txt
 
 # 启动项目
-uvicorn app.main:app --reload --port 2026
+uvicorn app.main:app --reload --port 2027
+
+后面按这个顺序启动就行。
+
+**1. 启动数据库服务**
+
+在 `G:\work\tcm-flow`：
+
+```powershell
+docker compose -f docker-compose.persistence.yml up -d
+```
+
 
 # RAG 索引流程
 这本《景岳全书》是代码按原始 txt 里的固定标记解析出来的。核心入口在 [corpus.py](G:/work/tcm-flow/app/rag/ancient_books/corpus.py:35)。

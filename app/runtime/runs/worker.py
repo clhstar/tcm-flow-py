@@ -1,5 +1,6 @@
 import traceback
 from collections.abc import Callable
+import inspect
 from typing import Any
 
 from langchain_core.messages import AIMessage
@@ -274,6 +275,8 @@ async def run_agent(
 
         # 通过 agent_factory 创建 agent
         agent = agent_factory(context)
+        if inspect.isawaitable(agent):
+            agent = await agent
 
         # 每次请求只传本轮用户消息，历史上下文交给 LangGraph checkpointer 管理
         messages = normalize_messages(input_data)
@@ -340,6 +343,7 @@ async def run_agent(
                     "messages": final_messages,
                     "conversation": conversation,
                 },
+                run_id=run_id,
             )
 
             await bridge.publish(
@@ -422,6 +426,7 @@ async def run_agent(
                 "last_rewritten": rewritten,
                 "last_agent_trace": agent_trace,
             },
+            run_id=run_id,
         )
 
         await bridge.publish(

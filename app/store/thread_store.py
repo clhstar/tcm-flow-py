@@ -35,7 +35,12 @@ class ThreadStore:
             record.status = status
             record.updated_at = datetime.utcnow().isoformat()
 
-    async def update_values(self, thread_id: str, values: dict[str, Any]):
+    async def update_values(
+        self,
+        thread_id: str,
+        values: dict[str, Any],
+        run_id: str | None = None,
+    ):
         record = self.threads.get(thread_id)
 
         if record:
