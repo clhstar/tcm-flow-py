@@ -1,6 +1,9 @@
+import inspect
+
+from app.config import get_settings
 from app.rag.ancient_books.query import detect_chief_symptom, rewrite_query
 from app.rag.terms import extract_terms
-from app.rag.vector_store import get_production_engine
+from app.rag.vector_store import get_configured_retrieval_engine
 
 
 def collect_allowed_terms(results: list[dict]) -> list[str]:
@@ -8,6 +11,39 @@ def collect_allowed_terms(results: list[dict]) -> list[str]:
     for result in results:
         terms.extend(extract_terms(result.get("content", "")))
     return list(dict.fromkeys(terms))
+
+
+def resolve_retrieval_result(result):
+    if inspect.isawaitable(result):
+        raise RuntimeError("database RAG retrieval is async; use aretrieve_tcm_docs")
+    return result
+
+
+async def resolve_retrieval_result_async(result):
+    if inspect.isawaitable(result):
+        return await result
+    return result
+
+
+def _format_payload(
+    query: str,
+    rewritten_query: str,
+    chief_symptom: str | None,
+    result: dict,
+) -> dict:
+    results = result["results"]
+    retrieval_mode = f"{result['retrieval_mode']}_parent"
+    return {
+        "status": result["status"],
+        "retrieval_mode": retrieval_mode,
+        "degraded": result["degraded"],
+        "degraded_reason": result["degraded_reason"],
+        "original_query": query,
+        "rewritten_query": rewritten_query,
+        "chief_symptom": chief_symptom,
+        "results": results,
+        "allowed_terms": collect_allowed_terms(results),
+    }
 
 
 def retrieve_tcm_docs(
@@ -23,25 +59,41 @@ def retrieve_tcm_docs(
         mode = "hybrid"
     chief_symptom = detect_chief_symptom(query)
     rewritten_query = rewrite_query(query)
-    result = get_production_engine().retrieve(
-        rewritten_query,
-        chief_symptom=chief_symptom,
-        mode=mode,
-        top_k=min(max(int(k), 1), 5),
+    engine = get_configured_retrieval_engine(get_settings())
+    result = resolve_retrieval_result(
+        engine.retrieve(
+            rewritten_query,
+            chief_symptom=chief_symptom,
+            mode=mode,
+            top_k=min(max(int(k), 1), 5),
+        )
     )
-    results = result["results"]
-    retrieval_mode = f"{result['retrieval_mode']}_parent"
-    return {
-        "status": result["status"],
-        "retrieval_mode": retrieval_mode,
-        "degraded": result["degraded"],
-        "degraded_reason": result["degraded_reason"],
-        "original_query": query,
-        "rewritten_query": rewritten_query,
-        "chief_symptom": chief_symptom,
-        "results": results,
-        "allowed_terms": collect_allowed_terms(results),
-    }
+    return _format_payload(query, rewritten_query, chief_symptom, result)
+
+
+async def aretrieve_tcm_docs(
+    query: str,
+    k: int = 5,
+    candidate_k: int = 20,
+    mode: str = "hybrid",
+) -> dict:
+    """Async retrieval path for database-backed engines."""
+
+    del candidate_k
+    if mode not in {"hybrid", "vector", "keyword"}:
+        mode = "hybrid"
+    chief_symptom = detect_chief_symptom(query)
+    rewritten_query = rewrite_query(query)
+    engine = get_configured_retrieval_engine(get_settings())
+    result = await resolve_retrieval_result_async(
+        engine.retrieve(
+            rewritten_query,
+            chief_symptom=chief_symptom,
+            mode=mode,
+            top_k=min(max(int(k), 1), 5),
+        )
+    )
+    return _format_payload(query, rewritten_query, chief_symptom, result)
 
 
 def format_retrieval_results(payload: dict) -> str:

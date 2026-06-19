@@ -1,11 +1,11 @@
 from langchain.tools import tool
 
 from app.rag.retrieval_log import write_retrieval_log
-from app.rag.retriever import retrieve_tcm_docs, format_retrieval_results
+from app.rag.retriever import aretrieve_tcm_docs, format_retrieval_results
 
 
 @tool("retrieve_tcm_knowledge")
-def retrieve_tcm_knowledge(query: str, mode: str = "hybrid") -> str:
+async def retrieve_tcm_knowledge(query: str, mode: str = "hybrid") -> str:
     """
     当用户询问中医症状、证候、病机、问诊要点或日常调护建议时调用。
 
@@ -22,7 +22,7 @@ def retrieve_tcm_knowledge(query: str, mode: str = "hybrid") -> str:
     if mode not in {"hybrid", "vector", "keyword"}:
         mode = "hybrid"
 
-    payload = retrieve_tcm_docs(
+    payload = await aretrieve_tcm_docs(
         query=query,
         k=5,
         candidate_k=20,

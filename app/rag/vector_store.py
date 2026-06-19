@@ -126,3 +126,17 @@ def get_production_engine(
 
 def clear_production_engine_cache() -> None:
     _get_production_engine_cached.cache_clear()
+
+
+def get_database_engine():
+    raise RuntimeError("Database RAG engine requires application startup wiring")
+
+
+def get_configured_retrieval_engine(settings=None):
+    if settings is None:
+        from app.config import get_settings
+
+        settings = get_settings()
+    if settings.rag_engine == "database":
+        return get_database_engine()
+    return get_production_engine()
