@@ -19,7 +19,7 @@ class LeadAgentFactoryTests(unittest.TestCase):
                 with patch(
                     "app.agents.lead_agent.agent.ChatOpenAI",
                     return_value=object(),
-                ):
+                ) as chat_openai:
                     with patch(
                         "app.agents.lead_agent.agent.get_available_tools",
                         return_value=[],
@@ -33,6 +33,7 @@ class LeadAgentFactoryTests(unittest.TestCase):
         self.assertIs(agent, created)
         get_checkpointer.assert_called_once_with(settings)
         self.assertIs(create_agent.call_args.kwargs["checkpointer"], checkpointer)
+        self.assertIs(chat_openai.call_args.kwargs["streaming"], True)
 
 
 if __name__ == "__main__":

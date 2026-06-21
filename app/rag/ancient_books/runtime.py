@@ -196,8 +196,6 @@ class ProductionRetrievalEngine:
         mode: str = "hybrid",
         top_k: int = 5,
     ) -> dict:
-        if mode not in {"hybrid", "vector", "keyword"}:
-            mode = "hybrid"
         eligible = self._eligible(chief_symptom)
         if not eligible:
             return {

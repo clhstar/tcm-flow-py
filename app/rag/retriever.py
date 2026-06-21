@@ -49,14 +49,10 @@ def _format_payload(
 def retrieve_tcm_docs(
     query: str,
     k: int = 5,
-    candidate_k: int = 20,
     mode: str = "hybrid",
 ) -> dict:
     """Retrieve production evidence while preserving the existing public API."""
 
-    del candidate_k
-    if mode not in {"hybrid", "vector", "keyword"}:
-        mode = "hybrid"
     chief_symptom = detect_chief_symptom(query)
     rewritten_query = rewrite_query(query)
     engine = get_configured_retrieval_engine(get_settings())
@@ -65,7 +61,7 @@ def retrieve_tcm_docs(
             rewritten_query,
             chief_symptom=chief_symptom,
             mode=mode,
-            top_k=min(max(int(k), 1), 5),
+            top_k=k,
         )
     )
     return _format_payload(query, rewritten_query, chief_symptom, result)
@@ -74,14 +70,10 @@ def retrieve_tcm_docs(
 async def aretrieve_tcm_docs(
     query: str,
     k: int = 5,
-    candidate_k: int = 20,
     mode: str = "hybrid",
 ) -> dict:
     """Async retrieval path for database-backed engines."""
 
-    del candidate_k
-    if mode not in {"hybrid", "vector", "keyword"}:
-        mode = "hybrid"
     chief_symptom = detect_chief_symptom(query)
     rewritten_query = rewrite_query(query)
     engine = get_configured_retrieval_engine(get_settings())
@@ -90,7 +82,7 @@ async def aretrieve_tcm_docs(
             rewritten_query,
             chief_symptom=chief_symptom,
             mode=mode,
-            top_k=min(max(int(k), 1), 5),
+            top_k=k,
         )
     )
     return _format_payload(query, rewritten_query, chief_symptom, result)

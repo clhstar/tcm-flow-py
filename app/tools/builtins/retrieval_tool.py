@@ -19,13 +19,9 @@ async def retrieve_tcm_knowledge(query: str, mode: str = "hybrid") -> str:
     工具会自动进行 query rewrite、混合检索、结果融合、简单重排，并返回相关中医知识依据和允许使用的专业术语。
     本工具只提供知识检索依据，不直接生成诊断结论，也不提供处方剂量。
     """
-    if mode not in {"hybrid", "vector", "keyword"}:
-        mode = "hybrid"
-
     payload = await aretrieve_tcm_docs(
         query=query,
         k=5,
-        candidate_k=20,
         mode=mode,
     )
 

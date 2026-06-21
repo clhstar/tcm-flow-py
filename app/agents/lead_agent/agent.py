@@ -16,13 +16,14 @@ load_dotenv()
 
 def _build_lead_agent(context: dict[str, Any], checkpointer):
     context = context or {}
-    model_name = context.get("model_name") or os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+    model_name = context.get("model_name") or os.getenv("OPENAI_MODEL", "deepseek-v4-flash")
     base_url = os.getenv("OPENAI_BASE_URL")
 
     model = ChatOpenAI(
         model=model_name,
         base_url=base_url,
         temperature=context.get("temperature", 0.3),
+        streaming=context.get("streaming", True),
     )
 
     tools = get_available_tools(context=context)

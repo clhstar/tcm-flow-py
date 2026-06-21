@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.checkpoints.factory import reset_checkpointer_cache_async
 from app.config import get_settings
@@ -45,6 +46,13 @@ def create_app() -> FastAPI:
         description="A DeerFlow-like Agentic RAG system for TCM QA",
         version="1.7.0",
         lifespan=lifespan,
+    )
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origin_regex=r"https?://(localhost|127\.0\.0\.1)(:\d+)?",
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
     )
 
     app.include_router(threads.router)

@@ -390,7 +390,7 @@ curl.exe -s -X POST http://localhost:2027/api/threads
 调用流式 run 接口。先替换 `<thread_id>`：
 
 ```powershell
-curl.exe -N -X POST http://localhost:2027/api/threads/<thread_id>/runs/stream -H "Content-Type: application/json" -d "{\"assistant_id\":\"lead_agent\",\"input\":{\"messages\":[{\"type\":\"human\",\"content\":[{\"type\":\"text\",\"text\":\"请分析头痛伴恶风\"}]}]},\"stream_mode\":[\"values\"],\"context\":{\"thinking_enabled\":true,\"is_plan_mode\":true,\"subagent_enabled\":false}}"
+curl.exe -N -X POST http://localhost:2027/api/threads/<thread_id>/runs/stream -H "Content-Type: application/json" -d "{\"assistant_id\":\"lead_agent\",\"input\":{\"messages\":[{\"type\":\"human\",\"content\":[{\"type\":\"text\",\"text\":\"请分析头痛伴恶风\"}]}]},\"stream_mode\":[\"messages\"],\"context\":{\"thinking_enabled\":true,\"is_plan_mode\":true,\"subagent_enabled\":false}}"
 ```
 
 在 Git Bash 或 WSL 中，可以用 helper 脚本自动创建 thread，并打印最终 AI 消息：

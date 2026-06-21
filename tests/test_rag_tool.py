@@ -29,6 +29,8 @@ PAYLOAD = {
         "source_type": "ancient_book",
         "symptom_tags": ["头痛"],
         "retrieval_sources": ["bm25", "dense"],
+        "dense_rank": 1,
+        "bm25_rank": 1,
     }],
 }
 
@@ -58,6 +60,21 @@ class RagToolTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(record["final_results"][0]["parent_id"], "p1")
         self.assertEqual(record["final_results"][0]["citation_id"], "E1")
         self.assertFalse(record["degraded"])
+
+    @patch("app.tools.builtins.retrieval_tool.aretrieve_tcm_docs")
+    @patch("app.tools.builtins.retrieval_tool.write_retrieval_log")
+    async def test_tool_forwards_mode_without_normalizing(self, log, retrieve):
+        retrieve.return_value = PAYLOAD
+
+        await retrieve_tcm_knowledge.ainvoke(
+            {"query": "头痛恶风", "mode": "unexpected"}
+        )
+
+        retrieve.assert_awaited_once_with(
+            query="头痛恶风",
+            k=5,
+            mode="unexpected",
+        )
 
 
 if __name__ == "__main__":

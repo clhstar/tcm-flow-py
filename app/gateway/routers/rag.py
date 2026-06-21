@@ -10,6 +10,4 @@ router = APIRouter(
 
 @router.get("/logs")
 async def get_rag_logs(limit: int = 20):
-    return {
-        "items": read_recent_logs(limit=limit)
-    }
+    return {"items": read_recent_logs(limit=limit)}

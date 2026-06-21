@@ -28,9 +28,6 @@ class DatabaseRetrievalEngine:
         mode: str = "hybrid",
         top_k: int = 5,
     ) -> dict:
-        if mode not in {"hybrid", "vector", "keyword"}:
-            mode = "hybrid"
-
         dense_hits = []
         keyword_hits = []
         degraded = False

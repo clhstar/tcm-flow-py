@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException
 
+from app.runtime.public_messages import build_visible_messages
 from app.runtime.state import state
 
 router = APIRouter(
@@ -46,7 +47,7 @@ async def get_thread_history(thread_id: str):
         "thread_id": thread.thread_id,
         "status": thread.status,
         "conversation": values.get("conversation", []),
-        "messages": values.get("messages", []),
+        "messages": build_visible_messages(values.get("messages", [])),
         "last_validation": values.get("last_validation"),
         "last_allowed_terms": values.get("last_allowed_terms"),
         "last_rewritten": values.get("last_rewritten"),
