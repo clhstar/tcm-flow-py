@@ -36,7 +36,8 @@ async def start_run(body: RunCreateRequest, thread_id: str) -> RunRecord:
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
 
-    context = body.context or {}
+    context = dict(body.context or {})
+    context["stream_mode"] = list(body.stream_mode or [])
 
     task = asyncio.create_task(
         run_agent(

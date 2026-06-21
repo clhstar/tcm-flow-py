@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, patch
 from langchain.agents import create_agent
 from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
 from langchain_core.messages import AIMessage, ToolMessage
-from langchain_core.tools import BaseTool
+from langchain_core.tools import BaseTool, tool
 from langgraph.checkpoint.memory import InMemorySaver
 
 from app.middlewares.clarification_middleware import ClarificationMiddleware
@@ -17,7 +17,16 @@ from app.runtime.runs.worker import message_to_dict, run_agent
 from app.runtime.stream import StreamBridge
 from app.store.run_manager import RunManager
 from app.store.thread_store import ThreadStore
-from app.tools.builtins.clarification_tool import ask_clarification
+
+
+@tool("ask_clarification", return_direct=True)
+def ask_clarification(questions: list[str]) -> str:
+    """Return formatted clarification questions for tests."""
+    lines = ["请补充："]
+    lines.extend(
+        f"{index}. {question}" for index, question in enumerate(questions, start=1)
+    )
+    return "\n".join(lines)
 
 
 class ToolCallingFakeModel(FakeMessagesListChatModel):
@@ -159,7 +168,10 @@ class ClarificationRunTests(unittest.IsolatedAsyncioTestCase):
             (await run_manager.get(first_run.run_id)).status,
             "waiting_clarification",
         )
-        self.assertTrue(any("event: clarification" in event for event in first_events))
+        self.assertFalse(
+            any("event: clarification" in event for event in first_events)
+        )
+        self.assertTrue(any("event: final" in event for event in first_events))
 
         second_run = await run_manager.create(thread.thread_id, "lead_agent")
         bridge.create(second_run.run_id)

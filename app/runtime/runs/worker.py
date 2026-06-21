@@ -4,7 +4,7 @@ import inspect
 from typing import Any
 
 from langchain_core.messages import AIMessage
-
+import logging
 
 from app.middlewares.guardrail_middleware import apply_guardrails
 from app.middlewares.trace_middleware import (
@@ -12,6 +12,12 @@ from app.middlewares.trace_middleware import (
     extract_trace_events_from_messages,
 )
 
+from app.runtime.public_messages import (
+    build_chat_response,
+    extract_latest_assistant_message,
+    extract_pending_clarification,
+)
+from app.runtime.serialization import serialize, serialize_message
 from app.runtime.stream import StreamBridge
 from app.store.models import RunRecord
 from app.store.run_manager import RunManager
@@ -20,6 +26,8 @@ from app.store.thread_store import ThreadStore
 from app.middlewares.clarification_controller import (
     extract_latest_clarification_question,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def extract_text_from_content(content: Any) -> str:
@@ -97,38 +105,35 @@ def message_to_dict(message: Any) -> dict[str, Any]:
     把 LangChain / LangGraph message 对象转成可 JSON 序列化的 dict。
     这个用于调试完整 Agent 执行轨迹。
     """
-    msg_type = getattr(message, "type", "ai")
-    content = getattr(message, "content", "")
+    return serialize_message(message)
 
-    if msg_type == "human":
-        msg_type = "human"
-    elif msg_type == "ai":
-        msg_type = "ai"
-    elif msg_type == "tool":
-        msg_type = "tool"
 
-    data: dict[str, Any] = {
-        "type": msg_type,
-        "content": content,
-    }
+def _normalize_stream_modes(modes: Any) -> list[str]:
+    """Keep stream_mode as a list for LangGraph multi-mode streaming."""
+    if modes is None:
+        return ["messages"]
+    if isinstance(modes, str):
+        return [modes]
+    if isinstance(modes, (list, tuple, set)):
+        return [str(mode) for mode in modes]
+    return ["messages"]
 
-    message_id = getattr(message, "id", None)
-    if message_id:
-        data["id"] = message_id
 
-    tool_call_id = getattr(message, "tool_call_id", None)
-    if tool_call_id:
-        data["tool_call_id"] = tool_call_id
+def _ensure_internal_stream_modes(modes: list[str]) -> list[str]:
+    """Ensure internal LangGraph streaming always includes messages and values."""
+    result: list[str] = []
+    for mode in ("messages", "values", *modes):
+        if mode not in result:
+            result.append(mode)
+    return result
 
-    tool_calls = getattr(message, "tool_calls", None)
-    if tool_calls:
-        data["tool_calls"] = tool_calls
 
-    name = getattr(message, "name", None)
-    if name:
-        data["name"] = name
+def _split_stream_chunk(chunk: Any) -> tuple[str, Any]:
+    """兼容 LangGraph 单模式 values 与多模式 (event, chunk) 两种标准输出。"""
+    if isinstance(chunk, tuple) and len(chunk) == 2 and isinstance(chunk[0], str):
+        return chunk[0], chunk[1]
 
-    return data
+    return "values", chunk
 
 
 def extract_final_ai_text(messages: list[dict[str, Any]]) -> str:
@@ -222,10 +227,7 @@ async def replace_final_ai_message_in_checkpoint(
     )
 
     snapshot = await agent.aget_state(config)
-    return [
-        message_to_dict(message)
-        for message in snapshot.values.get("messages", [])
-    ]
+    return [message_to_dict(message) for message in snapshot.values.get("messages", [])]
 
 
 async def run_agent(
@@ -237,16 +239,6 @@ async def run_agent(
     input_data: dict[str, Any],
     context: dict[str, Any],
 ):
-    """
-    异步执行 Agent 的核心 Worker。
-
-    V0.9 DeerFlow-like 改造点：
-    1. worker 不再直接 import make_lead_agent
-    2. worker 通过 agent_factory 创建 Agent
-    3. clarification 逻辑抽到 clarification_middleware
-    4. guardrails / rewrite 逻辑抽到 guardrail_middleware
-    5. worker 只负责运行、流式推送、状态保存
-    """
     run_id = record.run_id
     thread_id = record.thread_id
 
@@ -261,7 +253,8 @@ async def run_agent(
                 "run_id": run_id,
                 "thread_id": thread_id,
                 "assistant_id": record.assistant_id,
-                "architecture": "deerflow-like",
+                "architecture": "tcm-flow",
+                "stream_protocol": "messages-v1",
             },
         )
 
@@ -288,37 +281,80 @@ async def run_agent(
             "recursion_limit": context.get("recursion_limit", 50),
         }
 
+        ##TODO
+        emit_debug_events = bool(context.get("debug_events"))
+
+        requested_stream_modes = _normalize_stream_modes(
+            context.get("stream_mode", ["messages"])
+        )
+        # 内部固定订阅 messages + values；请求方额外需要的 updates 等模式继续保留。
+        internal_stream_modes = _ensure_internal_stream_modes(requested_stream_modes)
+        publish_values = "values" in requested_stream_modes or emit_debug_events
+
         final_messages: list[dict[str, Any]] = []
         emitted_trace_keys: set[str] = set()
         clarification_to_emit = ""
 
-        async for chunk in agent.astream(
+        logger.info(
+            "Run %s: streaming with modes %s (requested: %s)",
+            run_id,
+            internal_stream_modes,
+            context.get("stream_mode"),
+        )
+
+        async for stream_chunk in agent.astream(
             {"messages": messages},
             config=config,
-            stream_mode="values",
+            stream_mode=internal_stream_modes,
         ):
-            raw_messages = chunk.get("messages", [])
-            final_messages = [message_to_dict(m) for m in raw_messages]
 
-            await bridge.publish(
-                run_id,
-                "values",
-                {
-                    "messages": final_messages,
-                },
+            stream_event, chunk = _split_stream_chunk(stream_chunk)
+
+            if stream_event == "messages":
+                await bridge.publish(
+                    run_id,
+                    "messages",
+                    serialize(chunk, mode="messages"),
+                )
+                continue
+
+            if stream_event != "values":
+                update_payload = serialize(chunk, mode=stream_event)
+                if stream_event != "updates":
+                    update_payload = {
+                        "stream_event": stream_event,
+                        "data": update_payload,
+                    }
+                await bridge.publish(run_id, "updates", update_payload)
+                continue
+
+            serialized_values = serialize(chunk, mode="values")
+            raw_messages = (
+                serialized_values.get("messages", [])
+                if isinstance(serialized_values, dict)
+                else []
             )
+            final_messages = [
+                message if isinstance(message, dict) else message_to_dict(message)
+                for message in raw_messages
+            ]
 
             current_run_messages = final_messages[message_start_index:]
 
-            trace_events = extract_trace_events_from_messages(
-                messages=current_run_messages,
-                emitted_keys=emitted_trace_keys,
-            )
+            if publish_values:
+                await bridge.publish(run_id, "values", serialized_values)
+
+            trace_events = []
+            if emit_debug_events:
+                trace_events = extract_trace_events_from_messages(
+                    messages=current_run_messages,
+                    emitted_keys=emitted_trace_keys,
+                )
 
             for trace_event in trace_events:
                 await bridge.publish(
                     run_id,
-                    "agent_step",
+                    "updates",
                     trace_event,
                 )
 
@@ -331,10 +367,16 @@ async def run_agent(
                 clarification_to_emit = clarification_question
 
         if clarification_to_emit:
+            current_run_messages = final_messages[message_start_index:]
+            pending_clarification = extract_pending_clarification(current_run_messages)
+            assistant_message = (
+                extract_latest_assistant_message(current_run_messages)
+                or clarification_to_emit
+            )
             conversation = append_visible_messages(
                 thread_values=thread_values,
                 user_text=user_text,
-                assistant_text=clarification_to_emit,
+                assistant_text=assistant_message,
             )
 
             await thread_store.update_values(
@@ -348,12 +390,14 @@ async def run_agent(
 
             await bridge.publish(
                 run_id,
-                "clarification",
-                {
-                    "question": clarification_to_emit,
-                    "thread_id": thread_id,
-                    "run_id": run_id,
-                },
+                "final",
+                build_chat_response(
+                    thread_id=thread_id,
+                    run_id=run_id,
+                    status="need_clarification",
+                    assistant_message=assistant_message,
+                    pending_clarification=pending_clarification,
+                ),
             )
 
             await run_manager.set_status(run_id, "waiting_clarification")
@@ -363,38 +407,39 @@ async def run_agent(
         final_text = extract_final_ai_text(final_messages)
         original_final_text = final_text
 
-        await bridge.publish(
-            run_id,
-            "agent_step",
-            {
-                "type": "guardrail",
-                "status": "started",
-                "agent": "guardrail_middleware",
-                "summary": "正在进行术语一致性校验与答案安全检查。",
-            },
-        )
+        if emit_debug_events:
+            await bridge.publish(
+                run_id,
+                "updates",
+                {
+                    "type": "guardrail",
+                    "status": "started",
+                    "agent": "guardrail_middleware",
+                    "summary": "正在进行术语一致性校验与答案安全检查。",
+                },
+            )
         # V0.9：V0.8 术语校验与答案重写逻辑抽成 middleware
         guardrail_result = await apply_guardrails(
             final_text=final_text,
             messages=final_messages,
         )
 
-        await bridge.publish(
-            run_id,
-            "agent_step",
-            {
-                "type": "guardrail",
-                "status": "completed",
-                "agent": "guardrail_middleware",
-                "summary": "术语一致性校验完成。",
-                "validation": guardrail_result.get("validation"),
-                "rewritten": guardrail_result.get("rewritten"),
-            },
-        )
+        if emit_debug_events:
+            await bridge.publish(
+                run_id,
+                "updates",
+                {
+                    "type": "guardrail",
+                    "status": "completed",
+                    "agent": "guardrail_middleware",
+                    "summary": "术语一致性校验完成。",
+                    "validation": guardrail_result.get("validation"),
+                    "rewritten": guardrail_result.get("rewritten"),
+                },
+            )
 
         final_text = guardrail_result["final_text"]
         validation = guardrail_result["validation"]
-        validation_before_rewrite = guardrail_result["validation_before_rewrite"]
         rewritten = guardrail_result["rewritten"]
         allowed_terms = guardrail_result["allowed_terms"]
 
@@ -432,16 +477,12 @@ async def run_agent(
         await bridge.publish(
             run_id,
             "final",
-            {
-                "content": final_text,
-                "messages": final_messages,
-                "conversation": conversation,
-                "validation": validation,
-                "validation_before_rewrite": validation_before_rewrite,
-                "rewritten": rewritten,
-                "allowed_terms": allowed_terms,
-                "agent_trace": agent_trace,
-            },
+            build_chat_response(
+                thread_id=thread_id,
+                run_id=run_id,
+                status="completed",
+                assistant_message=final_text,
+            ),
         )
 
         await run_manager.set_status(run_id, "success")

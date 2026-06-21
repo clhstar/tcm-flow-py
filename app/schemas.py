@@ -23,7 +23,7 @@ class RunCreateRequest(BaseModel):
     """创建Agent运行的请求体"""
     assistant_id: str = "lead_agent"
     input: RunInput
-    stream_mode: list[str] = Field(default_factory=lambda: ["values"])
+    stream_mode: list[str] = Field(default_factory=lambda: ["messages"])
     stream_subgraphs: bool = False
     config: dict[str, Any] = Field(default_factory=dict)
     context: dict[str, Any] = Field(default_factory=dict)
