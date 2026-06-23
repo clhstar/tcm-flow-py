@@ -14,7 +14,7 @@ from app.middlewares.clarification_controller import (
     extract_latest_clarification_question,
 )
 from app.middlewares.clarification_middleware import ClarificationMiddleware
-from app.runtime.runs.worker import run_agent
+from app.runtime.runs.worker import message_to_dict, run_agent
 from app.runtime.stream import StreamBridge
 from app.store.run_manager import RunManager
 from app.store.thread_store import ThreadStore
@@ -276,15 +276,16 @@ class SubAgentClarificationRunTests(unittest.IsolatedAsyncioTestCase):
         )
 
         stored_thread = await thread_store.get(thread.thread_id)
-        messages = stored_thread.values["messages"]
         snapshot = await agent.aget_state(
             {"configurable": {"thread_id": thread.thread_id}}
         )
+        messages = [message_to_dict(message) for message in snapshot.values["messages"]]
 
         self.assertEqual(
             (await run_manager.get(run.run_id)).status,
             "waiting_clarification",
         )
+        self.assertNotIn("messages", stored_thread.values)
         self.assertEqual(messages[-1]["name"], "task")
         self.assertNotIn(
             "这条最终回答不应该被执行。",

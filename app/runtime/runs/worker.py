@@ -1,6 +1,5 @@
 import traceback
 from collections.abc import Callable
-import inspect
 from typing import Any
 
 from langchain_core.messages import AIMessage
@@ -162,8 +161,7 @@ def append_visible_messages(
     - clarification 问题
     - final answer
 
-    不保存 tool 调用细节。
-    tool 调用细节保存在 values["messages"] 中用于调试。
+    不保存 tool 调用细节；完整 Agent messages 由 LangGraph checkpointer 管理。
     """
     conversation = list(thread_values.get("conversation") or [])
 
@@ -230,6 +228,14 @@ async def replace_final_ai_message_in_checkpoint(
     return [message_to_dict(message) for message in snapshot.values.get("messages", [])]
 
 
+async def _checkpoint_message_count(agent: Any, config: dict[str, Any]) -> int:
+    aget_state = getattr(agent, "aget_state", None)
+    if aget_state is None:
+        return 0
+    snapshot = await aget_state(config)
+    return len(snapshot.values.get("messages", []))
+
+
 async def run_agent(
     bridge: StreamBridge,
     run_manager: RunManager,
@@ -261,15 +267,9 @@ async def run_agent(
         thread = await thread_store.get(thread_id)
         thread_values = thread.values if thread else {}
 
-        previous_messages = thread_values.get("messages") or []
-        message_start_index = len(previous_messages)
-
         user_text = extract_user_text(input_data)
 
-        # 通过 agent_factory 创建 agent
         agent = agent_factory(context)
-        if inspect.isawaitable(agent):
-            agent = await agent
 
         # 每次请求只传本轮用户消息，历史上下文交给 LangGraph checkpointer 管理
         messages = normalize_messages(input_data)
@@ -280,6 +280,7 @@ async def run_agent(
             },
             "recursion_limit": context.get("recursion_limit", 50),
         }
+        message_start_index = await _checkpoint_message_count(agent, config)
 
         ##TODO
         emit_debug_events = bool(context.get("debug_events"))

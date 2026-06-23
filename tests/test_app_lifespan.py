@@ -106,7 +106,9 @@ class AppLifespanTests(unittest.IsolatedAsyncioTestCase):
                                 "app.gateway.app.make_checkpointer",
                                 fake_make_checkpointer,
                             ):
-                                with patch("app.gateway.app.configure_state") as configure_state:
+                                with patch(
+                                    "app.gateway.app.runtime_state.configure_state"
+                                ) as configure_state:
                                     app = create_app()
                                     async with app.router.lifespan_context(app):
                                         pass

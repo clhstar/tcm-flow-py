@@ -188,10 +188,14 @@ class ClarificationRunTests(unittest.IsolatedAsyncioTestCase):
         )
         second_events = await self.drain_events(bridge, second_run.run_id)
         stored_thread = await thread_store.get(thread.thread_id)
-        messages = stored_thread.values["messages"]
+        snapshot = await agent.aget_state(
+            {"configurable": {"thread_id": thread.thread_id}}
+        )
+        messages = [message_to_dict(message) for message in snapshot.values["messages"]]
 
         self.assertEqual((await run_manager.get(second_run.run_id)).status, "success")
         self.assertTrue(any("event: final" in event for event in second_events))
+        self.assertNotIn("messages", stored_thread.values)
         self.assertEqual(
             [(message["type"], message.get("name")) for message in messages],
             [
@@ -250,16 +254,12 @@ class ClarificationRunTests(unittest.IsolatedAsyncioTestCase):
         )
         checkpoint_messages = snapshot.values["messages"]
         stored_thread = await thread_store.get(thread.thread_id)
-        stored_messages = stored_thread.values["messages"]
 
         self.assertEqual(
             checkpoint_messages[-1].content,
             "经过 Guardrail 的安全答案",
         )
-        self.assertEqual(
-            stored_messages[-1]["content"],
-            "经过 Guardrail 的安全答案",
-        )
+        self.assertNotIn("messages", stored_thread.values)
         self.assertNotIn(
             "原始且不应保留的病机答案",
             [message.content for message in checkpoint_messages],

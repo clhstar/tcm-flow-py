@@ -104,25 +104,16 @@ class PostgresStoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(json.loads(args[1]), {"conversation": []})
         self.assertIs(args[2].tzinfo, timezone.utc)
 
-    async def test_thread_store_update_values_syncs_messages_table(self):
+    async def test_thread_store_update_values_syncs_conversation_to_messages_table(self):
         pool = FakePool()
         store = PostgresThreadStore(pool)
 
         await store.update_values(
             "00000000-0000-0000-0000-000000000001",
             {
-                "messages": [
-                    {
-                        "id": "m1",
-                        "type": "human",
-                        "content": "你好",
-                    },
-                    {
-                        "id": "m2",
-                        "type": "ai",
-                        "content": "你好，我在。",
-                        "tool_calls": [{"name": "noop"}],
-                    },
+                "conversation": [
+                    {"role": "user", "content": "你好"},
+                    {"role": "assistant", "content": "你好，我在。"},
                 ]
             },
             run_id="00000000-0000-0000-0000-000000000002",
@@ -139,13 +130,35 @@ class PostgresStoreTests(unittest.IsolatedAsyncioTestCase):
         _, first_args = inserts[0]
         self.assertIsInstance(first_args[0], UUID)
         self.assertIsInstance(first_args[1], UUID)
-        self.assertEqual(first_args[2], "m1")
+        self.assertIsNone(first_args[2])
         self.assertEqual(first_args[3], 0)
         self.assertEqual(first_args[4], "human")
         self.assertEqual(first_args[5], "user")
         self.assertEqual(json.loads(first_args[8]), "你好")
         self.assertIsNone(first_args[9])
         self.assertTrue(first_args[10])
+
+    async def test_thread_store_update_values_does_not_sync_raw_agent_messages_table(self):
+        pool = FakePool()
+        store = PostgresThreadStore(pool)
+
+        await store.update_values(
+            "00000000-0000-0000-0000-000000000001",
+            {
+                "messages": [
+                    {
+                        "id": "m1",
+                        "type": "human",
+                        "content": "你好",
+                    }
+                ]
+            },
+            run_id="00000000-0000-0000-0000-000000000002",
+        )
+
+        sql_texts = [sql.lower() for sql, _ in pool.connection.execute_calls]
+        self.assertFalse(any("delete from app_messages" in sql for sql in sql_texts))
+        self.assertFalse(any("insert into app_messages" in sql for sql in sql_texts))
 
     async def test_run_manager_create_returns_run_record(self):
         pool = FakePool()

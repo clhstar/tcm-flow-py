@@ -1,26 +1,24 @@
-import os
 from typing import Any
 
-from dotenv import load_dotenv
 from langchain.agents import create_agent
 from langchain_openai import ChatOpenAI
 
+from app.agents.lead_agent.state import LeadAgentState
+from app.config import get_settings
 from app.agents.lead_agent.prompt import SYSTEM_PROMPT
 from app.middlewares.clarification_middleware import ClarificationMiddleware
 from app.runtime import state as runtime_state
 from app.tools.tools import get_available_tools
 
-load_dotenv()
 
-
-def _build_lead_agent(context: dict[str, Any], checkpointer):
+def build_lead_agent(context: dict[str, Any] | None, checkpointer):
     context = context or {}
-    model_name = context.get("model_name") or os.getenv("OPENAI_MODEL", "deepseek-v4-flash")
-    base_url = os.getenv("OPENAI_BASE_URL")
+    settings = get_settings()
 
     model = ChatOpenAI(
-        model=model_name,
-        base_url=base_url,
+        model=context.get("model_name") or settings.openai_model,
+        base_url=settings.openai_base_url,
+        api_key=settings.openai_api_key,
         temperature=context.get("temperature", 0.3),
         streaming=context.get("streaming", True),
     )
@@ -51,7 +49,7 @@ def make_lead_agent(context: dict[str, Any] | None = None):
     """
 
     context = context or {}
-    return _build_lead_agent(
-        context,
+    return build_lead_agent(
+        context=context,
         checkpointer=runtime_state.state.checkpointer,
     )

@@ -20,6 +20,9 @@ class AppSettings:
     elasticsearch_url: str | None
     elasticsearch_rag_index_alias: str
     elasticsearch_analyzer: str
+    openai_model: str = "deepseek-v4-flash"
+    openai_base_url: str | None = None
+    openai_api_key: str | None = None
 
     @classmethod
     def from_env(cls) -> "AppSettings":
@@ -33,6 +36,9 @@ class AppSettings:
             database_url=os.getenv("DATABASE_URL"),
             postgres_pool_size=postgres_pool_size,
             checkpoint_backend=checkpoint_backend,
+            openai_model=os.getenv("OPENAI_MODEL", "deepseek-v4-flash"),
+            openai_base_url=os.getenv("OPENAI_BASE_URL"),
+            openai_api_key=os.getenv("OPENAI_API_KEY"),
             elasticsearch_url=os.getenv("ELASTICSEARCH_URL"),
             elasticsearch_rag_index_alias=os.getenv(
                 "ELASTICSEARCH_RAG_INDEX_ALIAS",

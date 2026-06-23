@@ -28,10 +28,10 @@ class RuntimeStateTests(unittest.TestCase):
         self.assertIsInstance(state.thread_store, ThreadStore)
         self.assertIsInstance(state.run_manager, RunManager)
 
-    def test_postgres_settings_require_pool_and_use_postgres_stores(self):
+    def test_database_url_requires_pool_and_uses_postgres_stores(self):
         pool = object()
         with patch("app.runtime.state.get_settings") as get_settings:
-            get_settings.return_value.checkpoint_backend = "postgres"
+            get_settings.return_value.checkpoint_backend = "memory"
             get_settings.return_value.database_url = "postgresql://x"
             get_settings.return_value.postgres_pool_size = 10
 
@@ -40,10 +40,10 @@ class RuntimeStateTests(unittest.TestCase):
         self.assertIsInstance(state.thread_store, PostgresThreadStore)
         self.assertIsInstance(state.run_manager, PostgresRunManager)
 
-    def test_database_rag_engine_does_not_force_runtime_store_postgres(self):
+    def test_checkpoint_backend_does_not_force_runtime_store_postgres(self):
         with patch("app.runtime.state.get_settings") as get_settings:
-            get_settings.return_value.checkpoint_backend = "memory"
-            get_settings.return_value.database_url = "postgresql://x"
+            get_settings.return_value.checkpoint_backend = "postgres"
+            get_settings.return_value.database_url = None
             get_settings.return_value.postgres_pool_size = 10
 
             state = build_state(pool=None)
@@ -51,9 +51,9 @@ class RuntimeStateTests(unittest.TestCase):
         self.assertIsInstance(state.thread_store, ThreadStore)
         self.assertIsInstance(state.run_manager, RunManager)
 
-    def test_postgres_settings_without_pool_fail_fast(self):
+    def test_database_url_without_pool_fail_fast(self):
         with patch("app.runtime.state.get_settings") as get_settings:
-            get_settings.return_value.checkpoint_backend = "postgres"
+            get_settings.return_value.checkpoint_backend = "memory"
             get_settings.return_value.database_url = "postgresql://x"
             get_settings.return_value.postgres_pool_size = 10
 
@@ -76,7 +76,7 @@ class RuntimeStateTests(unittest.TestCase):
     def test_configure_state_mutates_shared_global_state(self):
         pool = object()
         with patch("app.runtime.state.get_settings") as get_settings:
-            get_settings.return_value.checkpoint_backend = "postgres"
+            get_settings.return_value.checkpoint_backend = "memory"
             get_settings.return_value.database_url = "postgresql://x"
             get_settings.return_value.postgres_pool_size = 10
 

@@ -17,6 +17,9 @@ class SettingsTests(unittest.TestCase):
             settings = AppSettings.from_env()
 
         self.assertEqual(settings.checkpoint_backend, "memory")
+        self.assertEqual(settings.openai_model, "deepseek-v4-flash")
+        self.assertIsNone(settings.openai_base_url)
+        self.assertIsNone(settings.openai_api_key)
         self.assertEqual(settings.postgres_pool_size, 10)
         self.assertEqual(settings.elasticsearch_rag_index_alias, "tcm_rag_chunks_current")
         self.assertEqual(settings.elasticsearch_analyzer, "standard")
@@ -29,6 +32,9 @@ class SettingsTests(unittest.TestCase):
             "ELASTICSEARCH_URL": "http://localhost:9200",
             "ELASTICSEARCH_RAG_INDEX_ALIAS": "tcm_rag_chunks_test",
             "ELASTICSEARCH_ANALYZER": "ik_max_word",
+            "OPENAI_MODEL": "deepseek-chat",
+            "OPENAI_BASE_URL": "https://api.deepseek.com/v1",
+            "OPENAI_API_KEY": "test-key",
         }
         with patch.dict(os.environ, env, clear=True):
             settings = AppSettings.from_env()
@@ -39,6 +45,9 @@ class SettingsTests(unittest.TestCase):
         self.assertEqual(settings.elasticsearch_url, "http://localhost:9200")
         self.assertEqual(settings.elasticsearch_rag_index_alias, "tcm_rag_chunks_test")
         self.assertEqual(settings.elasticsearch_analyzer, "ik_max_word")
+        self.assertEqual(settings.openai_model, "deepseek-chat")
+        self.assertEqual(settings.openai_base_url, "https://api.deepseek.com/v1")
+        self.assertEqual(settings.openai_api_key, "test-key")
 
     def test_pool_size_must_be_positive(self):
         with patch.dict(os.environ, {"POSTGRES_POOL_SIZE": "0"}, clear=True):

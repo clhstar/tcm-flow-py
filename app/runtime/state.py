@@ -40,7 +40,7 @@ def build_state(
 ) -> AppState:
     settings = settings or get_settings()
     checkpointer = checkpointer or InMemorySaver()
-    if settings.checkpoint_backend == "postgres":
+    if settings.database_url:
         if pool is None:
             raise ValueError("Postgres runtime state requires a database pool")
         return AppState(

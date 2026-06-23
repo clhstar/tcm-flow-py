@@ -14,14 +14,14 @@ class FakeAsyncAgent:
         yield {"messages": [AIMessage(content="done")]}
 
 
-class AsyncAgentFactoryTests(unittest.IsolatedAsyncioTestCase):
+class AgentFactoryContractTests(unittest.IsolatedAsyncioTestCase):
     async def drain_events(self, bridge: StreamBridge, run_id: str) -> list[str]:
         events = []
         async for event in bridge.subscribe(run_id):
             events.append(event)
         return events
 
-    async def test_run_agent_awaits_async_agent_factory(self):
+    async def test_run_agent_uses_sync_agent_factory(self):
         bridge = StreamBridge()
         run_manager = RunManager()
         thread_store = ThreadStore()
@@ -29,7 +29,7 @@ class AsyncAgentFactoryTests(unittest.IsolatedAsyncioTestCase):
         run = await run_manager.create(thread.thread_id, "lead_agent")
         bridge.create(run.run_id)
 
-        async def async_factory(context):
+        def sync_factory(context):
             return FakeAsyncAgent()
 
         with patch(
@@ -49,7 +49,7 @@ class AsyncAgentFactoryTests(unittest.IsolatedAsyncioTestCase):
                 run_manager=run_manager,
                 thread_store=thread_store,
                 record=run,
-                agent_factory=async_factory,
+                agent_factory=sync_factory,
                 input_data={"messages": [{"type": "human", "content": "hello"}]},
                 context={},
             )

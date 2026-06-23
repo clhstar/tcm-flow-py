@@ -55,42 +55,19 @@ class ThreadsRouterTests(unittest.IsolatedAsyncioTestCase):
         await state.thread_store.update_values(
             thread.thread_id,
             {
-                "messages": [
+                "conversation": [
                     {
-                        "type": "human",
+                        "role": "user",
                         "content": "I wake up with a headache",
-                        "id": "user-1",
                     },
                     {
-                        "type": "ai",
-                        "content": "Thanks, I need a few details first:",
-                        "id": "ai-1",
-                        "tool_calls": [
-                            {
-                                "name": "ask_clarification",
-                                "args": {
-                                    "questions": [
-                                        "How long has the headache lasted?",
-                                        "Where is the headache located?",
-                                        "Any nausea or dizziness?",
-                                    ]
-                                },
-                                "id": "call-1",
-                                "type": "tool_call",
-                            }
-                        ],
-                    },
-                    {
-                        "type": "tool",
+                        "role": "assistant",
                         "content": (
-                            "Please provide:\n"
+                            "Thanks, I need a few details first:\n"
                             "1. How long has the headache lasted?\n"
                             "2. Where is the headache located?\n"
                             "3. Any nausea or dizziness?"
                         ),
-                        "id": "clarification:call-1",
-                        "tool_call_id": "call-1",
-                        "name": "ask_clarification",
                     },
                 ]
             },
@@ -106,7 +83,6 @@ class ThreadsRouterTests(unittest.IsolatedAsyncioTestCase):
                 {
                     "type": "human",
                     "content": "I wake up with a headache",
-                    "id": "user-1",
                 },
                 {
                     "type": "ai",
@@ -116,7 +92,6 @@ class ThreadsRouterTests(unittest.IsolatedAsyncioTestCase):
                         "2. Where is the headache located?\n"
                         "3. Any nausea or dizziness?"
                     ),
-                    "id": "ai-1",
                 },
             ],
         )
@@ -476,18 +451,6 @@ class ThreadRunStreamMessageTests(unittest.IsolatedAsyncioTestCase):
         await thread_store.update_values(
             thread.thread_id,
             {
-                "messages": [
-                    {
-                        "type": "human",
-                        "content": "previous user",
-                        "id": "human-old",
-                    },
-                    {
-                        "type": "ai",
-                        "content": "previous answer",
-                        "id": "ai-old",
-                    },
-                ],
                 "conversation": [
                     {"role": "user", "content": "previous user"},
                     {"role": "assistant", "content": "previous answer"},
@@ -523,6 +486,7 @@ class ThreadRunStreamMessageTests(unittest.IsolatedAsyncioTestCase):
 
         parsed_events = self.parse_events(await self.drain_events(bridge, run.run_id))
         final_events = [data for event, data in parsed_events if event == "final"]
+        stored_thread = await thread_store.get(thread.thread_id)
 
         self.assertTrue(final_events)
         final_payload = final_events[-1]
@@ -543,6 +507,14 @@ class ThreadRunStreamMessageTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("validation", final_payload)
         self.assertNotIn("agent_trace", final_payload)
         self.assertNotIn("agent_step", [event for event, _ in parsed_events])
+        self.assertNotIn("messages", stored_thread.values)
+        self.assertEqual(
+            stored_thread.values["conversation"][-2:],
+            [
+                {"role": "user", "content": "current user"},
+                {"role": "assistant", "content": "current answer"},
+            ],
+        )
 
     async def test_requested_messages_stream_emits_deerflow_message_chunks(self):
         class FakeAgent:
