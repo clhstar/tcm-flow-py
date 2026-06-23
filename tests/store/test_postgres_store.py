@@ -1,3 +1,4 @@
+import asyncio
 import json
 import unittest
 from datetime import timezone
@@ -5,6 +6,7 @@ from uuid import UUID
 
 from app.store.postgres_run_manager import PostgresRunManager, _run_from_row
 from app.store.postgres_thread_store import PostgresThreadStore, _thread_from_row
+from app.store.run_manager import RunManager
 
 
 class NoGetRow:
@@ -179,6 +181,45 @@ class PostgresStoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(args[1], "error")
         self.assertEqual(args[2], "boom")
         self.assertIs(args[3].tzinfo, timezone.utc)
+
+    async def test_in_memory_run_manager_shutdown_waits_for_active_task(self):
+        manager = RunManager()
+        record = await manager.create(
+            "00000000-0000-0000-0000-000000000001",
+            "lead_agent",
+        )
+        completed = []
+
+        async def finish():
+            await asyncio.sleep(0)
+            completed.append(True)
+
+        record.task = asyncio.create_task(finish())
+
+        await manager.shutdown(timeout=1.0)
+
+        self.assertTrue(record.task.done())
+        self.assertEqual(completed, [True])
+
+    async def test_postgres_run_manager_shutdown_waits_for_active_task(self):
+        pool = FakePool()
+        manager = PostgresRunManager(pool)
+        record = await manager.create(
+            "00000000-0000-0000-0000-000000000001",
+            "lead_agent",
+        )
+        completed = []
+
+        async def finish():
+            await asyncio.sleep(0)
+            completed.append(True)
+
+        record.task = asyncio.create_task(finish())
+
+        await manager.shutdown(timeout=1.0)
+
+        self.assertTrue(record.task.done())
+        self.assertEqual(completed, [True])
 
     def test_thread_row_conversion_does_not_require_get(self):
         row = NoGetRow(

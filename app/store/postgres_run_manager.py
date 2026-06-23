@@ -1,3 +1,4 @@
+import asyncio
 import uuid
 from datetime import datetime, timezone
 
@@ -85,6 +86,7 @@ class PostgresRunManager:
         然后在 FastAPI lifespan 中挂到 app.state 或传入 store。
         """
         self.pool = pool
+        self.runs: dict[str, RunRecord] = {}
 
     async def create(self, thread_id: str, assistant_id: str) -> RunRecord:
         """
@@ -126,6 +128,7 @@ class PostgresRunManager:
         record = _run_from_row(row)
         if record is None:
             raise RuntimeError("failed to create run")
+        self.runs[record.run_id] = record
         return record
 
     async def get(self, run_id: str) -> RunRecord | None:
@@ -140,6 +143,9 @@ class PostgresRunManager:
             如果找到，返回 RunRecord。
             如果没找到，返回 None。
         """
+        if run_id in self.runs:
+            return self.runs[run_id]
+
         async with self.pool.acquire() as connection:
             row = await connection.fetchrow(
                 """
@@ -149,7 +155,10 @@ class PostgresRunManager:
                 """,
                 uuid.UUID(run_id),
             )
-        return _run_from_row(row)
+        record = _run_from_row(row)
+        if record is not None:
+            self.runs[record.run_id] = record
+        return record
 
     async def set_status(
         self,
@@ -205,3 +214,17 @@ class PostgresRunManager:
                 error,
                 datetime.now(timezone.utc),
             )
+        record = self.runs.get(run_id)
+        if record is not None:
+            record.status = status
+            record.error = error
+            record.updated_at = datetime.now(timezone.utc).isoformat()
+
+    async def shutdown(self, timeout: float = 5.0) -> None:
+        tasks = [
+            record.task
+            for record in self.runs.values()
+            if record.task is not None and not record.task.done()
+        ]
+        if tasks:
+            await asyncio.wait(tasks, timeout=timeout)

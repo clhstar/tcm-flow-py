@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.checkpoints.factory import reset_checkpointer_cache_async
+from app.checkpoints.factory import make_checkpointer
 from app.config import get_settings
 from app.db.migrations import run_schema_migrations
 from app.db.pool import create_pool_from_settings
@@ -15,7 +15,16 @@ from app.rag.vector_store import (
     clear_database_engine,
     configure_database_engine,
 )
-from app.runtime.state import configure_state, reset_state_to_memory
+from app.runtime.state import configure_state, reset_state_to_memory, state
+
+
+async def _shutdown_run_manager(timeout: float = 5.0) -> None:
+    shutdown = getattr(state.run_manager, "shutdown", None)
+    if shutdown is None:
+        return
+    result = shutdown(timeout=timeout)
+    if hasattr(result, "__await__"):
+        await result
 
 
 @asynccontextmanager
@@ -26,17 +35,23 @@ async def lifespan(app: FastAPI):
         await run_schema_migrations(connection)
     app.state.postgres_pool = pool
 
-    if settings.checkpoint_backend == "postgres":
-        configure_state(pool=pool)
-
-    configure_database_engine(build_database_engine(pool, settings))
-
     try:
-        yield
+        async with make_checkpointer(settings) as checkpointer:
+            app.state.checkpointer = checkpointer
+            configure_state(
+                pool=pool if settings.checkpoint_backend == "postgres" else None,
+                checkpointer=checkpointer,
+                settings=settings,
+            )
+            configure_database_engine(build_database_engine(pool, settings))
+
+            try:
+                yield
+            finally:
+                clear_database_engine()
+                await _shutdown_run_manager()
+                reset_state_to_memory()
     finally:
-        clear_database_engine()
-        await reset_checkpointer_cache_async()
-        reset_state_to_memory()
         await pool.close()
 
 

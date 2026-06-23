@@ -6,10 +6,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 
 from app.config import AppSettings
 from app.checkpoints.factory import (
-    get_checkpointer,
-    get_checkpointer_async,
-    reset_checkpointer_cache,
-    reset_checkpointer_cache_async,
+    make_checkpointer,
 )
 
 
@@ -25,16 +22,6 @@ def settings(backend: str) -> AppSettings:
 
 
 class CheckpointerFactoryTests(unittest.TestCase):
-    def tearDown(self):
-        reset_checkpointer_cache()
-
-    def test_memory_backend_returns_single_in_memory_saver(self):
-        first = get_checkpointer(settings("memory"))
-        second = get_checkpointer(settings("memory"))
-
-        self.assertIsInstance(first, InMemorySaver)
-        self.assertIs(first, second)
-
     def test_postgres_backend_requires_database_url(self):
         bad = AppSettings(
             database_url=None,
@@ -46,16 +33,19 @@ class CheckpointerFactoryTests(unittest.TestCase):
         )
 
         with self.assertRaisesRegex(ValueError, "DATABASE_URL"):
-            get_checkpointer(bad)
+            async def enter():
+                async with make_checkpointer(bad):
+                    pass
 
-    def test_sync_postgres_backend_requires_async_factory(self):
-        with self.assertRaisesRegex(RuntimeError, "async"):
-            get_checkpointer(settings("postgres"))
+            import asyncio
+
+            asyncio.run(enter())
 
 
 class AsyncCheckpointerFactoryTests(unittest.IsolatedAsyncioTestCase):
-    async def asyncTearDown(self):
-        await reset_checkpointer_cache_async()
+    async def test_memory_backend_context_manager_yields_in_memory_saver(self):
+        async with make_checkpointer(settings("memory")) as checkpointer:
+            self.assertIsInstance(checkpointer, InMemorySaver)
 
     async def test_postgres_backend_reports_missing_optional_dependency(self):
         with patch("app.checkpoints.factory.import_module") as importer:
@@ -68,7 +58,8 @@ class AsyncCheckpointerFactoryTests(unittest.IsolatedAsyncioTestCase):
                 ModuleNotFoundError,
                 "langgraph-checkpoint-postgres",
             ):
-                await get_checkpointer_async(settings("postgres"))
+                async with make_checkpointer(settings("postgres")):
+                    pass
 
     async def test_non_postgres_module_import_error_is_not_rewritten(self):
         with patch("app.checkpoints.factory.import_module") as importer:
@@ -78,9 +69,10 @@ class AsyncCheckpointerFactoryTests(unittest.IsolatedAsyncioTestCase):
             )
 
             with self.assertRaisesRegex(ModuleNotFoundError, "psycopg"):
-                await get_checkpointer_async(settings("postgres"))
+                async with make_checkpointer(settings("postgres")):
+                    pass
 
-    async def test_async_postgres_backend_uses_langgraph_postgres_saver(self):
+    async def test_postgres_backend_enters_sets_up_and_exits_saver_context(self):
         events = []
 
         class FakeSaverInstance:
@@ -107,24 +99,23 @@ class AsyncCheckpointerFactoryTests(unittest.IsolatedAsyncioTestCase):
 
         with patch("app.checkpoints.factory._import_async_postgres_saver") as importer:
             importer.return_value = FakeSaver
-            first = await get_checkpointer_async(settings("postgres"))
-            second = await get_checkpointer_async(settings("postgres"))
+            async with make_checkpointer(settings("postgres")) as checkpointer:
+                self.assertTrue(checkpointer.setup_called)
+                self.assertEqual(
+                    events,
+                    [
+                        ("enter", "postgresql://user:pass@localhost:5432/tcm"),
+                        ("setup", "postgresql://user:pass@localhost:5432/tcm"),
+                    ],
+                )
 
-        self.assertIs(first, second)
-        self.assertTrue(first.setup_called)
         self.assertEqual(
             events,
             [
                 ("enter", "postgresql://user:pass@localhost:5432/tcm"),
                 ("setup", "postgresql://user:pass@localhost:5432/tcm"),
+                ("exit", "postgresql://user:pass@localhost:5432/tcm"),
             ],
-        )
-
-        await reset_checkpointer_cache_async()
-
-        self.assertEqual(
-            events[-1],
-            ("exit", "postgresql://user:pass@localhost:5432/tcm"),
         )
 
 

@@ -46,6 +46,17 @@ ELASTICSEARCH_ANALYZER=standard
 
 注意：`docker-compose.persistence.yml` 把宿主机端口 `15432` 映射到容器内端口 `5432`，所以本地工具和应用都应该连接 `localhost:15432`。
 
+同一个 Postgres 容器还会在首次创建 volume 时初始化 Java 后端本地业务库：
+
+```text
+数据库: tcm_consultation
+用户: tcm_app
+密码: tcm_app_dev_password
+连接: jdbc:postgresql://localhost:15432/tcm_consultation
+```
+
+这个初始化由 `docker/postgres/init/01-create-shared-databases.sh` 完成，只在新的 Postgres volume 上自动执行。如果本机已经存在旧的 `tcm_flow_postgres` volume，需要手动创建 `tcm_consultation`，或在确认不需要保留旧数据后重建 volume。
+
 不要提交 `.env`，里面可能包含私钥或真实 API Key。
 
 ## 3. 启动持久化服务

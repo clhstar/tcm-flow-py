@@ -6,10 +6,9 @@ from langchain.agents import create_agent
 from langchain_openai import ChatOpenAI
 
 from app.agents.lead_agent.prompt import SYSTEM_PROMPT
-from app.checkpoints.factory import get_checkpointer, get_checkpointer_async
-from app.config import get_settings
-from app.tools.tools import get_available_tools
 from app.middlewares.clarification_middleware import ClarificationMiddleware
+from app.runtime import state as runtime_state
+from app.tools.tools import get_available_tools
 
 load_dotenv()
 
@@ -39,16 +38,6 @@ def _build_lead_agent(context: dict[str, Any], checkpointer):
     return agent
 
 
-async def _make_lead_agent_async(
-    context: dict[str, Any],
-    settings,
-):
-    return _build_lead_agent(
-        context,
-        checkpointer=await get_checkpointer_async(settings),
-    )
-
-
 def make_lead_agent(context: dict[str, Any] | None = None):
     """
     创建 Lead Agent。
@@ -62,10 +51,7 @@ def make_lead_agent(context: dict[str, Any] | None = None):
     """
 
     context = context or {}
-    settings = get_settings()
-    if settings.checkpoint_backend == "postgres":
-        return _make_lead_agent_async(context, settings)
     return _build_lead_agent(
         context,
-        checkpointer=get_checkpointer(settings),
+        checkpointer=runtime_state.state.checkpointer,
     )

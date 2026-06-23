@@ -1,43 +1,11 @@
-import inspect
-import sys
-from functools import lru_cache
+from contextlib import asynccontextmanager
 from importlib import import_module
+from typing import AsyncIterator
 
 from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.types import Checkpointer
 
 from app.config import AppSettings
-
-
-class _ManagedAsyncPostgresCheckpointer:
-    def __init__(self, database_url: str):
-        self.database_url = database_url
-        self.context = None
-        self.checkpointer = None
-
-    async def get(self):
-        if self.checkpointer is None:
-            saver_class = _import_async_postgres_saver()
-            context = saver_class.from_conn_string(self.database_url)
-            checkpointer = await context.__aenter__()
-            try:
-                setup_result = checkpointer.setup()
-                if inspect.isawaitable(setup_result):
-                    await setup_result
-            except Exception:
-                await context.__aexit__(*sys.exc_info())
-                raise
-            self.context = context
-            self.checkpointer = checkpointer
-        return self.checkpointer
-
-    async def close(self) -> None:
-        if self.context is not None:
-            await self.context.__aexit__(None, None, None)
-            self.context = None
-            self.checkpointer = None
-
-
-_async_postgres_checkpointers: dict[str, _ManagedAsyncPostgresCheckpointer] = {}
 
 
 def _import_async_postgres_saver():
@@ -52,43 +20,21 @@ def _import_async_postgres_saver():
     return module.AsyncPostgresSaver
 
 
-@lru_cache(maxsize=2)
-def _memory_checkpointer():
-    return InMemorySaver()
+@asynccontextmanager
+async def make_checkpointer(settings: AppSettings) -> AsyncIterator[Checkpointer]:
+    backend = settings.checkpoint_backend
 
+    if backend == "memory":
+        yield InMemorySaver()
+        return
 
-async def _async_postgres_checkpointer(database_url: str):
-    handle = _async_postgres_checkpointers.get(database_url)
-    if handle is None:
-        handle = _ManagedAsyncPostgresCheckpointer(database_url)
-        _async_postgres_checkpointers[database_url] = handle
-    return await handle.get()
-
-
-def get_checkpointer(settings: AppSettings):
-    if settings.checkpoint_backend == "memory":
-        return _memory_checkpointer()
     if not settings.database_url:
         raise ValueError("DATABASE_URL is required for Postgres checkpointer")
-    raise RuntimeError("Postgres checkpointer is async; use get_checkpointer_async")
 
+    AsyncPostgresSaver = _import_async_postgres_saver()
 
-async def get_checkpointer_async(settings: AppSettings):
-    if settings.checkpoint_backend == "memory":
-        return _memory_checkpointer()
-    if not settings.database_url:
-        raise ValueError("DATABASE_URL is required for Postgres checkpointer")
-    return await _async_postgres_checkpointer(settings.database_url)
-
-
-def reset_checkpointer_cache() -> None:
-    if _async_postgres_checkpointers:
-        raise RuntimeError("async Postgres checkpointers require async reset")
-    _memory_checkpointer.cache_clear()
-
-
-async def reset_checkpointer_cache_async() -> None:
-    _memory_checkpointer.cache_clear()
-    for handle in list(_async_postgres_checkpointers.values()):
-        await handle.close()
-    _async_postgres_checkpointers.clear()
+    async with AsyncPostgresSaver.from_conn_string(
+        settings.database_url
+    ) as checkpointer:
+        await checkpointer.setup()
+        yield checkpointer

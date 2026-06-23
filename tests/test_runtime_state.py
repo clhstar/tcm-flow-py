@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 from app.config import reset_settings_cache
 from app.runtime import state as runtime_state
-from app.runtime.state import build_state, configure_state
+from app.runtime.state import build_state, configure_state, reset_state_to_memory
 from app.store.postgres_run_manager import PostgresRunManager
 from app.store.postgres_thread_store import PostgresThreadStore
 from app.store.run_manager import RunManager
@@ -14,6 +14,7 @@ from app.store.thread_store import ThreadStore
 
 class RuntimeStateTests(unittest.TestCase):
     def tearDown(self):
+        reset_state_to_memory()
         reset_settings_cache()
 
     def test_memory_settings_use_current_in_memory_stores(self):

@@ -1,4 +1,7 @@
-from app.config import get_settings
+from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.types import Checkpointer
+
+from app.config import AppSettings, get_settings
 from app.runtime.stream import StreamBridge
 from app.store.postgres_run_manager import PostgresRunManager
 from app.store.postgres_thread_store import PostgresThreadStore
@@ -16,14 +19,27 @@ class AppState:
     - bridge 管理 SSE 流
     """
 
-    def __init__(self, *, thread_store, run_manager, bridge: StreamBridge):
+    def __init__(
+        self,
+        *,
+        thread_store,
+        run_manager,
+        bridge: StreamBridge,
+        checkpointer: Checkpointer,
+    ):
         self.thread_store = thread_store
         self.run_manager = run_manager
         self.bridge = bridge
+        self.checkpointer = checkpointer
 
 
-def build_state(pool=None) -> AppState:
-    settings = get_settings()
+def build_state(
+    pool=None,
+    checkpointer: Checkpointer | None = None,
+    settings: AppSettings | None = None,
+) -> AppState:
+    settings = settings or get_settings()
+    checkpointer = checkpointer or InMemorySaver()
     if settings.checkpoint_backend == "postgres":
         if pool is None:
             raise ValueError("Postgres runtime state requires a database pool")
@@ -31,11 +47,13 @@ def build_state(pool=None) -> AppState:
             thread_store=PostgresThreadStore(pool),
             run_manager=PostgresRunManager(pool),
             bridge=StreamBridge(),
+            checkpointer=checkpointer,
         )
     return AppState(
         thread_store=ThreadStore(),
         run_manager=RunManager(),
         bridge=StreamBridge(),
+        checkpointer=checkpointer,
     )
 
 
@@ -44,17 +62,27 @@ def _memory_state() -> AppState:
         thread_store=ThreadStore(),
         run_manager=RunManager(),
         bridge=StreamBridge(),
+        checkpointer=InMemorySaver(),
     )
 
 
 state = _memory_state()
 
 
-def configure_state(pool=None) -> AppState:
-    configured = build_state(pool=pool)
+def configure_state(
+    pool=None,
+    checkpointer: Checkpointer | None = None,
+    settings: AppSettings | None = None,
+) -> AppState:
+    configured = build_state(
+        pool=pool,
+        checkpointer=checkpointer,
+        settings=settings,
+    )
     state.thread_store = configured.thread_store
     state.run_manager = configured.run_manager
     state.bridge = configured.bridge
+    state.checkpointer = configured.checkpointer
     return state
 
 
@@ -63,4 +91,5 @@ def reset_state_to_memory() -> AppState:
     state.thread_store = configured.thread_store
     state.run_manager = configured.run_manager
     state.bridge = configured.bridge
+    state.checkpointer = configured.checkpointer
     return state
