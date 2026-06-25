@@ -5,6 +5,7 @@ from typing import Any, Literal
 from langchain_core.messages import AIMessage, ToolMessage
 from langgraph.graph import END, START, StateGraph
 
+from app.agents.workflow_agent.components.intent import IntentAgent
 from app.agents.workflow_agent.components.answer import AnswerAgent
 from app.agents.workflow_agent.components.evidence import EvidenceAgent
 from app.agents.workflow_agent.components.inquiry import InquiryAgent
@@ -14,6 +15,7 @@ from app.agents.workflow_agent.models import (
     AnswerDraft,
     EvidenceResult,
     InquiryState,
+    IntentState,
     SafetyReview,
     SyndromeAnalysis,
 )
@@ -27,8 +29,23 @@ def _as_model(value: Any, schema: type[Any]) -> Any:
     return schema.model_validate(value)
 
 
+def _state_model(
+    state: WorkflowState,
+    key: str,
+    schema: type[Any],
+) -> Any:
+    value = state.get(key)
+    if value is None:
+        return schema()
+    return _as_model(value, schema)
+
+
+def _intent(state: WorkflowState) -> IntentState:
+    return _state_model(state, "intent", IntentState)
+
+
 def _inquiry(state: WorkflowState) -> InquiryState:
-    return _as_model(state["inquiry"], InquiryState)
+    return _state_model(state, "inquiry", InquiryState)
 
 
 def _evidence(state: WorkflowState) -> EvidenceResult:
@@ -36,7 +53,7 @@ def _evidence(state: WorkflowState) -> EvidenceResult:
 
 
 def _syndrome(state: WorkflowState) -> SyndromeAnalysis:
-    return _as_model(state["syndrome"], SyndromeAnalysis)
+    return _state_model(state, "syndrome", SyndromeAnalysis)
 
 
 def _answer(state: WorkflowState) -> AnswerDraft:
@@ -54,6 +71,31 @@ def _state_value(value: Any) -> dict[str, Any]:
 def route_after_inquiry(state: WorkflowState) -> Literal["clarification", "evidence"]:
     inquiry = _inquiry(state)
     return "clarification" if inquiry.should_pause_for_clarification else "evidence"
+
+
+def route_after_intent(
+    state: WorkflowState,
+) -> Literal["direct_response", "inquiry", "evidence"]:
+    intent = _intent(state)
+
+    if intent.route_hint == "direct_response":
+        return "direct_response"
+
+    if intent.route_hint == "evidence":
+        return "evidence"
+
+    return "inquiry"
+
+
+def route_after_evidence(
+    state: WorkflowState,
+) -> Literal["syndrome", "answer_draft"]:
+    intent = _intent(state)
+
+    if intent.is_personal_health_query:
+        return "syndrome"
+
+    return "answer_draft"
 
 
 def route_after_initial_safety(
@@ -77,6 +119,7 @@ def _message_id(state: WorkflowState, suffix: str) -> str:
 
 def build_workflow_graph(
     *,
+    intent_agent: IntentAgent,
     inquiry_agent: InquiryAgent,
     evidence_agent: EvidenceAgent,
     syndrome_agent: SyndromeAgent,
@@ -84,10 +127,63 @@ def build_workflow_graph(
     safety_agent: SafetyAgent,
     checkpointer: Any | None = None,
 ):
+    async def intent_node(state: WorkflowState) -> dict[str, Any]:
+        intent = await intent_agent.assess(
+            user_text=state["user_text"],
+            conversation=state.get("conversation", []),
+        )
+
+        return {
+            "intent": _state_value(intent),
+            "agent_trace": [
+                {
+                    "agent": "IntentAgent",
+                    "model_call": True,
+                    "primary_intent": intent.primary_intent,
+                    "secondary_intents": intent.secondary_intents,
+                    "confidence": intent.confidence,
+                    "route_hint": intent.route_hint,
+                    "requires_retrieval": intent.requires_retrieval,
+                    "should_enter_inquiry": intent.should_enter_inquiry,
+                    "has_risk_signal": intent.has_risk_signal,
+                    "rule_signals": intent.rule_signals,
+                }
+            ],
+        }
+
+    async def direct_response_node(state: WorkflowState) -> dict[str, Any]:
+        intent = _intent(state)
+
+        if intent.direct_response:
+            final_text = intent.direct_response
+        elif intent.primary_intent == "off_topic":
+            final_text = "这个问题可能不属于中医健康咨询范围。你可以描述中医知识、古籍条文、方剂知识或具体不适，我再帮你分析。"
+        else:
+            final_text = "你好，我可以帮你做中医知识解释、症状信息整理和基于证据的健康咨询。你可以直接描述想了解的问题。"
+
+        return {
+            "needs_clarification": False,
+            "final_text": final_text,
+            "messages": [
+                AIMessage(
+                    content=final_text,
+                    id=_message_id(state, "intent-direct-ai-1"),
+                )
+            ],
+            "agent_trace": [
+                {
+                    "agent": "IntentAgent",
+                    "stage": "direct_response",
+                    "primary_intent": intent.primary_intent,
+                }
+            ],
+        }
+
     async def inquiry_node(state: WorkflowState) -> dict[str, Any]:
         inquiry = await inquiry_agent.assess(
             user_text=state["user_text"],
             conversation=state.get("conversation", []),
+            intent=state.get("intent"),
         )
         return {
             "inquiry": _state_value(inquiry),
@@ -314,6 +410,8 @@ def build_workflow_graph(
         }
 
     graph = StateGraph(WorkflowState)
+    graph.add_node("intent", intent_node)
+    graph.add_node("direct_response", direct_response_node)
     graph.add_node("inquiry", inquiry_node)
     graph.add_node("clarification", clarification_node)
     graph.add_node("evidence", evidence_node)
@@ -325,14 +423,35 @@ def build_workflow_graph(
     graph.add_node("safe_fallback", safe_fallback_node)
     graph.add_node("finalize", finalize_node)
 
-    graph.add_edge(START, "inquiry")
+    graph.add_edge(START, "intent")
+    graph.add_conditional_edges(
+        "intent",
+        route_after_intent,
+        {
+            "direct_response": "direct_response",
+            "inquiry": "inquiry",
+            "evidence": "evidence",
+        },
+    )
+
+    graph.add_edge("direct_response", END)
+
     graph.add_conditional_edges(
         "inquiry",
         route_after_inquiry,
         {"clarification": "clarification", "evidence": "evidence"},
     )
     graph.add_edge("clarification", END)
-    graph.add_edge("evidence", "syndrome")
+
+    graph.add_conditional_edges(
+        "evidence",
+        route_after_evidence,
+        {
+            "syndrome": "syndrome",
+            "answer_draft": "answer_draft",
+        },
+    )
+
     graph.add_edge("syndrome", "answer_draft")
     graph.add_edge("answer_draft", "safety_initial")
     graph.add_conditional_edges(

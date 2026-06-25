@@ -1,13 +1,76 @@
-from typing import Literal
+from typing import Literal, Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.middlewares.clarification_controller import normalize_question_items
 
-
 InformationSufficiency = Literal["sufficient", "insufficient"]
 Confidence = Literal["low", "medium", "high"]
 SafetyLevel = Literal["low", "medium", "high"]
+IntentType = Literal[
+    "symptom_consultation",
+    "cause_explanation",
+    "classic_explanation",
+    "formula_knowledge",
+    "general_tcm_knowledge",
+    "followup_clarification",
+    "high_risk",
+    "greeting_or_chitchat",
+    "off_topic",
+    "unknown",
+]
+
+IntentRouteHint = Literal["direct_response", "inquiry", "evidence"]
+
+
+class IntentState(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    primary_intent: IntentType = "unknown"
+    secondary_intents: list[IntentType] = Field(default_factory=list)
+    confidence: Confidence = "low"
+
+    is_tcm_domain_query: bool = False
+    is_personal_health_query: bool = False
+    has_risk_signal: bool = False
+    risk_flags: list[str] = Field(default_factory=list)
+
+    requires_retrieval: bool = False
+    should_enter_inquiry: bool = True
+    route_hint: IntentRouteHint = "inquiry"
+
+    direct_response: str = ""
+    reason: str = ""
+    rule_signals: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("risk_flags")
+    @classmethod
+    def normalize_risk_flags(cls, value: list[str]) -> list[str]:
+        return normalize_question_items(value, max_questions=max(len(value), 1))
+
+    @field_validator("direct_response", "reason")
+    @classmethod
+    def strip_text(cls, value: str) -> str:
+        return value.strip()
+
+    @model_validator(mode="after")
+    def validate_route_contract(self) -> "IntentState":
+        if self.route_hint == "direct_response":
+            self.requires_retrieval = False
+            self.should_enter_inquiry = False
+
+        if self.route_hint == "evidence":
+            self.requires_retrieval = True
+            self.should_enter_inquiry = False
+
+        if self.risk_flags:
+            self.has_risk_signal = True
+            self.primary_intent = "high_risk"
+            self.is_personal_health_query = True
+            self.should_enter_inquiry = True
+            self.route_hint = "inquiry"
+
+        return self
 
 
 class KnownFacts(BaseModel):
@@ -151,9 +214,7 @@ def filter_allowed_patterns(
     allowed = set(allowed_terms)
     return SyndromeAnalysis(
         possible_patterns=[
-            pattern
-            for pattern in analysis.possible_patterns
-            if pattern.term in allowed
+            pattern for pattern in analysis.possible_patterns if pattern.term in allowed
         ],
         not_enough_for_diagnosis=analysis.not_enough_for_diagnosis,
         need_more_info=analysis.need_more_info,

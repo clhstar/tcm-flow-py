@@ -6,14 +6,6 @@ from app.agents.workflow_agent.components.base import StructuredWorkflowComponen
 from app.agents.workflow_agent.models import InquiryState
 from app.agents.workflow_agent.prompts import INQUIRY_SYSTEM_PROMPT
 
-
-CAUSE_INTENT_TERMS = (
-    "\u4ec0\u4e48\u539f\u56e0",
-    "\u539f\u56e0",
-    "\u4e3a\u4ec0\u4e48",
-    "\u5bfc\u81f4",
-    "\u600e\u4e48\u56de\u4e8b",
-)
 CLARIFICATION_MARKERS = (
     "\u8865\u5145",
     "\u8bf7\u8865\u5145",
@@ -58,11 +50,20 @@ def _has_known_fact(inquiry: InquiryState) -> bool:
     )
 
 
+def _intent_value(intent: object | None, key: str) -> object | None:
+    if intent is None:
+        return None
+    if isinstance(intent, dict):
+        return intent.get(key)
+    return getattr(intent, key, None)
+
+
 def _should_continue_despite_pause(
     inquiry: InquiryState,
     *,
     user_text: str,
     visible_conversation: str,
+    intent: object | None = None,
 ) -> bool:
     if not inquiry.should_pause_for_clarification:
         return False
@@ -72,13 +73,12 @@ def _should_continue_despite_pause(
     if inquiry.known_facts.risk_flags:
         return True
 
-    context_text = f"{visible_conversation}\n{user_text}"
-    if _contains_any(context_text, CAUSE_INTENT_TERMS):
+    if _intent_value(intent, "primary_intent") == "cause_explanation":
         return True
 
-    return _contains_any(visible_conversation, CLARIFICATION_MARKERS) and _has_known_fact(
-        inquiry
-    )
+    return _contains_any(
+        visible_conversation, CLARIFICATION_MARKERS
+    ) and _has_known_fact(inquiry)
 
 
 def _apply_pause_policy(
@@ -86,11 +86,13 @@ def _apply_pause_policy(
     *,
     user_text: str,
     visible_conversation: str,
+    intent: object | None = None,
 ) -> InquiryState:
     if not _should_continue_despite_pause(
         inquiry,
         user_text=user_text,
         visible_conversation=visible_conversation,
+        intent=intent,
     ):
         return inquiry
 
@@ -110,6 +112,7 @@ class InquiryAgent(StructuredWorkflowComponent[InquiryState]):
         self,
         user_text: str,
         conversation: Sequence[object] | None = None,
+        intent: object | None = None,
     ) -> InquiryState:
         visible_conversation = conversation_text(conversation)
         inquiry = await self.invoke_structured(
@@ -127,4 +130,5 @@ class InquiryAgent(StructuredWorkflowComponent[InquiryState]):
             inquiry,
             user_text=user_text,
             visible_conversation=visible_conversation,
+            intent=intent,
         )

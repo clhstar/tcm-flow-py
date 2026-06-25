@@ -7,6 +7,7 @@ from uuid import uuid4
 
 from langchain_core.messages import BaseMessage, HumanMessage
 
+from app.agents.workflow_agent.components.intent import IntentAgent
 from app.agents.workflow_agent.components.answer import AnswerAgent
 from app.agents.workflow_agent.components.evidence import EvidenceAgent
 from app.agents.workflow_agent.components.inquiry import InquiryAgent
@@ -28,6 +29,7 @@ class TCMWorkflow:
         self,
         *,
         model: Any | None = None,
+        intent_agent: IntentAgent | None = None,
         inquiry_agent: InquiryAgent | None = None,
         evidence_agent: EvidenceAgent | None = None,
         syndrome_agent: SyndromeAgent | None = None,
@@ -35,20 +37,18 @@ class TCMWorkflow:
         safety_agent: SafetyAgent | None = None,
         checkpointer: Any | None = None,
     ) -> None:
-        if (
-            model is None
-            and (
-                inquiry_agent is None
-                or syndrome_agent is None
-                or answer_agent is None
-                or safety_agent is None
-            )
+        if model is None and (
+            intent_agent is None
+            or inquiry_agent is None
+            or syndrome_agent is None
+            or answer_agent is None
+            or safety_agent is None
         ):
             raise ValueError(
                 "TCMWorkflow requires a ChatOpenAI-compatible model when LLM agents "
                 "are not supplied explicitly."
             )
-
+        self.intent_agent = intent_agent or IntentAgent(model)
         self.inquiry_agent = inquiry_agent or InquiryAgent(model)
         self.evidence_agent = evidence_agent or EvidenceAgent()
         self.syndrome_agent = syndrome_agent or SyndromeAgent(model)
@@ -56,6 +56,7 @@ class TCMWorkflow:
         self.safety_agent = safety_agent or SafetyAgent(model)
         self.checkpointer = checkpointer
         self.graph = build_workflow_graph(
+            intent_agent=self.intent_agent,
             inquiry_agent=self.inquiry_agent,
             evidence_agent=self.evidence_agent,
             syndrome_agent=self.syndrome_agent,
@@ -126,6 +127,7 @@ __all__ = [
     "AnswerAgent",
     "EvidenceAgent",
     "InquiryAgent",
+    "IntentAgent",
     "SafetyAgent",
     "SyndromeAgent",
     "TCMWorkflow",

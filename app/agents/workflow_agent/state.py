@@ -18,6 +18,8 @@ class WorkflowState(TypedDict, total=False):
     user_text: str
     conversation: list[dict[str, Any]]
     messages: Annotated[list[BaseMessage], add_messages]
+    
+    intent: dict[str, Any]
     inquiry: dict[str, Any]
     evidence: dict[str, Any]
     syndrome: dict[str, Any]
