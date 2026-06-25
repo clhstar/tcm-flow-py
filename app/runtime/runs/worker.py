@@ -295,6 +295,7 @@ async def run_agent(
         final_messages: list[dict[str, Any]] = []
         emitted_trace_keys: set[str] = set()
         clarification_to_emit = ""
+        workflow_trace: list[dict[str, Any]] = []
 
         logger.info(
             "Run %s: streaming with modes %s (requested: %s)",
@@ -330,6 +331,15 @@ async def run_agent(
                 continue
 
             serialized_values = serialize(chunk, mode="values")
+            if isinstance(serialized_values, dict) and isinstance(
+                serialized_values.get("workflow_trace"),
+                list,
+            ):
+                workflow_trace = [
+                    item
+                    for item in serialized_values["workflow_trace"]
+                    if isinstance(item, dict)
+                ]
             raw_messages = (
                 serialized_values.get("messages", [])
                 if isinstance(serialized_values, dict)
@@ -452,9 +462,10 @@ async def run_agent(
                 final_text=final_text,
             )
 
-        agent_trace = extract_agent_trace_from_messages(
+        message_trace = extract_agent_trace_from_messages(
             final_messages[message_start_index:]
         )
+        agent_trace = workflow_trace or message_trace
 
         conversation = append_visible_messages(
             thread_values=thread_values,
