@@ -195,7 +195,7 @@ class ClarificationRunTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual((await run_manager.get(second_run.run_id)).status, "success")
         self.assertTrue(any("event: final" in event for event in second_events))
-        self.assertNotIn("messages", stored_thread.values)
+        self.assertEqual(stored_thread.values["messages"], messages)
         self.assertEqual(
             [(message["type"], message.get("name")) for message in messages],
             [
@@ -259,7 +259,10 @@ class ClarificationRunTests(unittest.IsolatedAsyncioTestCase):
             checkpoint_messages[-1].content,
             "经过 Guardrail 的安全答案",
         )
-        self.assertNotIn("messages", stored_thread.values)
+        self.assertEqual(
+            stored_thread.values["messages"],
+            [message_to_dict(message) for message in checkpoint_messages],
+        )
         self.assertNotIn(
             "原始且不应保留的病机答案",
             [message.content for message in checkpoint_messages],

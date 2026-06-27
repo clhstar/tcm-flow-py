@@ -285,7 +285,7 @@ class SubAgentClarificationRunTests(unittest.IsolatedAsyncioTestCase):
             (await run_manager.get(run.run_id)).status,
             "waiting_clarification",
         )
-        self.assertNotIn("messages", stored_thread.values)
+        self.assertEqual(stored_thread.values["messages"], messages)
         self.assertEqual(messages[-1]["name"], "task")
         self.assertNotIn(
             "这条最终回答不应该被执行。",

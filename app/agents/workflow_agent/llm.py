@@ -7,7 +7,6 @@ from pydantic import BaseModel
 
 from app.config import get_settings
 
-
 StructuredSchema = TypeVar("StructuredSchema", bound=BaseModel)
 
 
@@ -34,14 +33,16 @@ def build_workflow_model(context: dict[str, Any] | None = None) -> ChatOpenAI:
         base_url=settings.openai_base_url,
         api_key=settings.openai_api_key,
         temperature=context.get("temperature", 0.2),
-        streaming=context.get("streaming", False),
+        streaming=context.get("streaming", True),
     )
 
 
 def structured_model(model: Any, schema: type[StructuredSchema]) -> Any:
     settings = get_settings()
     model_name = _text_attr(model, "model_name", "model") or settings.openai_model
-    base_url = _text_attr(model, "base_url", "openai_api_base") or settings.openai_base_url
+    base_url = (
+        _text_attr(model, "base_url", "openai_api_base") or settings.openai_base_url
+    )
     if _uses_deepseek_backend(model_name, base_url):
         return model.with_structured_output(
             method="json_mode",

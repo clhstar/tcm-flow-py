@@ -104,7 +104,7 @@ class PostgresStoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(json.loads(args[1]), {"conversation": []})
         self.assertIs(args[2].tzinfo, timezone.utc)
 
-    async def test_thread_store_update_values_syncs_conversation_to_messages_table(self):
+    async def test_thread_store_update_values_does_not_sync_conversation_to_messages_table(self):
         pool = FakePool()
         store = PostgresThreadStore(pool)
 
@@ -120,27 +120,19 @@ class PostgresStoreTests(unittest.IsolatedAsyncioTestCase):
         )
 
         sql_texts = [sql.lower() for sql, _ in pool.connection.execute_calls]
-        self.assertTrue(any("delete from app_messages" in sql for sql in sql_texts))
-        inserts = [
-            (sql, args)
-            for sql, args in pool.connection.execute_calls
-            if "insert into app_messages" in sql.lower()
-        ]
-        self.assertEqual(len(inserts), 2)
-        _, first_args = inserts[0]
-        self.assertIsInstance(first_args[0], UUID)
-        self.assertIsInstance(first_args[1], UUID)
-        self.assertIsNone(first_args[2])
-        self.assertEqual(first_args[3], 0)
-        self.assertEqual(first_args[4], "human")
-        self.assertEqual(first_args[5], "user")
-        self.assertEqual(json.loads(first_args[8]), "你好")
-        self.assertIsNone(first_args[9])
-        self.assertTrue(first_args[10])
+        self.assertFalse(any("delete from app_messages" in sql for sql in sql_texts))
+        self.assertFalse(any("insert into app_messages" in sql for sql in sql_texts))
 
-    async def test_thread_store_update_values_does_not_sync_raw_agent_messages_table(self):
+    async def test_thread_store_update_values_syncs_complete_message_chain(self):
         pool = FakePool()
         store = PostgresThreadStore(pool)
+        tool_calls = [
+            {
+                "id": "call-1",
+                "name": "retrieve_tcm_knowledge",
+                "args": {"query": "headache"},
+            }
+        ]
 
         await store.update_values(
             "00000000-0000-0000-0000-000000000001",
@@ -150,15 +142,49 @@ class PostgresStoreTests(unittest.IsolatedAsyncioTestCase):
                         "id": "m1",
                         "type": "human",
                         "content": "你好",
-                    }
+                    },
+                    {
+                        "id": "m2",
+                        "type": "ai",
+                        "content": "",
+                        "tool_calls": tool_calls,
+                    },
+                    {
+                        "id": "m3",
+                        "type": "tool",
+                        "name": "retrieve_tcm_knowledge",
+                        "tool_call_id": "call-1",
+                        "content": "retrieval result",
+                    },
+                    {
+                        "id": "m4",
+                        "type": "ai",
+                        "content": "final answer",
+                    },
                 ]
             },
             run_id="00000000-0000-0000-0000-000000000002",
         )
 
         sql_texts = [sql.lower() for sql, _ in pool.connection.execute_calls]
-        self.assertFalse(any("delete from app_messages" in sql for sql in sql_texts))
-        self.assertFalse(any("insert into app_messages" in sql for sql in sql_texts))
+        self.assertTrue(any("delete from app_messages" in sql for sql in sql_texts))
+        inserts = [
+            (sql, args)
+            for sql, args in pool.connection.execute_calls
+            if "insert into app_messages" in sql.lower()
+        ]
+        self.assertEqual(len(inserts), 4)
+
+        _, tool_call_args = inserts[1]
+        self.assertEqual(tool_call_args[2], "m2")
+        self.assertEqual(tool_call_args[4], "ai")
+        self.assertEqual(json.loads(tool_call_args[9]), tool_calls)
+
+        _, tool_result_args = inserts[2]
+        self.assertEqual(tool_result_args[2], "m3")
+        self.assertEqual(tool_result_args[4], "tool")
+        self.assertEqual(tool_result_args[6], "retrieve_tcm_knowledge")
+        self.assertEqual(tool_result_args[7], "call-1")
 
     async def test_run_manager_create_returns_run_record(self):
         pool = FakePool()

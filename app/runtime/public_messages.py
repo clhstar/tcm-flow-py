@@ -33,62 +33,22 @@ def _merge_clarification_content(content: str, questions: list[str]) -> str:
     return "\n".join(lines)
 
 
-def build_visible_messages(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """只保留 human 和可展示的 ai 消息，隐藏工具调用细节。"""
-    visible: list[dict[str, Any]] = []
+def extract_latest_assistant_message(messages: list[dict[str, Any]]) -> str:
+    """提取澄清场景要放入 final 事件的助手文本。"""
+    for message in reversed(messages):
+        if message.get("type") != "ai":
+            continue
 
-    for message in messages:
-        msg_type = message.get("type")
         content = _message_content(message)
-
-        if msg_type == "human":
-            if not content.strip():
-                continue
-            payload = {
-                "type": "human",
-                "content": content,
-            }
-            if message.get("id"):
-                payload["id"] = message["id"]
-            visible.append(payload)
-            continue
-
-        if msg_type != "ai":
-            continue
-
         questions = _extract_clarification_questions(message)
         if questions:
             merged_content = _merge_clarification_content(content, questions)
-            if not merged_content:
-                continue
-            payload = {
-                "type": "ai",
-                "content": merged_content,
-            }
-            if message.get("id"):
-                payload["id"] = message["id"]
-            visible.append(payload)
-            continue
+            if merged_content:
+                return merged_content
 
-        if not content.strip() or message.get("tool_calls"):
-            continue
+        if content.strip() and not message.get("tool_calls"):
+            return content
 
-        payload = {
-            "type": "ai",
-            "content": content,
-        }
-        if message.get("id"):
-            payload["id"] = message["id"]
-        visible.append(payload)
-
-    return visible
-
-
-def extract_latest_assistant_message(messages: list[dict[str, Any]]) -> str:
-    """提取当前可见消息里的最后一条助手回复。"""
-    for message in reversed(build_visible_messages(messages)):
-        if message.get("type") == "ai" and message.get("content"):
-            return str(message["content"])
     return ""
 
 

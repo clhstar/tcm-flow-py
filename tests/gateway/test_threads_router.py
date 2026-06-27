@@ -50,26 +50,47 @@ class ThreadsRouterTests(unittest.IsolatedAsyncioTestCase):
         app.include_router(threads.router)
         self.client = TestClient(app)
 
-    async def test_history_messages_are_visible_chat_messages(self):
+    async def test_history_preserves_complete_message_chain(self):
         thread = await state.thread_store.create()
+        messages = [
+            {
+                "type": "human",
+                "content": "I wake up with a headache",
+                "id": "human-1",
+            },
+            {
+                "type": "ai",
+                "content": "",
+                "id": "ai-tool",
+                "tool_calls": [
+                    {
+                        "id": "call-1",
+                        "name": "retrieve_tcm_knowledge",
+                        "args": {"query": "morning headache"},
+                    }
+                ],
+            },
+            {
+                "type": "tool",
+                "content": "retrieval result",
+                "id": "tool-1",
+                "name": "retrieve_tcm_knowledge",
+                "tool_call_id": "call-1",
+            },
+            {
+                "type": "ai",
+                "content": "The symptom needs further evaluation.",
+                "id": "ai-final",
+            },
+        ]
         await state.thread_store.update_values(
             thread.thread_id,
             {
-                "conversation": [
-                    {
-                        "role": "user",
-                        "content": "I wake up with a headache",
-                    },
-                    {
-                        "role": "assistant",
-                        "content": (
-                            "Thanks, I need a few details first:\n"
-                            "1. How long has the headache lasted?\n"
-                            "2. Where is the headache located?\n"
-                            "3. Any nausea or dizziness?"
-                        ),
-                    },
-                ]
+                "messages": messages,
+                "last_validation": {"passed": True},
+                "last_allowed_terms": ["headache"],
+                "last_rewritten": False,
+                "last_agent_trace": [{"agent": "SafetyAgent"}],
             },
         )
 
@@ -77,25 +98,15 @@ class ThreadsRouterTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(response.status_code, 200)
         body = response.json()
-        self.assertEqual(
-            body["messages"],
-            [
-                {
-                    "type": "human",
-                    "content": "I wake up with a headache",
-                },
-                {
-                    "type": "ai",
-                    "content": (
-                        "Thanks, I need a few details first:\n"
-                        "1. How long has the headache lasted?\n"
-                        "2. Where is the headache located?\n"
-                        "3. Any nausea or dizziness?"
-                    ),
-                },
-            ],
+        self.assertEqual(body["messages"], messages)
+        self.assertTrue(
+            {
+                "last_validation",
+                "last_allowed_terms",
+                "last_rewritten",
+                "last_agent_trace",
+            }.isdisjoint(body)
         )
-        self.assertNotIn("tool_calls", body["messages"][1])
 
 
 class PublicMessageProjectionTests(unittest.TestCase):
@@ -507,13 +518,24 @@ class ThreadRunStreamMessageTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("validation", final_payload)
         self.assertNotIn("agent_trace", final_payload)
         self.assertNotIn("agent_step", [event for event, _ in parsed_events])
-        self.assertNotIn("messages", stored_thread.values)
+        self.assertEqual(
+            [message.get("id") for message in stored_thread.values["messages"]],
+            ["human-old", "ai-old", "human-new", "ai-new"],
+        )
         self.assertEqual(
             stored_thread.values["conversation"][-2:],
             [
                 {"role": "user", "content": "current user"},
                 {"role": "assistant", "content": "current answer"},
             ],
+        )
+        self.assertTrue(
+            {
+                "last_validation",
+                "last_allowed_terms",
+                "last_rewritten",
+                "last_agent_trace",
+            }.isdisjoint(stored_thread.values)
         )
 
     async def test_requested_messages_stream_emits_deerflow_message_chunks(self):

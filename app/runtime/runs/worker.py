@@ -6,10 +6,7 @@ from langchain_core.messages import AIMessage
 import logging
 
 from app.middlewares.guardrail_middleware import apply_guardrails
-from app.middlewares.trace_middleware import (
-    extract_agent_trace_from_messages,
-    extract_trace_events_from_messages,
-)
+from app.middlewares.trace_middleware import extract_trace_events_from_messages
 
 from app.runtime.public_messages import (
     build_chat_response,
@@ -161,7 +158,8 @@ def append_visible_messages(
     - clarification 问题
     - final answer
 
-    不保存 tool 调用细节；完整 Agent messages 由 LangGraph checkpointer 管理。
+    不保存 tool 调用细节；完整 Agent messages 的执行真态由 LangGraph checkpointer
+    管理，thread_store 只保存供前端恢复的消息投影。
     """
     conversation = list(thread_values.get("conversation") or [])
 
@@ -295,7 +293,6 @@ async def run_agent(
         final_messages: list[dict[str, Any]] = []
         emitted_trace_keys: set[str] = set()
         clarification_to_emit = ""
-        workflow_trace: list[dict[str, Any]] = []
 
         logger.info(
             "Run %s: streaming with modes %s (requested: %s)",
@@ -331,15 +328,6 @@ async def run_agent(
                 continue
 
             serialized_values = serialize(chunk, mode="values")
-            if isinstance(serialized_values, dict) and isinstance(
-                serialized_values.get("workflow_trace"),
-                list,
-            ):
-                workflow_trace = [
-                    item
-                    for item in serialized_values["workflow_trace"]
-                    if isinstance(item, dict)
-                ]
             raw_messages = (
                 serialized_values.get("messages", [])
                 if isinstance(serialized_values, dict)
@@ -371,7 +359,7 @@ async def run_agent(
 
             # V0.9：澄清中断逻辑交给 middleware
             clarification_question = extract_latest_clarification_question(
-                final_messages
+                current_run_messages
             )
 
             if clarification_question:
@@ -450,9 +438,6 @@ async def run_agent(
             )
 
         final_text = guardrail_result["final_text"]
-        validation = guardrail_result["validation"]
-        rewritten = guardrail_result["rewritten"]
-        allowed_terms = guardrail_result["allowed_terms"]
 
         if final_text != original_final_text:
             final_messages = await replace_final_ai_message_in_checkpoint(
@@ -461,11 +446,6 @@ async def run_agent(
                 final_messages=final_messages,
                 final_text=final_text,
             )
-
-        message_trace = extract_agent_trace_from_messages(
-            final_messages[message_start_index:]
-        )
-        agent_trace = workflow_trace or message_trace
 
         conversation = append_visible_messages(
             thread_values=thread_values,
@@ -478,10 +458,6 @@ async def run_agent(
             {
                 "messages": final_messages,
                 "conversation": conversation,
-                "last_validation": validation,
-                "last_allowed_terms": allowed_terms,
-                "last_rewritten": rewritten,
-                "last_agent_trace": agent_trace,
             },
             run_id=run_id,
         )

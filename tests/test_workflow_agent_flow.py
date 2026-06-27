@@ -2,12 +2,16 @@ import json
 import unittest
 from unittest.mock import AsyncMock, patch
 
+from langchain_core.messages import AIMessageChunk
+from langgraph.checkpoint.memory import InMemorySaver
+
 from app.agents.workflow_agent.agent import WorkflowAgent
 from app.agents.workflow_agent.models import (
     AnswerDraft,
     EvidenceItem,
     EvidenceResult,
     InquiryState,
+    IntentState,
     KnownFacts,
     PatternCandidate,
     SafetyReview,
@@ -22,7 +26,17 @@ from app.store.run_manager import RunManager
 from app.store.thread_store import ThreadStore
 
 
-DEFAULT_SCHEMA_ORDER = [InquiryState, SyndromeAnalysis, AnswerDraft, SafetyReview]
+DEFAULT_SCHEMA_ORDER = [
+    IntentState,
+    InquiryState,
+    SyndromeAnalysis,
+    AnswerDraft,
+    SafetyReview,
+]
+
+
+def workflow_config(thread_id: str) -> dict[str, dict[str, str]]:
+    return {"configurable": {"thread_id": thread_id}}
 
 
 class FakeStructuredRunnable:
@@ -39,17 +53,17 @@ class FakeStructuredRunnable:
 
 
 class FakeWorkflowModel:
-    def __init__(self, responses_by_schema):
+    def __init__(self, responses_by_schema, schema_order=None):
         self.responses_by_schema = {
             schema: list(responses) if isinstance(responses, list) else [responses]
             for schema, responses in responses_by_schema.items()
         }
         self.schema_queue = [
-            *self.responses_by_schema,
+            *(schema_order or self.responses_by_schema),
             *(
                 schema
                 for schema in DEFAULT_SCHEMA_ORDER
-                if schema not in self.responses_by_schema
+                if schema not in (schema_order or self.responses_by_schema)
             ),
         ]
         self.structured_calls = []
@@ -61,6 +75,25 @@ class FakeWorkflowModel:
             {"schema": schema, "method": method, "strict": strict}
         )
         return FakeStructuredRunnable(self, schema)
+
+
+def workflow_model(responses_by_schema):
+    return FakeWorkflowModel(
+        responses_by_schema,
+        schema_order=DEFAULT_SCHEMA_ORDER,
+    )
+
+
+def inquiry_intent():
+    return IntentState(
+        primary_intent="symptom_consultation",
+        confidence="high",
+        is_tcm_domain_query=True,
+        is_personal_health_query=True,
+        requires_retrieval=True,
+        should_enter_inquiry=True,
+        route_hint="inquiry",
+    )
 
 
 def sufficient_inquiry(risk_flags=None):
@@ -137,20 +170,30 @@ class WorkflowLLMBackedTests(unittest.IsolatedAsyncioTestCase):
             retrieval_calls.append({"query": query, "mode": mode})
             return evidence_text()
 
-        model = FakeWorkflowModel({InquiryState: insufficient_inquiry()})
+        model = workflow_model(
+            {
+                IntentState: inquiry_intent(),
+                InquiryState: insufficient_inquiry(),
+            }
+        )
         workflow = TCMWorkflow(
             model=model,
             evidence_agent=EvidenceAgent(retriever=fake_retriever),
+            checkpointer=InMemorySaver(),
         )
 
-        result = await workflow.run(user_text="我最近胃胀", conversation=[])
+        result = await workflow.run(
+            user_text="我最近胃胀",
+            conversation=[],
+            config=workflow_config("pause-before-retrieval"),
+        )
 
         self.assertTrue(result.needs_clarification)
         self.assertEqual(retrieval_calls, [])
         self.assertEqual(result.messages[-1].name, "ask_clarification")
         self.assertEqual(
             [call["schema"] for call in model.invocations],
-            [InquiryState],
+            [IntentState, InquiryState],
         )
         self.assertNotIn("4.", result.messages[-1].content)
 
@@ -161,8 +204,17 @@ class WorkflowLLMBackedTests(unittest.IsolatedAsyncioTestCase):
             retrieval_calls.append({"query": query, "mode": mode})
             return evidence_text()
 
-        model = FakeWorkflowModel(
+        model = workflow_model(
             {
+                IntentState: IntentState(
+                    primary_intent="cause_explanation",
+                    confidence="high",
+                    is_tcm_domain_query=True,
+                    is_personal_health_query=True,
+                    requires_retrieval=True,
+                    should_enter_inquiry=True,
+                    route_hint="inquiry",
+                ),
                 InquiryState: InquiryState(
                     chief_complaint="\u8d77\u5e8a\u80c3\u75db",
                     known_facts=KnownFacts(
@@ -201,6 +253,7 @@ class WorkflowLLMBackedTests(unittest.IsolatedAsyncioTestCase):
         workflow = TCMWorkflow(
             model=model,
             evidence_agent=EvidenceAgent(retriever=fake_retriever),
+            checkpointer=InMemorySaver(),
         )
 
         result = await workflow.run(
@@ -218,6 +271,7 @@ class WorkflowLLMBackedTests(unittest.IsolatedAsyncioTestCase):
                     "content": "\u8bf7\u8865\u5145\u75bc\u75db\u90e8\u4f4d\u3001\u53cd\u9178\u548c\u6301\u7eed\u65f6\u95f4\u3002",
                 },
             ],
+            config=workflow_config("cause-question-context"),
         )
 
         self.assertFalse(result.needs_clarification)
@@ -225,13 +279,13 @@ class WorkflowLLMBackedTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("[E1]", result.final_text)
         self.assertEqual(
             [call["schema"] for call in model.invocations],
-            [InquiryState, SyndromeAnalysis, AnswerDraft, SafetyReview],
+            [IntentState, InquiryState, SyndromeAnalysis, AnswerDraft, SafetyReview],
         )
         self.assertEqual(
-            result.agent_trace[0]["information_sufficiency"],
+            result.agent_trace[1]["information_sufficiency"],
             "sufficient",
         )
-        self.assertFalse(result.agent_trace[0]["should_pause_for_clarification"])
+        self.assertFalse(result.agent_trace[1]["should_pause_for_clarification"])
 
     async def test_workflow_runs_llm_agents_in_fixed_order_for_sufficient_information(self):
         retrieval_calls = []
@@ -240,8 +294,9 @@ class WorkflowLLMBackedTests(unittest.IsolatedAsyncioTestCase):
             retrieval_calls.append({"query": query, "mode": mode})
             return evidence_text()
 
-        model = FakeWorkflowModel(
+        model = workflow_model(
             {
+                IntentState: inquiry_intent(),
                 InquiryState: sufficient_inquiry(),
                 SyndromeAnalysis: syndrome_analysis(),
                 AnswerDraft: AnswerDraft(
@@ -256,11 +311,13 @@ class WorkflowLLMBackedTests(unittest.IsolatedAsyncioTestCase):
         workflow = TCMWorkflow(
             model=model,
             evidence_agent=EvidenceAgent(retriever=fake_retriever),
+            checkpointer=InMemorySaver(),
         )
 
         result = await workflow.run(
             user_text="胃胀持续两周，油腻后加重，嗳气，大便正常。",
             conversation=[],
+            config=workflow_config("fixed-order"),
         )
 
         self.assertFalse(result.needs_clarification)
@@ -270,7 +327,7 @@ class WorkflowLLMBackedTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("[E1]", result.final_text)
         self.assertEqual(
             [call["schema"] for call in model.invocations],
-            [InquiryState, SyndromeAnalysis, AnswerDraft, SafetyReview],
+            [IntentState, InquiryState, SyndromeAnalysis, AnswerDraft, SafetyReview],
         )
         self.assertEqual(
             {
@@ -278,6 +335,7 @@ class WorkflowLLMBackedTests(unittest.IsolatedAsyncioTestCase):
                 for call in model.structured_calls
             },
             {
+                (IntentState, "json_mode", None),
                 (InquiryState, "json_mode", None),
                 (SyndromeAnalysis, "json_mode", None),
                 (AnswerDraft, "json_mode", None),
@@ -289,8 +347,9 @@ class WorkflowLLMBackedTests(unittest.IsolatedAsyncioTestCase):
         async def fake_retriever(query: str, mode: str) -> str:
             return evidence_text()
 
-        model = FakeWorkflowModel(
+        model = workflow_model(
             {
+                IntentState: inquiry_intent(),
                 InquiryState: sufficient_inquiry(risk_flags=["胸痛"]),
                 SyndromeAnalysis: syndrome_analysis(),
                 AnswerDraft: [
@@ -331,11 +390,13 @@ class WorkflowLLMBackedTests(unittest.IsolatedAsyncioTestCase):
         workflow = TCMWorkflow(
             model=model,
             evidence_agent=EvidenceAgent(retriever=fake_retriever),
+            checkpointer=InMemorySaver(),
         )
 
         result = await workflow.run(
             user_text="胃胀持续两周，油腻后加重，嗳气，同时胸痛。",
             conversation=[],
+            config=workflow_config("safety-rewrite"),
         )
 
         self.assertIn("线下就医", result.final_text)
@@ -343,6 +404,7 @@ class WorkflowLLMBackedTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             [call["schema"] for call in model.invocations],
             [
+                IntentState,
                 InquiryState,
                 SyndromeAnalysis,
                 AnswerDraft,
@@ -476,8 +538,9 @@ class WorkflowRuntimeTests(unittest.IsolatedAsyncioTestCase):
             return evidence_text()
 
         final_answer = "从描述看可能与食滞等因素有关，但还不能判断具体证候。[E1]"
-        model = FakeWorkflowModel(
+        model = workflow_model(
             {
+                IntentState: inquiry_intent(),
                 InquiryState: sufficient_inquiry(),
                 SyndromeAnalysis: syndrome_analysis(),
                 AnswerDraft: AnswerDraft(draft_answer=final_answer),
@@ -487,6 +550,7 @@ class WorkflowRuntimeTests(unittest.IsolatedAsyncioTestCase):
         workflow = TCMWorkflow(
             model=model,
             evidence_agent=EvidenceAgent(retriever=fake_retriever),
+            checkpointer=InMemorySaver(),
         )
         bridge = StreamBridge()
         run_manager = RunManager()
@@ -533,14 +597,23 @@ class WorkflowRuntimeTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual((await run_manager.get(run.run_id)).status, "success")
         self.assertEqual(final_events[-1]["assistant_message"], final_answer)
-        self.assertIn(
-            "SafetyAgent",
-            [item.get("agent") for item in stored_thread.values["last_agent_trace"]],
+        self.assertTrue(
+            {
+                "last_validation",
+                "last_allowed_terms",
+                "last_rewritten",
+                "last_agent_trace",
+            }.isdisjoint(stored_thread.values)
         )
 
     async def test_workflow_agent_clarification_uses_existing_waiting_flow(self):
-        model = FakeWorkflowModel({InquiryState: insufficient_inquiry()})
-        workflow = TCMWorkflow(model=model)
+        model = workflow_model(
+            {
+                IntentState: inquiry_intent(),
+                InquiryState: insufficient_inquiry(),
+            }
+        )
+        workflow = TCMWorkflow(model=model, checkpointer=InMemorySaver())
         bridge = StreamBridge()
         run_manager = RunManager()
         thread_store = ThreadStore()
@@ -563,6 +636,7 @@ class WorkflowRuntimeTests(unittest.IsolatedAsyncioTestCase):
 
         parsed_events = self.parse_events(await self.drain_events(bridge, run.run_id))
         final_events = [data for event, data in parsed_events if event == "final"]
+        stored_thread = await thread_store.get(thread.thread_id)
 
         self.assertEqual(
             (await run_manager.get(run.run_id)).status,
@@ -570,30 +644,303 @@ class WorkflowRuntimeTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(final_events[-1]["status"], "need_clarification")
         self.assertLessEqual(len(final_events[-1]["pending_clarification"]), 3)
+        self.assertTrue(stored_thread.values["messages"])
+        self.assertTrue(
+            any(
+                message.get("tool_calls")
+                for message in stored_thread.values["messages"]
+            )
+        )
+        self.assertEqual(
+            stored_thread.values["conversation"][-2:],
+            [
+                {"role": "user", "content": "我最近胃胀"},
+                {
+                    "role": "assistant",
+                    "content": final_events[-1]["assistant_message"],
+                },
+            ],
+        )
+        self.assertNotIn("last_agent_trace", stored_thread.values)
 
-    async def test_workflow_agent_uses_injected_workflow_and_shared_thread_store(self):
+    async def test_followup_after_clarification_does_not_reuse_old_question(self):
+        async def fake_retriever(query: str, mode: str) -> str:
+            return evidence_text()
+
+        old_question = "进食、油腻或受凉后会加重吗？"
+        final_answer = "根据补充信息，饭后缓解但仍不能直接判断具体证候。[E1]"
+        model = workflow_model(
+            {
+                IntentState: [
+                    inquiry_intent(),
+                    IntentState(
+                        primary_intent="followup_clarification",
+                        confidence="high",
+                        is_tcm_domain_query=True,
+                        is_personal_health_query=True,
+                        requires_retrieval=True,
+                        should_enter_inquiry=True,
+                        route_hint="inquiry",
+                    ),
+                ],
+                InquiryState: [
+                    insufficient_inquiry(),
+                    InquiryState(
+                        chief_complaint="胃痛",
+                        known_facts=KnownFacts(
+                            duration="2天",
+                            triggers=["饭后缓解"],
+                            associated_symptoms=["没有其他感觉"],
+                        ),
+                        missing_info=["疼痛性质", "大便情况"],
+                        information_sufficiency="sufficient",
+                    ),
+                ],
+                SyndromeAnalysis: syndrome_analysis(),
+                AnswerDraft: AnswerDraft(draft_answer=final_answer),
+                SafetyReview: safe_review(),
+            }
+        )
+        workflow = TCMWorkflow(
+            model=model,
+            evidence_agent=EvidenceAgent(retriever=fake_retriever),
+            checkpointer=InMemorySaver(),
+        )
+        bridge = StreamBridge()
+        run_manager = RunManager()
+        thread_store = ThreadStore()
+        thread = await thread_store.create()
+
+        first_run = await run_manager.create(thread.thread_id, "workflow_agent")
+        bridge.create(first_run.run_id)
+        await run_agent(
+            bridge=bridge,
+            run_manager=run_manager,
+            thread_store=thread_store,
+            record=first_run,
+            agent_factory=lambda context: WorkflowAgent(
+                workflow=workflow,
+                thread_store=thread_store,
+            ),
+            input_data={"messages": [{"type": "human", "content": "我最近胃痛"}]},
+            context={"stream_mode": ["messages"]},
+        )
+
+        second_run = await run_manager.create(thread.thread_id, "workflow_agent")
+        bridge.create(second_run.run_id)
+        with patch(
+            "app.runtime.runs.worker.apply_guardrails",
+            new=AsyncMock(
+                return_value={
+                    "final_text": final_answer,
+                    "validation": {"passed": True},
+                    "validation_before_rewrite": {"passed": True},
+                    "rewritten": False,
+                    "allowed_terms": ["胃脘痛"],
+                }
+            ),
+        ):
+            await run_agent(
+                bridge=bridge,
+                run_manager=run_manager,
+                thread_store=thread_store,
+                record=second_run,
+                agent_factory=lambda context: WorkflowAgent(
+                    workflow=workflow,
+                    thread_store=thread_store,
+                ),
+                input_data={
+                    "messages": [
+                        {
+                            "type": "human",
+                            "content": (
+                                "疼痛是间歇性的，吃完饭会好一点，没有其他感觉，"
+                                "最近吃维生素B2、维生素C。"
+                            ),
+                        }
+                    ]
+                },
+                context={"stream_mode": ["messages", "values"]},
+            )
+
+        parsed_events = self.parse_events(
+            await self.drain_events(bridge, second_run.run_id)
+        )
+        final_events = [data for event, data in parsed_events if event == "final"]
+        value_events = [data for event, data in parsed_events if event == "values"]
+
+        self.assertEqual((await run_manager.get(second_run.run_id)).status, "success")
+        self.assertEqual(final_events[-1]["status"], "completed")
+        self.assertEqual(final_events[-1]["assistant_message"], final_answer)
+        self.assertNotIn(old_question, final_events[-1]["assistant_message"])
+        self.assertEqual(
+            [
+                value
+                for value in value_events
+                if value.get("needs_clarification") is True
+                or old_question in str(value.get("final_text", ""))
+            ],
+            [],
+        )
+        self.assertFalse(value_events[-1]["needs_clarification"])
+        self.assertEqual(value_events[-1]["final_text"], final_answer)
+
+    async def test_workflow_agent_reads_visible_conversation_from_shared_thread_store(self):
         from app.runtime import state as runtime_state
 
         original_store = runtime_state.state.thread_store
         try:
+            class RecordingWorkflow:
+                def __init__(self):
+                    self.calls = []
+
+                async def astream(self, *, user_text, conversation, config, stream_mode):
+                    self.calls.append(
+                        {
+                            "user_text": user_text,
+                            "conversation": conversation,
+                            "config": config,
+                            "stream_mode": stream_mode,
+                        }
+                    )
+                    yield ("values", {"messages": []})
+
             thread_store = ThreadStore()
             runtime_state.state.thread_store = thread_store
-            workflow = TCMWorkflow(model=FakeWorkflowModel({InquiryState: insufficient_inquiry()}))
+            workflow = RecordingWorkflow()
             agent = WorkflowAgent(workflow=workflow)
 
             thread = await thread_store.create()
             await thread_store.update_values(
                 thread.thread_id,
-                {"messages": [{"id": "m1", "type": "ai", "content": "hello"}]},
+                {
+                    "conversation": [
+                        {"role": "user", "content": "previous"},
+                        {"role": "assistant", "content": "previous answer"},
+                    ],
+                    "messages": [{"id": "m1", "type": "ai", "content": "hello"}],
+                },
             )
 
-            snapshot = await agent.aget_state(
-                {"configurable": {"thread_id": thread.thread_id}}
-            )
+            config = {"configurable": {"thread_id": thread.thread_id}}
+            events = [
+                event
+                async for event in agent.astream(
+                    {"messages": [{"type": "human", "content": "new question"}]},
+                    config=config,
+                    stream_mode=["values"],
+                )
+            ]
 
-            self.assertEqual(snapshot.values["messages"][0]["content"], "hello")
+            self.assertEqual(
+                workflow.calls,
+                [
+                    {
+                        "user_text": "new question",
+                        "conversation": [
+                            {"role": "user", "content": "previous"},
+                            {"role": "assistant", "content": "previous answer"},
+                        ],
+                        "config": config,
+                        "stream_mode": ["values"],
+                    }
+                ],
+            )
+            self.assertEqual(events, [("values", {"messages": []})])
         finally:
             runtime_state.state.thread_store = original_store
+
+    async def test_workflow_agent_astream_extracts_input_and_forwards_stream(self):
+        class RecordingThreadStore(ThreadStore):
+            def __init__(self):
+                super().__init__()
+                self.value_updates = []
+
+            async def update_values(self, thread_id, values, run_id=None):
+                self.value_updates.append(
+                    {"thread_id": thread_id, "values": values, "run_id": run_id}
+                )
+                return await super().update_values(thread_id, values, run_id=run_id)
+
+        class StreamingWorkflow:
+            graph = None
+
+            def __init__(self):
+                self.calls = []
+
+            async def run(self, *args, **kwargs):
+                raise AssertionError("WorkflowAgent.astream should call workflow.astream")
+
+            async def astream(self, *, user_text, conversation, config, stream_mode):
+                self.calls.append(
+                    {
+                        "user_text": user_text,
+                        "conversation": conversation,
+                        "config": config,
+                        "stream_mode": stream_mode,
+                    }
+                )
+                yield (
+                    "messages",
+                    (
+                        AIMessageChunk(content="partial"),
+                        {"agent": "workflow_agent"},
+                    ),
+                )
+                yield (
+                    "values",
+                    {
+                        "messages": [],
+                        "agent_trace": [{"agent": "StreamingWorkflow"}],
+                    },
+                )
+
+        thread_store = RecordingThreadStore()
+        thread = await thread_store.create()
+        await thread_store.update_values(
+            thread.thread_id,
+            {
+                "conversation": [
+                    {"role": "user", "content": "previous"},
+                    {"role": "assistant", "content": "previous answer"},
+                ]
+            },
+        )
+        thread_store.value_updates.clear()
+
+        workflow = StreamingWorkflow()
+        agent = WorkflowAgent(workflow=workflow, thread_store=thread_store)
+        config = {"configurable": {"thread_id": thread.thread_id}}
+
+        events = [
+            event
+            async for event in agent.astream(
+                {
+                    "messages": [
+                        {"type": "human", "content": "new question"},
+                    ]
+                },
+                config=config,
+                stream_mode=["messages", "values"],
+            )
+        ]
+
+        self.assertEqual(thread_store.value_updates, [])
+        self.assertEqual(
+            workflow.calls,
+            [
+                {
+                    "user_text": "new question",
+                    "conversation": [
+                        {"role": "user", "content": "previous"},
+                        {"role": "assistant", "content": "previous answer"},
+                    ],
+                    "config": config,
+                    "stream_mode": ["messages", "values"],
+                }
+            ],
+        )
+        self.assertEqual([event[0] for event in events], ["messages", "values"])
 
 
 if __name__ == "__main__":

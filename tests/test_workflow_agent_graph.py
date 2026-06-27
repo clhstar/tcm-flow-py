@@ -1,11 +1,13 @@
 import unittest
 import unittest.mock
 
+from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph.state import CompiledStateGraph
 
 from app.agents.workflow_agent.models import (
     AnswerDraft,
     InquiryState,
+    IntentState,
     KnownFacts,
     PatternCandidate,
     SafetyReview,
@@ -28,6 +30,17 @@ class FakeStructuredRunnable:
 class FakeWorkflowModel:
     def __init__(self):
         self.responses_by_schema = {
+            IntentState: [
+                IntentState(
+                    primary_intent="symptom_consultation",
+                    confidence="high",
+                    is_tcm_domain_query=True,
+                    is_personal_health_query=True,
+                    requires_retrieval=True,
+                    should_enter_inquiry=True,
+                    route_hint="inquiry",
+                )
+            ],
             InquiryState: [
                 InquiryState(
                     chief_complaint="stomach distension",
@@ -66,7 +79,13 @@ class FakeWorkflowModel:
             ],
         }
         self.invocations = []
-        self.schema_queue = list(self.responses_by_schema)
+        self.schema_queue = [
+            IntentState,
+            InquiryState,
+            SyndromeAnalysis,
+            AnswerDraft,
+            SafetyReview,
+        ]
 
     def with_structured_output(self, schema=None, *, method, strict=None):
         schema = schema or self.schema_queue.pop(0)
@@ -91,6 +110,7 @@ class WorkflowAgentGraphTests(unittest.IsolatedAsyncioTestCase):
         workflow = TCMWorkflow(
             model=FakeWorkflowModel(),
             evidence_agent=EvidenceAgent(retriever=fake_retriever),
+            checkpointer=InMemorySaver(),
         )
 
         self.assertIsInstance(workflow.graph, CompiledStateGraph)
@@ -102,11 +122,13 @@ class WorkflowAgentGraphTests(unittest.IsolatedAsyncioTestCase):
         workflow = TCMWorkflow(
             model=model,
             evidence_agent=EvidenceAgent(retriever=fake_retriever),
+            checkpointer=InMemorySaver(),
         )
 
         result = await workflow.run(
             user_text="stomach distension for two weeks, worse after oily food",
             conversation=[],
+            config={"configurable": {"thread_id": "graph-run"}},
         )
 
         self.assertFalse(result.needs_clarification)
@@ -114,6 +136,7 @@ class WorkflowAgentGraphTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             [event["agent"] for event in result.agent_trace],
             [
+                "IntentAgent",
                 "InquiryAgent",
                 "EvidenceAgent",
                 "SyndromeAgent",
@@ -123,8 +146,6 @@ class WorkflowAgentGraphTests(unittest.IsolatedAsyncioTestCase):
         )
 
     async def test_workflow_run_returns_only_current_messages_with_checkpointer(self):
-        from langgraph.checkpoint.memory import InMemorySaver
-
         from app.agents.workflow_agent.components.evidence import EvidenceAgent
 
         model = FakeWorkflowModel()
@@ -151,12 +172,70 @@ class WorkflowAgentGraphTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(len(first.messages), 3)
         self.assertEqual(len(second.messages), 3)
-        self.assertEqual(len(first.agent_trace), 5)
-        self.assertEqual(len(second.agent_trace), 5)
+        self.assertEqual(len(first.agent_trace), 6)
+        self.assertEqual(len(second.agent_trace), 6)
         self.assertEqual(len(snapshot.values["messages"]), 8)
         self.assertTrue(
             all(getattr(message, "type", "") != "human" for message in second.messages)
         )
+
+    async def test_workflow_astream_uses_graph_stream_not_ainvoke(self):
+        from types import SimpleNamespace
+
+        from langchain_core.messages import AIMessage, HumanMessage
+
+        from app.agents.workflow_agent.components.evidence import EvidenceAgent
+
+        workflow = TCMWorkflow(
+            model=FakeWorkflowModel(),
+            evidence_agent=EvidenceAgent(retriever=fake_retriever),
+            checkpointer=InMemorySaver(),
+        )
+        calls = []
+
+        class FakeGraph:
+            async def aget_state(self, config):
+                return SimpleNamespace(values={})
+
+            async def astream(self, input_state, *, config=None, stream_mode=None):
+                calls.append(("astream", input_state, config, stream_mode))
+                yield (
+                    "values",
+                    {
+                        "messages": [
+                            input_state["messages"][0],
+                            AIMessage(content="streamed", id="ai-1"),
+                        ],
+                        "agent_trace": [{"agent": "FakeAgent"}],
+                        "final_text": "streamed",
+                        "needs_clarification": False,
+                    },
+                )
+
+            async def ainvoke(self, *args, **kwargs):
+                raise AssertionError("TCMWorkflow.astream must not call ainvoke")
+
+        workflow.graph = FakeGraph()
+        config = {"configurable": {"thread_id": "thread-1"}}
+
+        events = [
+            event
+            async for event in workflow.astream(
+                user_text="hello",
+                conversation=[],
+                config=config,
+                stream_mode=["messages", "values"],
+            )
+        ]
+
+        self.assertEqual(calls[0][0], "astream")
+        self.assertIsInstance(calls[0][1]["messages"][0], HumanMessage)
+        self.assertEqual(calls[0][2], config)
+        self.assertEqual(calls[0][3], ["messages", "values"])
+        self.assertEqual(events[-1][0], "values")
+        self.assertEqual(events[-1][1]["final_text"], "streamed")
+        self.assertEqual(events[-1][1]["agent_trace"], [{"agent": "FakeAgent"}])
+        self.assertNotIn("workflow_trace", events[-1][1])
 
 
 class WorkflowStateTests(unittest.TestCase):

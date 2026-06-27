@@ -1,7 +1,10 @@
+import logging
+
 from fastapi import APIRouter, HTTPException
 
-from app.runtime.public_messages import build_visible_messages
 from app.runtime.state import state
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/api/threads",
@@ -42,14 +45,10 @@ async def get_thread_history(thread_id: str):
         raise HTTPException(status_code=404, detail="Thread not found")
 
     values = thread.values or {}
-
+    logger.info(f"Thread history: {thread}")
     return {
         "thread_id": thread.thread_id,
         "status": thread.status,
         "conversation": values.get("conversation", []),
-        "messages": build_visible_messages(values.get("messages", [])),
-        "last_validation": values.get("last_validation"),
-        "last_allowed_terms": values.get("last_allowed_terms"),
-        "last_rewritten": values.get("last_rewritten"),
-        "last_agent_trace": values.get("last_agent_trace", []),
+        "messages": values.get("messages", []),
     }
