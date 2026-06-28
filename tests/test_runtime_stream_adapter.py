@@ -1,6 +1,7 @@
 import unittest
 from dataclasses import FrozenInstanceError
 from typing import Any
+from unittest.mock import AsyncMock, patch
 
 from langchain_core.messages import AIMessage, AIMessageChunk
 
@@ -246,6 +247,50 @@ class RuntimeStreamAdapterTests(unittest.IsolatedAsyncioTestCase):
 
 
 class StreamBridgeCleanupTests(unittest.IsolatedAsyncioTestCase):
+    async def test_cleanup_uses_default_delay_before_removing_queue(self):
+        bridge = StreamBridge()
+        bridge.create("default-delay-run")
+
+        with patch(
+            "app.runtime.stream.asyncio.sleep",
+            new_callable=AsyncMock,
+        ) as sleep:
+            await bridge.cleanup("default-delay-run")
+
+        sleep.assert_awaited_once_with(60)
+        self.assertNotIn("default-delay-run", bridge.queues)
+
+    async def test_cleanup_uses_explicit_positive_delay(self):
+        bridge = StreamBridge()
+        bridge.create("positive-delay-run")
+
+        with patch(
+            "app.runtime.stream.asyncio.sleep",
+            new_callable=AsyncMock,
+        ) as sleep:
+            await bridge.cleanup("positive-delay-run", delay=2.5)
+
+        sleep.assert_awaited_once_with(2.5)
+        self.assertNotIn("positive-delay-run", bridge.queues)
+
+    async def test_cleanup_skips_sleep_for_non_positive_delays_idempotently(self):
+        bridge = StreamBridge()
+
+        for delay in (0, -1):
+            with self.subTest(delay=delay):
+                run_id = f"non-positive-delay-{delay}"
+                bridge.create(run_id)
+
+                with patch(
+                    "app.runtime.stream.asyncio.sleep",
+                    new_callable=AsyncMock,
+                ) as sleep:
+                    await bridge.cleanup(run_id, delay=delay)
+                    await bridge.cleanup(run_id, delay=delay)
+
+                sleep.assert_not_awaited()
+                self.assertNotIn(run_id, bridge.queues)
+
     async def test_cleanup_removes_queue_idempotently_without_changing_end_contract(self):
         bridge = StreamBridge()
         bridge.create("ended-run")
