@@ -651,15 +651,17 @@ class WorkflowRuntimeTests(unittest.IsolatedAsyncioTestCase):
                 for message in stored_thread.values["messages"]
             )
         )
+        user_turn, assistant_turn = stored_thread.values["conversation"][-2:]
+        self.assertEqual(user_turn, {"role": "user", "content": "我最近胃胀"})
+        self.assertEqual(assistant_turn["role"], "assistant")
         self.assertEqual(
-            stored_thread.values["conversation"][-2:],
-            [
-                {"role": "user", "content": "我最近胃胀"},
-                {
-                    "role": "assistant",
-                    "content": final_events[-1]["assistant_message"],
-                },
-            ],
+            assistant_turn["content"],
+            final_events[-1]["assistant_message"],
+        )
+        self.assertEqual(assistant_turn["run_id"], run.run_id)
+        self.assertEqual(
+            [step["agent"] for step in assistant_turn["agent_trace"]],
+            ["IntentAgent", "InquiryAgent"],
         )
         self.assertNotIn("last_agent_trace", stored_thread.values)
 

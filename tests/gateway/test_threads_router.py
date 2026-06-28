@@ -108,6 +108,37 @@ class ThreadsRouterTests(unittest.IsolatedAsyncioTestCase):
             }.isdisjoint(body)
         )
 
+    async def test_history_preserves_enriched_conversation_and_raw_messages(self):
+        thread = await state.thread_store.create()
+        conversation = [
+            {"role": "user", "content": "最近头痛"},
+            {
+                "role": "assistant",
+                "content": "请补充持续时间。",
+                "run_id": "run-1",
+                "agent_trace": [{"agent": "InquiryAgent"}],
+            },
+        ]
+        messages = [
+            {"type": "human", "content": "最近头痛", "id": "human-1"},
+            {
+                "type": "ai",
+                "content": "请补充持续时间。",
+                "id": "ai-1",
+            },
+        ]
+        await state.thread_store.update_values(
+            thread.thread_id,
+            {"conversation": conversation, "messages": messages},
+        )
+
+        response = self.client.get(f"/api/threads/{thread.thread_id}/history")
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["conversation"], conversation)
+        self.assertEqual(body["messages"], messages)
+
 
 class PublicMessageProjectionTests(unittest.TestCase):
     def test_task_tool_payload_is_not_used_for_pending_clarification(self):
@@ -526,7 +557,11 @@ class ThreadRunStreamMessageTests(unittest.IsolatedAsyncioTestCase):
             stored_thread.values["conversation"][-2:],
             [
                 {"role": "user", "content": "current user"},
-                {"role": "assistant", "content": "current answer"},
+                {
+                    "role": "assistant",
+                    "content": "current answer",
+                    "run_id": run.run_id,
+                },
             ],
         )
         self.assertTrue(

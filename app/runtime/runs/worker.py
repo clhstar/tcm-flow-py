@@ -149,7 +149,10 @@ def append_visible_messages(
     thread_values: dict[str, Any],
     user_text: str,
     assistant_text: str,
-) -> list[dict[str, str]]:
+    *,
+    run_id: str | None = None,
+    agent_trace: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
     """
     把本轮用户输入和系统可见回复追加到 conversation。
 
@@ -172,12 +175,15 @@ def append_visible_messages(
         )
 
     if assistant_text:
-        conversation.append(
-            {
-                "role": "assistant",
-                "content": assistant_text,
-            }
-        )
+        assistant_turn: dict[str, Any] = {
+            "role": "assistant",
+            "content": assistant_text,
+        }
+        if run_id:
+            assistant_turn["run_id"] = run_id
+        if agent_trace:
+            assistant_turn["agent_trace"] = [dict(item) for item in agent_trace]
+        conversation.append(assistant_turn)
 
     return conversation
 
@@ -247,9 +253,11 @@ async def run_agent(
     thread_id = record.thread_id
 
     try:
+        # 1. Mark running
         await run_manager.set_status(run_id, "running")
         await thread_store.update_status(thread_id, "running")
 
+        # 2. Publish metadata — useStream needs both run_id AND thread_id
         await bridge.publish(
             run_id,
             "metadata",
@@ -258,7 +266,6 @@ async def run_agent(
                 "thread_id": thread_id,
                 "assistant_id": record.assistant_id,
                 "architecture": "tcm-flow",
-                "stream_protocol": "messages-v1",
             },
         )
 
@@ -291,6 +298,7 @@ async def run_agent(
         publish_values = "values" in requested_stream_modes or emit_debug_events
 
         final_messages: list[dict[str, Any]] = []
+        current_run_agent_trace: list[dict[str, Any]] = []
         emitted_trace_keys: set[str] = set()
         clarification_to_emit = ""
 
@@ -328,6 +336,12 @@ async def run_agent(
                 continue
 
             serialized_values = serialize(chunk, mode="values")
+            if isinstance(serialized_values, dict):
+                raw_agent_trace = serialized_values.get("agent_trace")
+                if isinstance(raw_agent_trace, list):
+                    current_run_agent_trace = [
+                        dict(item) for item in raw_agent_trace if isinstance(item, dict)
+                    ]
             raw_messages = (
                 serialized_values.get("messages", [])
                 if isinstance(serialized_values, dict)
@@ -376,6 +390,8 @@ async def run_agent(
                 thread_values=thread_values,
                 user_text=user_text,
                 assistant_text=assistant_message,
+                run_id=run_id,
+                agent_trace=current_run_agent_trace,
             )
 
             await thread_store.update_values(
@@ -451,6 +467,8 @@ async def run_agent(
             thread_values=thread_values,
             user_text=user_text,
             assistant_text=final_text,
+            run_id=run_id,
+            agent_trace=current_run_agent_trace,
         )
 
         await thread_store.update_values(

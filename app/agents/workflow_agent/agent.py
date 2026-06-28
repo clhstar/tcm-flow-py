@@ -57,10 +57,21 @@ class WorkflowAgent:
         thread = await self.thread_store.get(thread_id)
         return dict(thread.values) if thread else {}
 
-    async def _read_conversation(self, thread_id: str) -> list[dict[str, Any]]:
+    async def _read_conversation(self, thread_id: str) -> list[dict[str, str]]:
         values = await self._read_values(thread_id)
         conversation = values.get("conversation") or []
-        return [item for item in conversation if isinstance(item, dict)]
+        model_conversation: list[dict[str, str]] = []
+        for item in conversation:
+            if not isinstance(item, dict):
+                continue
+            role = item.get("role")
+            content = item.get("content")
+            if not isinstance(role, str) or role not in {"user", "assistant", "system"}:
+                continue
+            if not isinstance(content, str) or not content.strip():
+                continue
+            model_conversation.append({"role": role, "content": content})
+        return model_conversation
 
     async def aget_state(self, config: dict[str, Any]) -> Any:
         return await self.workflow.graph.aget_state(config)
