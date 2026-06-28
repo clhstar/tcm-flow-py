@@ -1292,9 +1292,9 @@ async def run_agent(
             completion.thread_values,
             run_id=run_id,
         )
-        await bridge.publish(run_id, "final", completion.final_payload)
         await run_manager.set_status(run_id, completion.run_status)
         await ctx.thread_store.update_status(thread_id, completion.thread_status)
+        await bridge.publish(run_id, "final", completion.final_payload)
 
     except Exception as exc:
         error = "".join(
@@ -1308,6 +1308,12 @@ async def run_agent(
         await bridge.publish_end(run_id)
         asyncio.create_task(bridge.cleanup(run_id, delay=60))
 ```
+
+Keep this terminal order deliberate: persist completion thread values, commit the
+run and thread terminal statuses, and only then publish `final`. If cancellation
+lands during either status write, Task 5's explicit cancellation branch runs
+before a `final` event escapes, preventing a client-visible final response for a
+run that is subsequently recorded as `cancelled`.
 
 Do not retain aliases or wrapper functions for the old worker-local business helpers.
 
@@ -1420,7 +1426,11 @@ Create `tests/test_runtime_worker_lifecycle.py`:
 
 ```python
 import asyncio
+from types import SimpleNamespace
 import unittest
+from unittest.mock import AsyncMock, patch
+
+from langchain_core.messages import AIMessage, HumanMessage
 
 from app.runtime.runs.context import RunContext
 from app.runtime.runs.worker import run_agent
@@ -1431,26 +1441,81 @@ from app.store.thread_store import ThreadStore
 
 class CancelledAgent:
     async def aget_state(self, config):
-        class Snapshot:
-            values = {"messages": []}
-        return Snapshot()
+        return SimpleNamespace(values={"messages": []})
 
     async def astream(self, graph_input, *, config, stream_mode):
-        raise asyncio.CancelledError()
-        yield
+        if False:
+            yield None
+        raise asyncio.CancelledError
+
+
+class SuccessfulAgent:
+    async def aget_state(self, config):
+        return SimpleNamespace(values={"messages": []})
+
+    async def astream(self, graph_input, *, config, stream_mode):
+        yield (
+            "values",
+            {
+                "messages": [
+                    HumanMessage(content="question", id="human-1"),
+                    AIMessage(content="answer", id="ai-1"),
+                ]
+            },
+        )
+
+
+class CancelOnSuccessRunManager(RunManager):
+    async def set_status(
+        self,
+        run_id: str,
+        status: str,
+        error: str | None = None,
+    ):
+        if status == "success":
+            task = asyncio.current_task()
+            if task is not None:
+                task.cancel()
+            await asyncio.sleep(0)
+        await super().set_status(run_id, status, error=error)
+
+
+class FailingCancellationRunManager(RunManager):
+    async def set_status(
+        self,
+        run_id: str,
+        status: str,
+        error: str | None = None,
+    ):
+        if status == "cancelled":
+            raise RuntimeError("run cancellation status failed")
+        await super().set_status(run_id, status, error=error)
+
+
+class FailingCancellationThreadStore(ThreadStore):
+    async def update_status(self, thread_id: str, status: str):
+        if status == "idle":
+            raise RuntimeError("thread cancellation status failed")
+        await super().update_status(thread_id, status)
 
 
 class RecordingBridge(StreamBridge):
     def __init__(self):
         super().__init__()
-        self.cleanup_calls = []
+        self.cleanup_calls: list[tuple[str, float]] = []
 
-    async def cleanup(self, run_id: str, delay: float = 60) -> None:
+    async def cleanup(self, run_id: str, delay: float = 60):
         self.cleanup_calls.append((run_id, delay))
 
 
 class RuntimeWorkerLifecycleTests(unittest.IsolatedAsyncioTestCase):
-    async def test_cancelled_run_sets_terminal_status_and_publishes_end(self):
+    async def drain_events(self, bridge: RecordingBridge, run_id: str):
+        queued_events = []
+        while not bridge.queues[run_id].empty():
+            queued_events.append(await bridge.queues[run_id].get())
+        return queued_events
+
+    async def test_cancelled_run_is_finalized_without_error_or_final_event(self):
         bridge = RecordingBridge()
         run_manager = RunManager()
         thread_store = ThreadStore()
@@ -1470,17 +1535,142 @@ class RuntimeWorkerLifecycleTests(unittest.IsolatedAsyncioTestCase):
                 stream_modes=["messages"],
             )
 
-        await asyncio.sleep(0)
         stored_run = await run_manager.get(run.run_id)
         stored_thread = await thread_store.get(thread.thread_id)
+        self.assertIsNotNone(stored_run)
+        self.assertIsNotNone(stored_thread)
         self.assertEqual(stored_run.status, "cancelled")
         self.assertEqual(stored_thread.status, "idle")
+
+        await asyncio.sleep(0)
         self.assertEqual(bridge.cleanup_calls, [(run.run_id, 60)])
 
-        queued_events = []
-        while not bridge.queues[run.run_id].empty():
-            queued_events.append(await bridge.queues[run.run_id].get())
+        queued_events = await self.drain_events(bridge, run.run_id)
+        event_names = [event for event, _ in queued_events]
+        self.assertNotIn("error", event_names)
+        self.assertNotIn("final", event_names)
+        self.assertLess(event_names.index("metadata"), event_names.index("end"))
         self.assertEqual(queued_events[-1], ("end", {"status": "done"}))
+
+    async def test_cancellation_during_success_status_prevents_final_event(self):
+        bridge = RecordingBridge()
+        run_manager = CancelOnSuccessRunManager()
+        thread_store = ThreadStore()
+        thread = await thread_store.create()
+        run = await run_manager.create(thread.thread_id, "lead_agent")
+        bridge.create(run.run_id)
+
+        with patch(
+            "app.runtime.runs.projection.apply_guardrails",
+            new=AsyncMock(
+                return_value={
+                    "final_text": "answer",
+                    "validation": {"passed": True},
+                    "validation_before_rewrite": {"passed": True},
+                    "rewritten": False,
+                    "allowed_terms": [],
+                }
+            ),
+        ):
+            with self.assertRaises(asyncio.CancelledError):
+                await run_agent(
+                    bridge=bridge,
+                    run_manager=run_manager,
+                    record=run,
+                    ctx=RunContext(thread_store=thread_store),
+                    agent_factory=lambda context: SuccessfulAgent(),
+                    graph_input={
+                        "messages": [{"type": "human", "content": "question"}]
+                    },
+                    config={},
+                    stream_modes=["messages"],
+                )
+
+        stored_run = await run_manager.get(run.run_id)
+        stored_thread = await thread_store.get(thread.thread_id)
+        self.assertIsNotNone(stored_run)
+        self.assertIsNotNone(stored_thread)
+        self.assertEqual(stored_run.status, "cancelled")
+        self.assertEqual(stored_thread.status, "idle")
+        self.assertEqual(
+            stored_thread.values["conversation"][-1]["content"],
+            "answer",
+        )
+
+        await asyncio.sleep(0)
+        self.assertEqual(bridge.cleanup_calls, [(run.run_id, 60)])
+        queued_events = await self.drain_events(bridge, run.run_id)
+        event_names = [event for event, _ in queued_events]
+        self.assertNotIn("error", event_names)
+        self.assertNotIn("final", event_names)
+        self.assertEqual(queued_events[-1], ("end", {"status": "done"}))
+
+    async def test_run_status_failure_does_not_mask_cancellation(self):
+        bridge = RecordingBridge()
+        run_manager = FailingCancellationRunManager()
+        thread_store = ThreadStore()
+        thread = await thread_store.create()
+        run = await run_manager.create(thread.thread_id, "lead_agent")
+        bridge.create(run.run_id)
+
+        with self.assertLogs("app.runtime.runs.worker", level="ERROR") as logs:
+            with self.assertRaises(asyncio.CancelledError):
+                await run_agent(
+                    bridge=bridge,
+                    run_manager=run_manager,
+                    record=run,
+                    ctx=RunContext(thread_store=thread_store),
+                    agent_factory=lambda context: CancelledAgent(),
+                    graph_input={"messages": []},
+                    config={},
+                )
+
+        stored_thread = await thread_store.get(thread.thread_id)
+        self.assertIsNotNone(stored_thread)
+        self.assertEqual(stored_thread.status, "idle")
+        self.assertIn("failed to mark run", "\n".join(logs.output).lower())
+
+        await asyncio.sleep(0)
+        self.assertEqual(bridge.cleanup_calls, [(run.run_id, 60)])
+        queued_events = await self.drain_events(bridge, run.run_id)
+        event_names = [event for event, _ in queued_events]
+        self.assertNotIn("error", event_names)
+        self.assertNotIn("final", event_names)
+        self.assertEqual(queued_events[-1], ("end", {"status": "done"}))
+
+    async def test_thread_status_failure_does_not_mask_cancellation(self):
+        bridge = RecordingBridge()
+        run_manager = RunManager()
+        thread_store = FailingCancellationThreadStore()
+        thread = await thread_store.create()
+        run = await run_manager.create(thread.thread_id, "lead_agent")
+        bridge.create(run.run_id)
+
+        with self.assertLogs("app.runtime.runs.worker", level="ERROR") as logs:
+            with self.assertRaises(asyncio.CancelledError):
+                await run_agent(
+                    bridge=bridge,
+                    run_manager=run_manager,
+                    record=run,
+                    ctx=RunContext(thread_store=thread_store),
+                    agent_factory=lambda context: CancelledAgent(),
+                    graph_input={"messages": []},
+                    config={},
+                )
+
+        stored_run = await run_manager.get(run.run_id)
+        self.assertIsNotNone(stored_run)
+        self.assertEqual(stored_run.status, "cancelled")
+        self.assertIn("failed to reset thread", "\n".join(logs.output).lower())
+
+        await asyncio.sleep(0)
+        self.assertEqual(bridge.cleanup_calls, [(run.run_id, 60)])
+        queued_events = await self.drain_events(bridge, run.run_id)
+        event_names = [event for event, _ in queued_events]
+        self.assertNotIn("error", event_names)
+        self.assertNotIn("final", event_names)
+        self.assertEqual(queued_events[-1], ("end", {"status": "done"}))
+
 
 if __name__ == "__main__":
     unittest.main()
@@ -1494,7 +1684,11 @@ Run:
 .\.venv\Scripts\python.exe -m unittest tests.test_runtime_worker_lifecycle -v
 ```
 
-Expected: FAIL because the worker publishes `end` but leaves the cancelled run in `running` status and the thread in `running` status.
+Expected: FAIL because the worker has no explicit cancellation branch: ordinary
+cancellation and cancellation during the terminal success-status write do not
+finish as `cancelled`/`idle`. The persistence-failure tests also fail because the
+worker does not yet log each failed cancellation write, continue with the other
+best-effort write, and preserve `CancelledError` as the primary exception.
 
 - [ ] **Step 3: Implement explicit cancellation handling**
 
@@ -1502,13 +1696,27 @@ Add this branch immediately before `except Exception` in `app/runtime/runs/worke
 
 ```python
     except asyncio.CancelledError:
-        await run_manager.set_status(run_id, "cancelled")
-        await ctx.thread_store.update_status(thread_id, "idle")
-        logger.info("Run %s was cancelled", run_id)
+        try:
+            await run_manager.set_status(run_id, "cancelled")
+        except Exception:
+            logger.exception("Failed to mark run %s cancelled", run_id)
+        try:
+            await ctx.thread_store.update_status(thread_id, "idle")
+        except Exception:
+            logger.exception(
+                "Failed to reset thread %s after run %s cancellation",
+                thread_id,
+                run_id,
+            )
+        logger.info("Run %s cancelled", run_id)
         raise
 ```
 
-Keep the existing `finally` block unchanged so cancellation still publishes `end` and schedules delayed cleanup.
+The two status writes are independent best-effort operations. A failure in either
+write is logged without skipping the other write, and the bare `raise` always
+re-raises the original `asyncio.CancelledError` rather than replacing it with a
+persistence error. Keep the existing `finally` block unchanged so cancellation
+still publishes `end` and schedules delayed cleanup.
 
 - [ ] **Step 4: Run lifecycle and stream tests**
 
@@ -1518,7 +1726,12 @@ Run:
 .\.venv\Scripts\python.exe -m unittest tests.test_runtime_worker_lifecycle tests.test_runtime_stream_adapter tests.test_runtime_state -v
 ```
 
-Expected: all lifecycle, adapter, and state tests pass without pending-task warnings.
+Expected: all lifecycle, adapter, and state tests pass without pending-task
+warnings. In particular, cancellation during the success-status commit persists
+the already-produced thread values but emits neither `final` nor `error`, records
+`cancelled`/`idle`, and still publishes `end` and schedules cleanup. Failure of
+either cancellation status write is logged, does not skip the other status write,
+and does not replace the original `CancelledError`.
 
 - [ ] **Step 5: Commit the lifecycle files**
 
@@ -1530,7 +1743,8 @@ git diff --cached --check -- app/runtime/runs/worker.py tests/test_runtime_worke
 git commit --only app/runtime/runs/worker.py tests/test_runtime_worker_lifecycle.py -m "fix: finalize cancelled runtime runs"
 ```
 
-Expected: only the worker cancellation branch and lifecycle test are committed.
+Expected: only the independently protected worker cancellation branch and the
+terminal-ordering/persistence-failure lifecycle tests are committed.
 
 ---
 
@@ -1596,14 +1810,22 @@ Expected:
 - `git diff --check` reports no whitespace errors;
 - the `rg` command reports no business parsing or response-construction references in `worker.py`;
 - `worker.py` contains lifecycle coordination only;
+- completion values and terminal statuses are persisted before `final`, so
+  cancellation during a terminal status write cannot produce `final` plus a
+  `cancelled` run;
+- cancellation status persistence is independent and best-effort: failure of the
+  run write does not skip the thread write, failure of the thread write does not
+  undo the run write, and both paths re-raise the original `CancelledError`;
+- every cancellation path emits neither `final` nor `error`, then publishes
+  `end` and schedules delayed cleanup;
 - unrelated staged files remain visible and unmodified unless explicitly included in a named task commit.
 
 ---
 
 ## Plan Self-Review
 
-- Spec coverage: context/config construction, graph input, stream forwarding, current-run slicing, clarification, guardrails, checkpoint rewrite, public payload compatibility, agent trace, errors, cancellation, `end`, and cleanup each have an implementation task and test coverage.
-- Placeholder scan: the plan contains no unresolved markers, deferred implementation, or undefined generic handling steps.
+- Spec coverage: context/config construction, graph input, stream forwarding, current-run slicing, clarification, guardrails, checkpoint rewrite, public payload compatibility, agent trace, errors, terminal status-before-final ordering, cancellation during success commit, independent best-effort cancellation persistence, `CancelledError` preservation, `end`, and cleanup each have an implementation task and test coverage.
+- Unresolved-marker scan: the plan contains no incomplete markers, deferred implementation, or undefined generic handling steps.
 - Type consistency: `RunContext`, `StreamSnapshot`, `CompletionResult`, `LangGraphStreamAdapter.forward(...)`, `RunCompletionProjection.complete(...)`, and the new `run_agent(...)` signature are used consistently across tasks.
 - Scope: no graph redesign, new cancellation endpoint, synthetic chunking, or thread/checkpointer ownership change is introduced.
 - Dirty-worktree safety: every commit names exact files and explicitly excludes unrelated staged work.
