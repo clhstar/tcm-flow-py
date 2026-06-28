@@ -10,6 +10,11 @@ class StreamBridge:
     def create(self, run_id: str):
         self.queues[run_id] = asyncio.Queue()
 
+    async def cleanup(self, run_id: str, delay: float = 60):
+        if delay > 0:
+            await asyncio.sleep(delay)
+        self.queues.pop(run_id, None)
+
     async def publish(self, run_id: str, event: str, data: Any):
         queue = self.queues.get(run_id)
 
