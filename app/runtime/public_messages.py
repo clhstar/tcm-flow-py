@@ -13,6 +13,18 @@ def _message_content(message: dict[str, Any]) -> str:
     return str(content or "")
 
 
+def extract_final_assistant_text(messages: list[dict[str, Any]]) -> str:
+    for message in reversed(messages):
+        if message.get("type") != "ai":
+            continue
+        if message.get("tool_calls"):
+            continue
+        content = _message_content(message)
+        if content.strip():
+            return content
+    return ""
+
+
 def _extract_clarification_questions(message: dict[str, Any]) -> list[str]:
     questions: list[Any] = []
     for tool_call in message.get("tool_calls", []):
@@ -62,6 +74,38 @@ def extract_pending_clarification(
             return questions
 
     return None
+
+
+def append_visible_messages(
+    thread_values: dict[str, Any],
+    user_text: str,
+    assistant_text: str,
+    *,
+    run_id: str | None = None,
+    agent_trace: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
+    conversation = list(thread_values.get("conversation") or [])
+
+    if user_text:
+        conversation.append(
+            {
+                "role": "user",
+                "content": user_text,
+            }
+        )
+
+    if assistant_text:
+        assistant_turn: dict[str, Any] = {
+            "role": "assistant",
+            "content": assistant_text,
+        }
+        if run_id:
+            assistant_turn["run_id"] = run_id
+        if agent_trace:
+            assistant_turn["agent_trace"] = [dict(item) for item in agent_trace]
+        conversation.append(assistant_turn)
+
+    return conversation
 
 
 def build_chat_response(
