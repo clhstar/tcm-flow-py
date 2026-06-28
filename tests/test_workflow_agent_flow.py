@@ -20,6 +20,8 @@ from app.agents.workflow_agent.models import (
 from app.agents.workflow_agent.components.evidence import EvidenceAgent
 from app.agents.workflow_agent.components.syndrome import SyndromeAgent
 from app.agents.workflow_agent.workflow import TCMWorkflow
+from app.runtime.runs.context import RunContext
+from app.runtime.runs.input import normalize_graph_input
 from app.runtime.runs.worker import run_agent
 from app.runtime.stream import StreamBridge
 from app.store.run_manager import RunManager
@@ -560,7 +562,7 @@ class WorkflowRuntimeTests(unittest.IsolatedAsyncioTestCase):
         bridge.create(run.run_id)
 
         with patch(
-            "app.runtime.runs.worker.apply_guardrails",
+            "app.runtime.runs.projection.apply_guardrails",
             new=AsyncMock(
                 return_value={
                     "final_text": final_answer,
@@ -574,21 +576,22 @@ class WorkflowRuntimeTests(unittest.IsolatedAsyncioTestCase):
             await run_agent(
                 bridge=bridge,
                 run_manager=run_manager,
-                thread_store=thread_store,
                 record=run,
+                ctx=RunContext(thread_store=thread_store),
                 agent_factory=lambda context: WorkflowAgent(
                     workflow=workflow,
                     thread_store=thread_store,
                 ),
-                input_data={
+                graph_input=normalize_graph_input({
                     "messages": [
                         {
                             "type": "human",
                             "content": "胃胀持续两周，油腻后加重，嗳气，大便正常。",
                         }
                     ]
-                },
-                context={"stream_mode": ["messages"]},
+                }),
+                config={},
+                stream_modes=["messages"],
             )
 
         parsed_events = self.parse_events(await self.drain_events(bridge, run.run_id))
@@ -624,14 +627,17 @@ class WorkflowRuntimeTests(unittest.IsolatedAsyncioTestCase):
         await run_agent(
             bridge=bridge,
             run_manager=run_manager,
-            thread_store=thread_store,
             record=run,
+            ctx=RunContext(thread_store=thread_store),
             agent_factory=lambda context: WorkflowAgent(
                 workflow=workflow,
                 thread_store=thread_store,
             ),
-            input_data={"messages": [{"type": "human", "content": "我最近胃胀"}]},
-            context={"stream_mode": ["messages"]},
+            graph_input=normalize_graph_input(
+                {"messages": [{"type": "human", "content": "我最近胃胀"}]}
+            ),
+            config={},
+            stream_modes=["messages"],
         )
 
         parsed_events = self.parse_events(await self.drain_events(bridge, run.run_id))
@@ -718,20 +724,23 @@ class WorkflowRuntimeTests(unittest.IsolatedAsyncioTestCase):
         await run_agent(
             bridge=bridge,
             run_manager=run_manager,
-            thread_store=thread_store,
             record=first_run,
+            ctx=RunContext(thread_store=thread_store),
             agent_factory=lambda context: WorkflowAgent(
                 workflow=workflow,
                 thread_store=thread_store,
             ),
-            input_data={"messages": [{"type": "human", "content": "我最近胃痛"}]},
-            context={"stream_mode": ["messages"]},
+            graph_input=normalize_graph_input(
+                {"messages": [{"type": "human", "content": "我最近胃痛"}]}
+            ),
+            config={},
+            stream_modes=["messages"],
         )
 
         second_run = await run_manager.create(thread.thread_id, "workflow_agent")
         bridge.create(second_run.run_id)
         with patch(
-            "app.runtime.runs.worker.apply_guardrails",
+            "app.runtime.runs.projection.apply_guardrails",
             new=AsyncMock(
                 return_value={
                     "final_text": final_answer,
@@ -745,13 +754,13 @@ class WorkflowRuntimeTests(unittest.IsolatedAsyncioTestCase):
             await run_agent(
                 bridge=bridge,
                 run_manager=run_manager,
-                thread_store=thread_store,
                 record=second_run,
+                ctx=RunContext(thread_store=thread_store),
                 agent_factory=lambda context: WorkflowAgent(
                     workflow=workflow,
                     thread_store=thread_store,
                 ),
-                input_data={
+                graph_input=normalize_graph_input({
                     "messages": [
                         {
                             "type": "human",
@@ -761,8 +770,9 @@ class WorkflowRuntimeTests(unittest.IsolatedAsyncioTestCase):
                             ),
                         }
                     ]
-                },
-                context={"stream_mode": ["messages", "values"]},
+                }),
+                config={},
+                stream_modes=["messages", "values"],
             )
 
         parsed_events = self.parse_events(

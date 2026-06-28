@@ -3,6 +3,8 @@ import asyncio
 from fastapi import HTTPException
 
 from app.agents.registry import resolve_agent_factory
+from app.runtime.runs.context import RunContext
+from app.runtime.runs.input import normalize_graph_input
 from app.runtime.runs.worker import run_agent
 from app.runtime.state import state
 from app.schemas import RunCreateRequest
@@ -36,18 +38,22 @@ async def start_run(body: RunCreateRequest, thread_id: str) -> RunRecord:
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
 
-    context = dict(body.context or {})
-    context["stream_mode"] = list(body.stream_mode or [])
+    graph_input = normalize_graph_input(body.input.model_dump())
+    ctx = RunContext(
+        thread_store=state.thread_store,
+        agent_context=dict(body.context or {}),
+    )
 
     task = asyncio.create_task(
         run_agent(
             bridge=state.bridge,
             run_manager=state.run_manager,
-            thread_store=state.thread_store,
             record=record,
+            ctx=ctx,
             agent_factory=agent_factory,
-            input_data=body.input.model_dump(),
-            context=context,
+            graph_input=graph_input,
+            config=dict(body.config or {}),
+            stream_modes=list(body.stream_mode or []),
         )
     )
 

@@ -3,6 +3,8 @@ from unittest.mock import AsyncMock, patch
 
 from langchain_core.messages import AIMessage
 
+from app.runtime.runs.context import RunContext
+from app.runtime.runs.input import normalize_graph_input
 from app.runtime.runs.worker import run_agent
 from app.runtime.stream import StreamBridge
 from app.store.run_manager import RunManager
@@ -33,7 +35,7 @@ class AgentFactoryContractTests(unittest.IsolatedAsyncioTestCase):
             return FakeAsyncAgent()
 
         with patch(
-            "app.runtime.runs.worker.apply_guardrails",
+            "app.runtime.runs.projection.apply_guardrails",
             new=AsyncMock(
                 return_value={
                     "final_text": "done",
@@ -47,11 +49,13 @@ class AgentFactoryContractTests(unittest.IsolatedAsyncioTestCase):
             await run_agent(
                 bridge=bridge,
                 run_manager=run_manager,
-                thread_store=thread_store,
                 record=run,
+                ctx=RunContext(thread_store=thread_store),
                 agent_factory=sync_factory,
-                input_data={"messages": [{"type": "human", "content": "hello"}]},
-                context={},
+                graph_input=normalize_graph_input(
+                    {"messages": [{"type": "human", "content": "hello"}]}
+                ),
+                config={},
             )
 
         events = await self.drain_events(bridge, run.run_id)

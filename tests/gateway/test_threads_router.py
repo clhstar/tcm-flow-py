@@ -15,6 +15,8 @@ from unittest.mock import AsyncMock, patch
 from app.gateway.routers import threads
 from app.middlewares.clarification_middleware import ClarificationMiddleware
 from app.runtime.public_messages import extract_pending_clarification
+from app.runtime.runs.context import RunContext
+from app.runtime.runs.input import normalize_graph_input
 from app.runtime.runs.worker import run_agent
 from app.runtime.stream import StreamBridge
 from app.runtime.state import reset_state_to_memory, state
@@ -218,15 +220,15 @@ class ThreadRunStreamMessageTests(unittest.IsolatedAsyncioTestCase):
         await run_agent(
             bridge=bridge,
             run_manager=run_manager,
-            thread_store=thread_store,
             record=run,
+            ctx=RunContext(thread_store=thread_store),
             agent_factory=lambda context: agent,
-            input_data={
+            graph_input=normalize_graph_input({
                 "messages": [
                     {"type": "human", "content": "I wake up with a headache"}
                 ]
-            },
-            context={},
+            }),
+            config={},
         )
 
         events = await self.drain_events(bridge, run.run_id)
@@ -303,7 +305,7 @@ class ThreadRunStreamMessageTests(unittest.IsolatedAsyncioTestCase):
         bridge.create(run.run_id)
 
         with patch(
-            "app.runtime.runs.worker.apply_guardrails",
+            "app.runtime.runs.projection.apply_guardrails",
             new=AsyncMock(
                 return_value={
                     "final_text": "current answer",
@@ -317,13 +319,14 @@ class ThreadRunStreamMessageTests(unittest.IsolatedAsyncioTestCase):
             await run_agent(
                 bridge=bridge,
                 run_manager=run_manager,
-                thread_store=thread_store,
                 record=run,
+                ctx=RunContext(thread_store=thread_store),
                 agent_factory=lambda context: fake_agent,
-                input_data={
+                graph_input=normalize_graph_input({
                     "messages": [{"type": "human", "content": "current user"}]
-                },
-                context={"stream_mode": ["messages", "values"]},
+                }),
+                config={},
+                stream_modes=["messages", "values"],
             )
 
         parsed_events = self.parse_events(await self.drain_events(bridge, run.run_id))
@@ -366,7 +369,7 @@ class ThreadRunStreamMessageTests(unittest.IsolatedAsyncioTestCase):
         bridge.create(run.run_id)
 
         with patch(
-            "app.runtime.runs.worker.apply_guardrails",
+            "app.runtime.runs.projection.apply_guardrails",
             new=AsyncMock(
                 return_value={
                     "final_text": "current answer",
@@ -380,13 +383,14 @@ class ThreadRunStreamMessageTests(unittest.IsolatedAsyncioTestCase):
             await run_agent(
                 bridge=bridge,
                 run_manager=run_manager,
-                thread_store=thread_store,
                 record=run,
+                ctx=RunContext(thread_store=thread_store),
                 agent_factory=lambda context: fake_agent,
-                input_data={
+                graph_input=normalize_graph_input({
                     "messages": [{"type": "human", "content": "current user"}]
-                },
-                context={"stream_mode": ["values"]},
+                }),
+                config={},
+                stream_modes=["values"],
             )
 
         self.assertEqual(fake_agent.seen_stream_mode, ["messages", "values"])
@@ -431,7 +435,7 @@ class ThreadRunStreamMessageTests(unittest.IsolatedAsyncioTestCase):
         bridge.create(run.run_id)
 
         with patch(
-            "app.runtime.runs.worker.apply_guardrails",
+            "app.runtime.runs.projection.apply_guardrails",
             new=AsyncMock(
                 return_value={
                     "final_text": "current answer",
@@ -445,13 +449,17 @@ class ThreadRunStreamMessageTests(unittest.IsolatedAsyncioTestCase):
             await run_agent(
                 bridge=bridge,
                 run_manager=run_manager,
-                thread_store=thread_store,
                 record=run,
+                ctx=RunContext(
+                    thread_store=thread_store,
+                    agent_context={"debug_events": True},
+                ),
                 agent_factory=lambda context: fake_agent,
-                input_data={
+                graph_input=normalize_graph_input({
                     "messages": [{"type": "human", "content": "current user"}]
-                },
-                context={"stream_mode": ["messages"], "debug_events": True},
+                }),
+                config={},
+                stream_modes=["messages"],
             )
 
         parsed_events = self.parse_events(await self.drain_events(bridge, run.run_id))
@@ -503,7 +511,7 @@ class ThreadRunStreamMessageTests(unittest.IsolatedAsyncioTestCase):
         bridge.create(run.run_id)
 
         with patch(
-            "app.runtime.runs.worker.apply_guardrails",
+            "app.runtime.runs.projection.apply_guardrails",
             new=AsyncMock(
                 return_value={
                     "final_text": "current answer",
@@ -517,13 +525,13 @@ class ThreadRunStreamMessageTests(unittest.IsolatedAsyncioTestCase):
             await run_agent(
                 bridge=bridge,
                 run_manager=run_manager,
-                thread_store=thread_store,
                 record=run,
+                ctx=RunContext(thread_store=thread_store),
                 agent_factory=lambda context: FakeAgent(),
-                input_data={
+                graph_input=normalize_graph_input({
                     "messages": [{"type": "human", "content": "current user"}]
-                },
-                context={},
+                }),
+                config={},
             )
 
         parsed_events = self.parse_events(await self.drain_events(bridge, run.run_id))
@@ -610,7 +618,7 @@ class ThreadRunStreamMessageTests(unittest.IsolatedAsyncioTestCase):
         bridge.create(run.run_id)
 
         with patch(
-            "app.runtime.runs.worker.apply_guardrails",
+            "app.runtime.runs.projection.apply_guardrails",
             new=AsyncMock(
                 return_value={
                     "final_text": "你好",
@@ -624,13 +632,14 @@ class ThreadRunStreamMessageTests(unittest.IsolatedAsyncioTestCase):
             await run_agent(
                 bridge=bridge,
                 run_manager=run_manager,
-                thread_store=thread_store,
                 record=run,
+                ctx=RunContext(thread_store=thread_store),
                 agent_factory=lambda context: fake_agent,
-                input_data={
+                graph_input=normalize_graph_input({
                     "messages": [{"type": "human", "content": "current user"}]
-                },
-                context={"stream_mode": ["messages"]},
+                }),
+                config={},
+                stream_modes=["messages"],
             )
 
         parsed_events = self.parse_events(await self.drain_events(bridge, run.run_id))
@@ -688,7 +697,7 @@ class ThreadRunStreamMessageTests(unittest.IsolatedAsyncioTestCase):
         bridge.create(run.run_id)
 
         with patch(
-            "app.runtime.runs.worker.apply_guardrails",
+            "app.runtime.runs.projection.apply_guardrails",
             new=AsyncMock(
                 return_value={
                     "final_text": "streaming fallback response",
@@ -702,13 +711,14 @@ class ThreadRunStreamMessageTests(unittest.IsolatedAsyncioTestCase):
             await run_agent(
                 bridge=bridge,
                 run_manager=run_manager,
-                thread_store=thread_store,
                 record=run,
+                ctx=RunContext(thread_store=thread_store),
                 agent_factory=lambda context: FakeAgent(),
-                input_data={
+                graph_input=normalize_graph_input({
                     "messages": [{"type": "human", "content": "current user"}]
-                },
-                context={"stream_mode": ["messages"]},
+                }),
+                config={},
+                stream_modes=["messages"],
             )
 
         parsed_events = self.parse_events(await self.drain_events(bridge, run.run_id))

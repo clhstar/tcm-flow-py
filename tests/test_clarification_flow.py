@@ -13,7 +13,10 @@ from langgraph.checkpoint.memory import InMemorySaver
 from app.middlewares.clarification_middleware import ClarificationMiddleware
 from app.middlewares.clarification_controller import normalize_question_items
 from app.agents.lead_agent.prompt import SYSTEM_PROMPT
-from app.runtime.runs.worker import message_to_dict, run_agent
+from app.runtime.runs.context import RunContext
+from app.runtime.runs.input import normalize_graph_input
+from app.runtime.runs.worker import run_agent
+from app.runtime.serialization import serialize_message
 from app.runtime.stream import StreamBridge
 from app.store.run_manager import RunManager
 from app.store.thread_store import ThreadStore
@@ -108,7 +111,7 @@ class ClarificationMiddlewareTests(unittest.TestCase):
             tool_call_id="call-1",
         )
 
-        payload = message_to_dict(message)
+        payload = serialize_message(message)
 
         self.assertEqual(payload["id"], "clarification:call-1")
         self.assertEqual(payload["tool_call_id"], "call-1")
@@ -154,13 +157,13 @@ class ClarificationRunTests(unittest.IsolatedAsyncioTestCase):
         await run_agent(
             bridge=bridge,
             run_manager=run_manager,
-            thread_store=thread_store,
             record=first_run,
+            ctx=RunContext(thread_store=thread_store),
             agent_factory=lambda context: agent,
-            input_data={
-                "messages": [{"type": "human", "content": "我最近胃胀"}]
-            },
-            context={},
+            graph_input=normalize_graph_input(
+                {"messages": [{"type": "human", "content": "我最近胃胀"}]}
+            ),
+            config={},
         )
         first_events = await self.drain_events(bridge, first_run.run_id)
 
@@ -178,20 +181,22 @@ class ClarificationRunTests(unittest.IsolatedAsyncioTestCase):
         await run_agent(
             bridge=bridge,
             run_manager=run_manager,
-            thread_store=thread_store,
             record=second_run,
+            ctx=RunContext(thread_store=thread_store),
             agent_factory=lambda context: agent,
-            input_data={
-                "messages": [{"type": "human", "content": "已经两周了"}]
-            },
-            context={},
+            graph_input=normalize_graph_input(
+                {"messages": [{"type": "human", "content": "已经两周了"}]}
+            ),
+            config={},
         )
         second_events = await self.drain_events(bridge, second_run.run_id)
         stored_thread = await thread_store.get(thread.thread_id)
         snapshot = await agent.aget_state(
             {"configurable": {"thread_id": thread.thread_id}}
         )
-        messages = [message_to_dict(message) for message in snapshot.values["messages"]]
+        messages = [
+            serialize_message(message) for message in snapshot.values["messages"]
+        ]
 
         self.assertEqual((await run_manager.get(second_run.run_id)).status, "success")
         self.assertTrue(any("event: final" in event for event in second_events))
@@ -234,19 +239,19 @@ class ClarificationRunTests(unittest.IsolatedAsyncioTestCase):
         }
 
         with patch(
-            "app.runtime.runs.worker.apply_guardrails",
+            "app.runtime.runs.projection.apply_guardrails",
             new=AsyncMock(return_value=guardrail_result),
         ):
             await run_agent(
                 bridge=bridge,
                 run_manager=run_manager,
-                thread_store=thread_store,
                 record=run,
+                ctx=RunContext(thread_store=thread_store),
                 agent_factory=lambda context: agent,
-                input_data={
-                    "messages": [{"type": "human", "content": "请帮我分析"}]
-                },
-                context={},
+                graph_input=normalize_graph_input(
+                    {"messages": [{"type": "human", "content": "请帮我分析"}]}
+                ),
+                config={},
             )
 
         snapshot = await agent.aget_state(
@@ -261,7 +266,7 @@ class ClarificationRunTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(
             stored_thread.values["messages"],
-            [message_to_dict(message) for message in checkpoint_messages],
+            [serialize_message(message) for message in checkpoint_messages],
         )
         self.assertNotIn(
             "原始且不应保留的病机答案",

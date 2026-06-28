@@ -3,6 +3,8 @@ import unittest
 from langchain_core.messages import AIMessage, HumanMessage
 
 from app.agents.workflow_agent.agent import WorkflowAgent
+from app.runtime.runs.context import RunContext
+from app.runtime.runs.input import normalize_graph_input
 from app.runtime.runs.worker import run_agent
 from app.runtime.stream import StreamBridge
 from app.store.run_manager import RunManager
@@ -67,11 +69,14 @@ class CollaborationHistoryTests(unittest.IsolatedAsyncioTestCase):
         await run_agent(
             bridge=bridge,
             run_manager=run_manager,
-            thread_store=thread_store,
             record=run,
+            ctx=RunContext(thread_store=thread_store),
             agent_factory=lambda context: TraceAgent(),
-            input_data={"messages": [{"type": "human", "content": "最近头痛"}]},
-            context={"stream_mode": ["messages", "updates", "tasks"]},
+            graph_input=normalize_graph_input(
+                {"messages": [{"type": "human", "content": "最近头痛"}]}
+            ),
+            config={},
+            stream_modes=["messages", "updates", "tasks"],
         )
 
         stored = await thread_store.get(thread.thread_id)

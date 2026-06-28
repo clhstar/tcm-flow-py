@@ -14,7 +14,10 @@ from app.middlewares.clarification_controller import (
     extract_latest_clarification_question,
 )
 from app.middlewares.clarification_middleware import ClarificationMiddleware
-from app.runtime.runs.worker import message_to_dict, run_agent
+from app.runtime.runs.context import RunContext
+from app.runtime.runs.input import normalize_graph_input
+from app.runtime.runs.worker import run_agent
+from app.runtime.serialization import serialize_message
 from app.runtime.stream import StreamBridge
 from app.store.run_manager import RunManager
 from app.store.thread_store import ThreadStore
@@ -266,20 +269,22 @@ class SubAgentClarificationRunTests(unittest.IsolatedAsyncioTestCase):
         await run_agent(
             bridge=bridge,
             run_manager=run_manager,
-            thread_store=thread_store,
             record=run,
+            ctx=RunContext(thread_store=thread_store),
             agent_factory=lambda context: agent,
-            input_data={
-                "messages": [{"type": "human", "content": "请帮我分析腰痛"}]
-            },
-            context={},
+            graph_input=normalize_graph_input(
+                {"messages": [{"type": "human", "content": "请帮我分析腰痛"}]}
+            ),
+            config={},
         )
 
         stored_thread = await thread_store.get(thread.thread_id)
         snapshot = await agent.aget_state(
             {"configurable": {"thread_id": thread.thread_id}}
         )
-        messages = [message_to_dict(message) for message in snapshot.values["messages"]]
+        messages = [
+            serialize_message(message) for message in snapshot.values["messages"]
+        ]
 
         self.assertEqual(
             (await run_manager.get(run.run_id)).status,
@@ -329,13 +334,13 @@ class SubAgentClarificationRunTests(unittest.IsolatedAsyncioTestCase):
         await run_agent(
             bridge=bridge,
             run_manager=run_manager,
-            thread_store=thread_store,
             record=run,
+            ctx=RunContext(thread_store=thread_store),
             agent_factory=lambda context: agent,
-            input_data={
-                "messages": [{"type": "human", "content": "请整理已有信息"}]
-            },
-            context={},
+            graph_input=normalize_graph_input(
+                {"messages": [{"type": "human", "content": "请整理已有信息"}]}
+            ),
+            config={},
         )
 
         stored_thread = await thread_store.get(thread.thread_id)
