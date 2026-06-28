@@ -33,6 +33,7 @@ def build_runnable_config(
         dict(raw_configurable) if isinstance(raw_configurable, Mapping) else {}
     )
     configurable["thread_id"] = record.thread_id
+    configurable["run_id"] = record.run_id
     config["configurable"] = configurable
 
     raw_context = config.get("context")
@@ -40,8 +41,6 @@ def build_runnable_config(
     installed_context.update(runtime_context)
     config["context"] = installed_context
 
-    config.setdefault(
-        "recursion_limit",
-        int(runtime_context.get("recursion_limit", 50)),
-    )
+    if "recursion_limit" not in config:
+        config["recursion_limit"] = int(runtime_context.get("recursion_limit", 50))
     return config

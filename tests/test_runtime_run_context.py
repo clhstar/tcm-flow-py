@@ -87,7 +87,7 @@ class RuntimeRunContextTests(unittest.TestCase):
         self.assertEqual(runtime_context["model_name"], "test-model")
         self.assertEqual(runtime_context["temperature"], 0.2)
 
-    def test_runnable_config_preserves_request_fields_and_forces_thread_id(self):
+    def test_runnable_config_preserves_request_fields_and_forces_identity(self):
         runtime_context = build_runtime_context(
             self.record,
             {"model_name": "test-model", "recursion_limit": 77},
@@ -96,7 +96,11 @@ class RuntimeRunContextTests(unittest.TestCase):
         config = build_runnable_config(
             self.record,
             {
-                "configurable": {"thread_id": "wrong", "custom": "value"},
+                "configurable": {
+                    "thread_id": "wrong",
+                    "run_id": "caller-run",
+                    "custom": "value",
+                },
                 "metadata": {"source": "test"},
                 "recursion_limit": 88,
                 "context": {
@@ -108,12 +112,25 @@ class RuntimeRunContextTests(unittest.TestCase):
         )
 
         self.assertEqual(config["configurable"]["thread_id"], "thread-1")
+        self.assertEqual(config["configurable"]["run_id"], "run-1")
         self.assertEqual(config["configurable"]["custom"], "value")
         self.assertEqual(config["metadata"], {"source": "test"})
         self.assertEqual(config["recursion_limit"], 88)
         self.assertTrue(config["context"]["request_context"])
         self.assertEqual(config["context"]["model_name"], "test-model")
         self.assertEqual(config["context"]["run_id"], "run-1")
+
+    def test_runnable_config_does_not_evaluate_default_when_request_sets_limit(self):
+        config = build_runnable_config(
+            self.record,
+            {"recursion_limit": 88},
+            build_runtime_context(
+                self.record,
+                {"recursion_limit": "invalid"},
+            ),
+        )
+
+        self.assertEqual(config["recursion_limit"], 88)
 
     def test_runnable_config_defaults_recursion_limit_from_runtime_context_or_50(self):
         with_runtime_default = build_runnable_config(
