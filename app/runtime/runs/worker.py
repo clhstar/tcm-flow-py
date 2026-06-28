@@ -96,13 +96,23 @@ async def run_agent(
             completion.thread_values,
             run_id=run_id,
         )
-        await bridge.publish(run_id, "final", completion.final_payload)
         await run_manager.set_status(run_id, completion.run_status)
         await thread_store.update_status(thread_id, completion.thread_status)
+        await bridge.publish(run_id, "final", completion.final_payload)
 
     except asyncio.CancelledError:
-        await run_manager.set_status(run_id, "cancelled")
-        await thread_store.update_status(thread_id, "idle")
+        try:
+            await run_manager.set_status(run_id, "cancelled")
+        except Exception:
+            logger.exception("Failed to mark run %s cancelled", run_id)
+        try:
+            await thread_store.update_status(thread_id, "idle")
+        except Exception:
+            logger.exception(
+                "Failed to reset thread %s after run %s cancellation",
+                thread_id,
+                run_id,
+            )
         logger.info("Run %s cancelled", run_id)
         raise
 
