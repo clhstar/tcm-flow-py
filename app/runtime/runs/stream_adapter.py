@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import inspect
 from collections.abc import Awaitable, Callable
+from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -19,7 +20,7 @@ ValuesObserver = Callable[
 @dataclass(frozen=True)
 class StreamSnapshot:
     latest_values: dict[str, Any] = field(default_factory=dict)
-    latest_messages: list[Any] = field(default_factory=list)
+    latest_messages: list[dict[str, Any]] = field(default_factory=list)
 
 
 def normalize_stream_modes(modes: Any) -> list[str]:
@@ -27,7 +28,9 @@ def normalize_stream_modes(modes: Any) -> list[str]:
         return ["messages"]
     if isinstance(modes, str):
         return [modes]
-    if isinstance(modes, (list, tuple, set)):
+    if isinstance(modes, set):
+        return sorted(str(mode) for mode in modes)
+    if isinstance(modes, (list, tuple)):
         return [str(mode) for mode in modes]
     return ["messages"]
 
@@ -70,7 +73,7 @@ class LangGraphStreamAdapter:
         publish_values = "values" in normalized_modes or self.emit_debug_events
 
         latest_values: dict[str, Any] = {}
-        latest_messages: list[Any] = []
+        latest_messages: list[dict[str, Any]] = []
 
         async for stream_item in agent.astream(
             graph_input,
@@ -100,20 +103,24 @@ class LangGraphStreamAdapter:
             serialized_values = serialize(chunk, mode="values")
             if isinstance(serialized_values, dict):
                 latest_values = serialized_values
-                messages = serialized_values.get("messages", [])
-                latest_messages = list(messages) if isinstance(messages, list) else []
+                raw_messages = serialized_values.get("messages", [])
+                latest_messages = (
+                    [message for message in raw_messages if isinstance(message, dict)]
+                    if isinstance(raw_messages, list)
+                    else []
+                )
 
             if publish_values:
                 await self.bridge.publish(
                     self.run_id,
                     "values",
-                    serialized_values,
+                    deepcopy(serialized_values),
                 )
 
             if values_observer is None or not isinstance(serialized_values, dict):
                 continue
 
-            projected_events = values_observer(serialized_values)
+            projected_events = values_observer(deepcopy(serialized_values))
             if inspect.isawaitable(projected_events):
                 projected_events = await projected_events
             for event, data in projected_events:

@@ -78,6 +78,18 @@ class RuntimeStreamAdapterTests(unittest.IsolatedAsyncioTestCase):
             ["messages", "values", "tasks", "updates"],
         )
 
+    def test_set_mode_normalization_uses_stable_sorted_string_order(self):
+        class DeliberatelyUnsortedSet(set):
+            def __iter__(self):
+                return iter(("updates", "tasks", "messages"))
+
+        self.assertEqual(
+            normalize_stream_modes(
+                DeliberatelyUnsortedSet({"messages", "tasks", "updates"})
+            ),
+            ["messages", "tasks", "updates"],
+        )
+
     def test_stream_snapshot_is_frozen_and_uses_independent_defaults(self):
         first = StreamSnapshot()
         second = StreamSnapshot()
@@ -189,6 +201,39 @@ class RuntimeStreamAdapterTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(snapshot.latest_values, expected_values)
         self.assertEqual(snapshot.latest_messages, expected_values["messages"])
+
+    async def test_observer_and_snapshot_mutations_do_not_alias_published_values(self):
+        def observer(values):
+            values["status"] = "observer-mutated"
+            values["messages"][0]["content"] = "observer-mutated"
+            return []
+
+        snapshot, events, _ = await self.forward_chunks(
+            [
+                (
+                    "values",
+                    {
+                        "status": "original",
+                        "messages": [{"type": "ai", "content": "original"}],
+                    },
+                )
+            ],
+            requested_modes="values",
+            values_observer=observer,
+        )
+        original_values = {
+            "status": "original",
+            "messages": [{"type": "ai", "content": "original"}],
+        }
+
+        self.assertEqual(snapshot.latest_values, original_values)
+        self.assertEqual(snapshot.latest_messages, original_values["messages"])
+        self.assertEqual(events, [("values", original_values)])
+
+        snapshot.latest_values["status"] = "snapshot-mutated"
+        snapshot.latest_messages[0]["content"] = "snapshot-mutated"
+
+        self.assertEqual(events, [("values", original_values)])
 
     async def test_messages_only_keeps_raw_values_fallback_without_publishing_it(self):
         snapshot, events, agent = await self.forward_chunks(
