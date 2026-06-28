@@ -100,6 +100,12 @@ async def run_agent(
         await run_manager.set_status(run_id, completion.run_status)
         await thread_store.update_status(thread_id, completion.thread_status)
 
+    except asyncio.CancelledError:
+        await run_manager.set_status(run_id, "cancelled")
+        await thread_store.update_status(thread_id, "idle")
+        logger.info("Run %s cancelled", run_id)
+        raise
+
     except Exception as exc:
         error = "".join(traceback.format_exception_only(type(exc), exc)).strip()
         logger.exception("Run %s failed", run_id)
