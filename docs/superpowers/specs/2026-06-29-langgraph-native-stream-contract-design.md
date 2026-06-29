@@ -121,12 +121,16 @@ class PublicResponse(TypedDict):
 
 class WorkflowState(TypedDict, total=False):
     # Existing internal fields remain.
-    public_response: PublicResponse
-    run_outcome: Literal["completed", "need_clarification"]
+    public_response: PublicResponse | None
+    run_outcome: Literal["completed", "need_clarification"] | None
 ```
 
 `public_response` is business output stored in graph state, not an SSE event.
 It becomes visible naturally through `updates` and `values`.
+
+Both fields are nullable so a resumed turn can explicitly clear the prior
+clarification outcome before the graph continues. Consumers ignore `null` and
+only act on a fully populated `PublicResponse`.
 
 The graph also owns the visible `conversation` update for the current turn.
 The runtime may persist declared state fields, but it must not infer the answer
